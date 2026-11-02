@@ -572,14 +572,10 @@ def is_weak_code(digits: str) -> bool:  # pragma: no cover
     return bool(digits) and len(set(digits)) == 1
 
 def is_plausible_phone(digits: str) -> bool:  # pragma: no cover
-    """North American number plan check: area code and exchange start with 2-9, not one repeated digit."""
+    """A 10-digit number that isn't one repeated digit or an obvious dummy run (Postel: accept generously)."""
     if len(digits) != 10 or not digits.isdigit():
         return False
-    if digits[0] in "01" or digits[3] in "01":
-        return False
-    if is_weak_code(digits) or digits in ("1234567890", "0123456789", "9876543210"):
-        return False
-    return True
+    return not is_weak_code(digits) and digits not in ("1234567890", "0123456789", "9876543210")
 
 def normalize_code(value: Any) -> str:  # pragma: no cover
     """Coerce ints, floats (e.g. 5903.0), and formatted strings into a clean digit string."""

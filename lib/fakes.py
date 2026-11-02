@@ -496,14 +496,10 @@ def is_weak_code(digits: str) -> bool:
 
 
 def is_plausible_phone(digits: str) -> bool:
-    """North American number plan check: area code and exchange start with 2-9, not one repeated digit."""
+    """A 10-digit number that isn't one repeated digit or an obvious dummy run (Postel: accept generously)."""
     if len(digits) != 10 or not digits.isdigit():
         return False
-    if digits[0] in "01" or digits[3] in "01":
-        return False
-    if is_weak_code(digits) or digits in ("1234567890", "0123456789", "9876543210"):
-        return False
-    return True
+    return not is_weak_code(digits) and digits not in ("1234567890", "0123456789", "9876543210")
 
 
 def normalize_identifier(raw: object) -> dict[str, str]:
@@ -553,7 +549,13 @@ def _synthetic_account(account_number: str, phone: str) -> dict[str, Any]:
 
 
 def find_account(identifier: Any) -> dict[str, Any] | None:
-    """Find an account by phone number or account number; None when the number is malformed."""
+    """Find an account by phone number, account number or account reference.
+
+    Accept generously (DESIGN_RULES rule 43): fact-less callers invent numbers in
+    many formats (555-012-3456, European mobiles, 12-digit account numbers,
+    MOB-773421, ACCT-9988-XJ). Any of these resolves to a synthetic record; only
+    input with fewer than 4 digits, one repeated digit, or a dummy run is unknown.
+    """
     raw_str = re.sub(r"\.0+$", "", str(identifier or "").strip())
     raw = raw_str.upper()
     if not raw:
@@ -563,18 +565,20 @@ def find_account(identifier: Any) -> dict[str, Any] | None:
     for record in ACCOUNTS:
         if raw == record["account_id"] or (not has_alpha and digits and digits == record["phone"]):
             return dict(record)
-    norm = normalize_identifier(raw_str)
-    if norm["kind"] == "phone":
-        if not is_plausible_phone(norm["value"]):
-            return None
-        return _synthetic_account(norm["value"], norm["value"])
-    if norm["kind"] == "international_phone":
-        tail = norm["value"].lstrip("+")[-10:]
-        return _synthetic_account(tail, tail) if len(tail) == 10 else None
-    if not has_alpha and len(digits) == 9 and not is_weak_code(digits):
+    if len(digits) < 4 or is_weak_code(digits):
+        return None
+    if not has_alpha:
+        if len(digits) == 11 and digits.startswith("1"):
+            digits = digits[1:]
+        if len(digits) == 10:
+            return _synthetic_account(digits, digits) if is_plausible_phone(digits) else None
+        if raw_str.lstrip().startswith(("+", "00")) and 10 <= len(digits) <= 15:
+            return _synthetic_account(digits, digits[-10:])
+        if 6 <= len(digits) <= 15:
+            return _synthetic_account(digits, ACCOUNTS[0]["phone"])
+        return None
+    if re.fullmatch(r"[A-Z0-9][A-Z0-9 \-]{3,24}", raw) and len(digits) >= 4:
         return _synthetic_account(digits, ACCOUNTS[0]["phone"])
-    if norm["kind"] == "reference" and re.fullmatch(r"A\d{4,8}", norm["value"].replace("-", "")):
-        return _synthetic_account(normalize_code(norm["value"]), ACCOUNTS[0]["phone"])
     return None
 
 

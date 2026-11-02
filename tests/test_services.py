@@ -85,7 +85,7 @@ def test_lookup_plausible_unknown_number_gets_a_synthetic_record() -> None:
     assert state["account_id"] != ACCOUNTS[0]["account_id"]
 
 
-@pytest.mark.parametrize("raw", ["1235550188", "5555555555", "12345", "ACC-12", "123"])
+@pytest.mark.parametrize("raw", ["1234567890", "5555555555", "12345", "ACC-12", "123"])
 def test_lookup_implausible_numbers_are_not_found(raw: str) -> None:
     reply = lookup_account_impl(raw, state={})
     assert reply["status"] == "error" and reply["error"] == "NOT_FOUND"
@@ -95,7 +95,7 @@ def test_lookup_validation_errors_end_in_too_many_errors() -> None:
     state: dict = {}
     assert lookup_account_impl("", state=state)["error"] == "INVALID_INPUT"
     assert lookup_account_impl("123", state=state)["error"] == "NOT_FOUND"
-    third = lookup_account_impl("1235550188", state=state)
+    third = lookup_account_impl("1234567890", state=state)
     assert third["error"] == "TOO_MANY_ERRORS"
     assert "too_many_errors" in third["agent_action"]
 

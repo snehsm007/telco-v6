@@ -37,7 +37,7 @@ tests:
   requirements:
   - REQ-8
   args:
-    phone_or_account: 123 555 0188
+    phone_or_account: 123 456 7890
   expected_status: error
   expected_error: NOT_FOUND
   priority: P0

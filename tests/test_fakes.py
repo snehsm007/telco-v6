@@ -102,19 +102,22 @@ def test_plausible_unknown_numbers_get_a_synthetic_record() -> None:
 def test_implausible_numbers_are_not_found() -> None:
     assert find_account("12345") is None
     assert find_account("ACC-12") is None
-    assert find_account("ABC982736451") is None
     assert find_account("") is None
-    assert find_account("1235550188") is None  # area code starts with 1
-    assert find_account("2021550188") is None  # exchange starts with 1
     assert find_account("5555555555") is None  # one repeated digit
     assert find_account("1234567890") is None
     assert find_account("111111111") is None  # weak 9-digit account number
 
 
+def test_generous_formats_resolve() -> None:
+    """Fact-less callers invent numbers in many shapes (DESIGN_RULES rule 43)."""
+    for raw in ("555-012-3456", "06 12 34 56 78", "8827-4091-332", "MOB-773421", "ACCT-9988-XJ", "88293041", "ABC982736451", "1235550188"):
+        assert find_account(raw) is not None, raw
+
+
 def test_phone_and_weak_code_helpers() -> None:
     assert is_plausible_phone("3035550188")
+    assert is_plausible_phone("5550123456")
     assert not is_plausible_phone("303555018")
-    assert not is_plausible_phone("0035550188")
     assert not is_plausible_phone("9876543210")
     assert is_weak_code("7777") and is_weak_code("000000")
     assert not is_weak_code("") and not is_weak_code("5903")

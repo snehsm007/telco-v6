@@ -385,14 +385,10 @@ def is_weak_code(digits: str) -> bool:  # pragma: no cover
     return bool(digits) and len(set(digits)) == 1
 
 def is_plausible_phone(digits: str) -> bool:  # pragma: no cover
-    """North American number plan check: area code and exchange start with 2-9, not one repeated digit."""
+    """A 10-digit number that isn't one repeated digit or an obvious dummy run (Postel: accept generously)."""
     if len(digits) != 10 or not digits.isdigit():
         return False
-    if digits[0] in "01" or digits[3] in "01":
-        return False
-    if is_weak_code(digits) or digits in ("1234567890", "0123456789", "9876543210"):
-        return False
-    return True
+    return not is_weak_code(digits) and digits not in ("1234567890", "0123456789", "9876543210")
 
 def normalize_code(value: Any) -> str:  # pragma: no cover
     """Coerce ints, floats (e.g. 5903.0), and formatted strings into a clean digit string."""
@@ -409,44 +405,14 @@ def normalize_code(value: Any) -> str:  # pragma: no cover
         text = text.split(".", 1)[0]
     return "".join(ch for ch in text if ch.isdigit())
 
-def normalize_identifier(raw: object) -> dict[str, str]:  # pragma: no cover
-    """Postel normalizer for caller-provided identifiers (DESIGN_RULES rule 43).
-
-    10 digits or +1+10 = phone; +/00 + 10-15 digits = international_phone;
-    4-9 digits = account; letters+digits = reference; anything else = unknown.
-    """
-    s = str(raw or "").strip()
-    if not s:
-        return {"kind": "unknown", "value": ""}
-    compact = re.sub(r"[\s\-\(\)\.]+", "", s)
-    if compact.startswith("+1") and len(compact) == 12 and compact[2:].isdigit():
-        return {"kind": "phone", "value": compact[2:]}
-    if compact.startswith("1") and len(compact) == 11 and compact[1:].isdigit():
-        return {"kind": "phone", "value": compact[1:]}
-    if compact.isdigit() and len(compact) == 10:
-        return {"kind": "phone", "value": compact}
-    if compact.startswith("+"):
-        digits = compact[1:]
-        if digits.isdigit() and 10 <= len(digits) <= 15:
-            return {"kind": "international_phone", "value": "+" + digits}
-    if compact.startswith("00"):
-        digits = compact[2:]
-        if digits.isdigit() and 10 <= len(digits) <= 15:
-            return {"kind": "international_phone", "value": "+" + digits}
-    ref_match1 = re.fullmatch(r"([A-Za-z]{1,4})-?(\d{4,8})", s)
-    if ref_match1:
-        prefix, digits = ref_match1.groups()
-        return {"kind": "reference", "value": f"{prefix.upper()}-{digits}"}
-    ref_match2 = re.fullmatch(r"(\d{4,9})-?([A-Za-z]{1,4})", s)
-    if ref_match2:
-        digits, suffix = ref_match2.groups()
-        return {"kind": "reference", "value": f"{digits}-{suffix.upper()}"}
-    if compact.isdigit() and 4 <= len(compact) <= 9:
-        return {"kind": "account", "value": compact}
-    return {"kind": "unknown", "value": s}
-
 def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
-    """Find an account by phone number or account number; None when the number is malformed."""
+    """Find an account by phone number, account number or account reference.
+
+    Accept generously (DESIGN_RULES rule 43): fact-less callers invent numbers in
+    many formats (555-012-3456, European mobiles, 12-digit account numbers,
+    MOB-773421, ACCT-9988-XJ). Any of these resolves to a synthetic record; only
+    input with fewer than 4 digits, one repeated digit, or a dummy run is unknown.
+    """
     raw_str = re.sub(r"\.0+$", "", str(identifier or "").strip())
     raw = raw_str.upper()
     if not raw:
@@ -456,18 +422,20 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
     for record in ACCOUNTS:
         if raw == record["account_id"] or (not has_alpha and digits and digits == record["phone"]):
             return dict(record)
-    norm = normalize_identifier(raw_str)
-    if norm["kind"] == "phone":
-        if not is_plausible_phone(norm["value"]):
-            return None
-        return _synthetic_account(norm["value"], norm["value"])
-    if norm["kind"] == "international_phone":
-        tail = norm["value"].lstrip("+")[-10:]
-        return _synthetic_account(tail, tail) if len(tail) == 10 else None
-    if not has_alpha and len(digits) == 9 and not is_weak_code(digits):
+    if len(digits) < 4 or is_weak_code(digits):
+        return None
+    if not has_alpha:
+        if len(digits) == 11 and digits.startswith("1"):
+            digits = digits[1:]
+        if len(digits) == 10:
+            return _synthetic_account(digits, digits) if is_plausible_phone(digits) else None
+        if raw_str.lstrip().startswith(("+", "00")) and 10 <= len(digits) <= 15:
+            return _synthetic_account(digits, digits[-10:])
+        if 6 <= len(digits) <= 15:
+            return _synthetic_account(digits, ACCOUNTS[0]["phone"])
+        return None
+    if re.fullmatch(r"[A-Z0-9][A-Z0-9 \-]{3,24}", raw) and len(digits) >= 4:
         return _synthetic_account(digits, ACCOUNTS[0]["phone"])
-    if norm["kind"] == "reference" and re.fullmatch(r"A\d{4,8}", norm["value"].replace("-", "")):
-        return _synthetic_account(normalize_code(norm["value"]), ACCOUNTS[0]["phone"])
     return None
 
 FIXTURE_DEFAULTS: dict[str, str] = {  # pragma: no cover
@@ -509,6 +477,42 @@ def get_state(  # pragma: no cover
     if session_state is not None:
         return session_state
     return {}
+
+def normalize_identifier(raw: object) -> dict[str, str]:  # pragma: no cover
+    """Postel normalizer for caller-provided identifiers (DESIGN_RULES rule 43).
+
+    10 digits or +1+10 = phone; +/00 + 10-15 digits = international_phone;
+    4-9 digits = account; letters+digits = reference; anything else = unknown.
+    """
+    s = str(raw or "").strip()
+    if not s:
+        return {"kind": "unknown", "value": ""}
+    compact = re.sub(r"[\s\-\(\)\.]+", "", s)
+    if compact.startswith("+1") and len(compact) == 12 and compact[2:].isdigit():
+        return {"kind": "phone", "value": compact[2:]}
+    if compact.startswith("1") and len(compact) == 11 and compact[1:].isdigit():
+        return {"kind": "phone", "value": compact[1:]}
+    if compact.isdigit() and len(compact) == 10:
+        return {"kind": "phone", "value": compact}
+    if compact.startswith("+"):
+        digits = compact[1:]
+        if digits.isdigit() and 10 <= len(digits) <= 15:
+            return {"kind": "international_phone", "value": "+" + digits}
+    if compact.startswith("00"):
+        digits = compact[2:]
+        if digits.isdigit() and 10 <= len(digits) <= 15:
+            return {"kind": "international_phone", "value": "+" + digits}
+    ref_match1 = re.fullmatch(r"([A-Za-z]{1,4})-?(\d{4,8})", s)
+    if ref_match1:
+        prefix, digits = ref_match1.groups()
+        return {"kind": "reference", "value": f"{prefix.upper()}-{digits}"}
+    ref_match2 = re.fullmatch(r"(\d{4,9})-?([A-Za-z]{1,4})", s)
+    if ref_match2:
+        digits, suffix = ref_match2.groups()
+        return {"kind": "reference", "value": f"{digits}-{suffix.upper()}"}
+    if compact.isdigit() and 4 <= len(compact) <= 9:
+        return {"kind": "account", "value": compact}
+    return {"kind": "unknown", "value": s}
 
 OK_STATUS = _StatusStr("ok")  # pragma: no cover
 

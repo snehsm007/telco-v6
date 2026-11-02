@@ -24,7 +24,7 @@ def test_lookup_account_dict_context_and_fixtures(monkeypatch) -> None:
 def test_lookup_account_without_a_session(monkeypatch) -> None:
     monkeypatch.setattr(tool, "context", None, raising=False)
     assert tool.lookup_account("")["error"] == "INVALID_INPUT"
-    assert tool.lookup_account("123 555 0188")["error"] == "NOT_FOUND"
+    assert tool.lookup_account("123 456 7890")["error"] == "NOT_FOUND"
     assert tool.lookup_account("900 555 0199")["error"] == "PERMISSION_DENIED"
 
 

@@ -588,7 +588,15 @@ def sync_bench(cloud: Cloud, app_name: str, expectations: list[dict], evaluation
         if dname in existing:
             ex_ev = existing[dname]
             ex_refs = list(getattr(ex_ev.scenario, "evaluation_expectations", []) or [])
-            if all(r.startswith("projects/") for r in ex_refs):
+            local_overrides = dict((data.get("scenario") or {}).get("variableOverrides") or {})
+            try:
+                remote_overrides = dict(getattr(ex_ev.scenario, "variable_overrides", {}) or {})
+            except (TypeError, ValueError):
+                remote_overrides = {}
+            overrides_match = {k: str(v) for k, v in local_overrides.items()} == {
+                k: str(v) for k, v in remote_overrides.items()
+            }
+            if all(r.startswith("projects/") for r in ex_refs) and overrides_match:
                 eval_by_name[dname] = ex_ev
                 continue
             data["name"] = ex_ev.name
@@ -598,7 +606,7 @@ def sync_bench(cloud: Cloud, app_name: str, expectations: list[dict], evaluation
                 "WRITE",
                 "Evaluations.update_evaluation",
                 ex_ev.name,
-                f"bench: relink expectation resource names on {ve_id}",
+                f"bench: relink expectations / sync variableOverrides on {ve_id}",
                 lambda proto=proto: cloud.evals.update_evaluation(evaluation=proto, app_name=app_name),
                 describe=lambda u: f"updated {u.name}",
                 write=True,
