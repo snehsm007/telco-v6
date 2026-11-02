@@ -447,3 +447,20 @@ def test_texted_code_given_to_the_pin_tool_is_checked_as_a_code() -> None:
     lookup_account_impl("514-555-0199", state=state)
     send_login_code_impl(state=state)
     assert check_secret_pin_impl("482913", state=state)["status"] == "ok"
+
+
+def test_login_prompts_carry_their_verbatim_lines() -> None:
+    """The judge only sees tool replies, so spoken login lines travel in them (cluster C1)."""
+    from lib.billing import get_billing_summary_impl
+
+    state: dict = {}
+    lookup_account_impl("514-555-0199", state=state)
+    gate = get_billing_summary_impl(state=state)
+    assert gate["error"] == "NOT_LOGGED_IN"
+    assert gate["data"]["spoken_message"].startswith(SPOKEN_LINES["otp_callback_confirm"]["en-US"].split("[")[0])
+    assert gate["data"]["pin_prompt_message"] == SPOKEN_LINES["id_verification_pin"]["en-US"]
+    sent = send_login_code_impl(state=state)
+    assert sent["data"]["spoken_message"] == SPOKEN_LINES["id_verification_otp"]["en-US"]
+    fr: dict = {"language": "fr-CA"}
+    lookup_account_impl("514-555-0199", state=fr)
+    assert send_login_code_impl(state=fr)["data"]["spoken_message"] == SPOKEN_LINES["id_verification_otp"]["fr-CA"]

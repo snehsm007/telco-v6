@@ -22,6 +22,7 @@ from lib.fakes import (
     read_count,
     relative_date,
     resolve_copy_locale,
+    spoken_line,
 )
 from lib.replies import display_amount, error_reply, tracking_id
 
@@ -120,12 +121,20 @@ def require_login(state: dict[str, Any], lang: str, tool_name: str) -> dict[str,
     if state.get("auth_status") == "pass" and state.get("logged_in") is not False:
         return None
     ref = tracking_id(tool_name, "not_logged_in", state.get("account_id", ""))
+    data: dict[str, Any] = {"code_length": 6, "pin_length": 4}
+    if state.get("account_id"):
+        last4 = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or "")
+        data["spoken_message"] = (
+            spoken_line("otp_callback_confirm", lang, last4=last4) + " " + spoken_line("pin_alternative", lang)
+        )
+        data["pin_prompt_message"] = spoken_line("id_verification_pin", lang)
     return error_reply(
         "NOT_LOGGED_IN",
         "The caller has not passed login.",
-        "Verify the caller (code or PIN), then call this tool again.",
+        "Say spoken_message; send a code if they agree, or check the PIN they give.",
         ref,
         language=lang,
+        data=data,
     )
 
 

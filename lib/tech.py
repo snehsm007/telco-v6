@@ -37,6 +37,7 @@ from lib.fakes import (
     TICKETS,
     relative_date,
     resolve_copy_locale,
+    spoken_line,
 )
 from lib.replies import error_reply, ok_reply, tracking_id
 
@@ -200,9 +201,11 @@ def check_regional_outage_impl(
         "used_address_on_file": used_address_on_file,
         "next_step": "say_outage_active_and_offer_text_updates" if active else "offer_troubleshooting",
     }
+    if active:
+        data["spoken_message"] = spoken_line("outage_active", lang)
     reply = ok_reply(data, reference, language=lang)
     if active:
-        reply["agent_action"] = "Say the outage_active line word for word; on yes, send outage_updates by text."
+        reply["agent_action"] = "Say spoken_message (the outage_active line) word for word; on yes, text outage_updates."
     else:
         reply["agent_action"] = "Say there is no outage in the area; offer troubleshooting."
     return reply
@@ -568,10 +571,11 @@ def run_virtual_repair_impl(
         return error_reply(
             "OUTAGE_ACTIVE",
             "An active outage affects this service at the address on file.",
-            "Say the outage_active line word for word; on yes, send outage_updates by text.",
+            "Say spoken_message (the outage_active line) word for word; on yes, text outage_updates.",
             reference,
             language=lang,
             data={
+                "spoken_message": spoken_line("outage_active", lang),
                 "outage_active": True,
                 "affected_services": list(outage["services"]),
                 "restoration_eta_display": _tech_hours(int(outage["eta_hours"]), lang),

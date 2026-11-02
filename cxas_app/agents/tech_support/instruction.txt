@@ -33,9 +33,7 @@ Transfers to other agents are silent.
     <step name="Outage Active">
       <trigger>{@TOOL: check_regional_outage} returned outage_active=true, or {@TOOL: run_virtual_repair} returned error="OUTAGE_ACTIVE"</trigger>
       <action>
-        Say the outage_active line word for word, and nothing else:
-        - en-US: I see there's an active outage in your area. We're working on it. Would you like me to text you when it's restored?
-        - fr-CA: Je constate qu'il y a une panne active dans votre secteur. Nous y travaillons. Voulez-vous que je vous envoie un texto lorsque le service sera rétabli?
+        Say the spoken_message it returned (the outage_active line) word for word, and nothing else.
       </action>
     </step>
     <step name="No Outage">

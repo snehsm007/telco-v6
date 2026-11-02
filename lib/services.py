@@ -328,8 +328,10 @@ def send_login_code_impl(
         email = str(record.get("email", ""))
         user, _, domain = email.partition("@")
         data["email_masked"] = (user[:1] + "***@" + domain) if domain else "on file"
+        data["spoken_message"] = spoken_line("email_code_sent", lang)
     else:
         data["destination_last4"] = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or record["phone"][-4:])
+        data["spoken_message"] = spoken_line("id_verification_otp", lang)
     return ok_reply(data, reference, language=lang)
 
 
