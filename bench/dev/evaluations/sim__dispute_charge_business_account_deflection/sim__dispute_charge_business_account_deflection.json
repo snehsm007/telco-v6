@@ -10,7 +10,9 @@
     "rubrics": [],
     "scenarioExpectations": [],
     "userFacts": [],
-    "variableOverrides": {}
+    "variableOverrides": {
+      "fx_business_account": "true"
+    }
   },
   "tags": [
     "public",

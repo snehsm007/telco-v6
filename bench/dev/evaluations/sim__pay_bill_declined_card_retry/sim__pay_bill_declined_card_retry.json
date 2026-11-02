@@ -10,7 +10,9 @@
     "rubrics": [],
     "scenarioExpectations": [],
     "userFacts": [],
-    "variableOverrides": {}
+    "variableOverrides": {
+      "fx_card_on_file_status": "declined"
+    }
   },
   "tags": [
     "public",

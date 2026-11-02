@@ -26,8 +26,11 @@ import re
 LANGUAGE_SHEET_SENTINEL = "<!-- ACTIVE_LANGUAGE_SHEET -->"  # pragma: no cover
 
 AGENT_VERBATIM_KEYS: dict[str, tuple[str, ...]] = {  # pragma: no cover
-    "router": ("greeting", "handover", "ai_disclosure", "malicious_closing", "recording_notice"),
-    "specialist": ("code_sent", "handover", "ai_disclosure", "malicious_closing", "recording_notice"),
+    "router": ("greeting_main", "restricted_caller", "live_agent_handoff", "business_handoff", "empathy_protocol", "recording_notice", "ai_disclosure", "malicious_closing"),
+    "billing": ("id_verification_otp", "id_verification_pin", "otp_callback_confirm", "payment_method_preamble", "refund_confirmation_pattern", "transfer_to_specialist", "live_agent_handoff", "business_handoff", "empathy_protocol", "recording_notice", "ai_disclosure", "malicious_closing"),
+    "tech_support": ("id_verification_otp", "id_verification_pin", "otp_callback_confirm", "outage_active", "live_agent_handoff", "business_handoff", "empathy_protocol", "recording_notice", "ai_disclosure", "malicious_closing"),
+    "sales_equipment": ("id_verification_otp", "id_verification_pin", "otp_callback_confirm", "live_agent_handoff", "business_handoff", "empathy_protocol", "recording_notice", "ai_disclosure", "malicious_closing"),
+    "account": ("id_verification_otp", "id_verification_pin", "otp_callback_confirm", "contract_cancellation_fee_disclosure", "live_agent_handoff", "business_handoff", "empathy_protocol", "recording_notice", "ai_disclosure", "malicious_closing"),
 }
 
 WORLD_LANGUAGE_NAMES: dict[str, str] = {  # pragma: no cover
@@ -37,84 +40,76 @@ WORLD_LANGUAGE_NAMES: dict[str, str] = {  # pragma: no cover
 }
 
 def resolve_locale(language: str | None) -> str:  # pragma: no cover
-    """Normalize a language tag or prefix to a supported BCP-47 locale code."""
-    raw = str(language or "").strip()
-    if not raw:
-        return "en-US"
-    low = raw.lower().replace("_", "-")
+    """Normalize a language tag or prefix to a supported locale (en-US or fr-CA)."""
+    low = str(language or "").strip().lower().replace("_", "-")
     if low.startswith("fr"):
         return "fr-CA"
-    if low.startswith("es"):
-        return "es-US"
-    if low.startswith("en"):
-        return "en-US"
     return "en-US"
 
 SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
-    "greeting": {
-        "en-US": "Hello, thanks for calling. Which phone number or account number can I look up for you?",
-        "fr-CA": "Bonjour, merci de votre appel. Quel numéro de téléphone ou numéro de compte puis-je rechercher pour vous?",
-        "es-US": "Hola, gracias por su llamada. ¿Qué número de teléfono o número de cuenta puedo buscar para usted?",
+    "greeting_main": {
+        "en-US": "Welcome to Telco. I can help with billing, technical support, or managing your account. To get started, could you tell me the phone number or account number associated with your service?",
+        "fr-CA": "Bienvenue chez Telco. Je peux vous aider avec la facturation, le soutien technique ou la gestion de votre compte. Pour commencer, pourriez-vous me donner le numéro de téléphone ou le numéro de compte associé à votre service?",
     },
-    "code_sent": {
-        "en-US": "I've sent a login code to the phone number ending in [destination_last4]. Please read it to me when it arrives.",
-        "fr-CA": "J'ai envoyé un code de connexion au numéro se terminant par [destination_last4]. Lisez-le-moi dès que vous le recevez.",
-        "es-US": "Envié un código de acceso al número que termina en [destination_last4]. Léamelo cuando lo reciba.",
+    "recording_notice": {
+        "en-US": "This call may be recorded for quality and training purposes.",
+        "fr-CA": "Cet appel peut être enregistré à des fins de qualité et de formation.",
     },
-    "handover": {
-        "en-US": "I'm transferring you to a member of our team now. Thank you for your patience.",
-        "fr-CA": "Je vous transfère maintenant à un membre de notre équipe. Merci de votre patience.",
-        "es-US": "Le transfiero ahora con un miembro de nuestro equipo. Gracias por su paciencia.",
+    "id_verification_otp": {
+        "en-US": "For your security, I just sent a 6-digit code to that number — please read it back to me.",
+        "fr-CA": "Pour votre sécurité, je viens d'envoyer un code à 6 chiffres à ce numéro — veuillez me le lire.",
     },
-    "account_found": {
-        "en-US": "Account found for [first_name].",
-        "fr-CA": "Compte trouvé pour [first_name].",
-        "es-US": "Cuenta encontrada para [first_name].",
+    "id_verification_pin": {
+        "en-US": "For your security, I'll need to verify your identity. Please enter the 4-digit PIN you set up.",
+        "fr-CA": "Pour votre sécurité, je dois vérifier votre identité. Veuillez entrer le NIP à 4 chiffres que vous avez configuré.",
     },
-    "code_verified": {
-        "en-US": "Login verified successfully.",
-        "fr-CA": "Connexion vérifiée avec succès.",
-        "es-US": "Inicio de sesión verificado con éxito.",
+    "live_agent_handoff": {
+        "en-US": "I'll connect you to a representative who can help. Please hold.",
+        "fr-CA": "Je vais vous mettre en relation avec un représentant qui pourra vous aider. Veuillez patienter.",
     },
-    "already_verified": {
-        "en-US": "Account is already verified.",
-        "fr-CA": "Le compte est déjà vérifié.",
-        "es-US": "La cuenta ya está verificada.",
+    "business_handoff": {
+        "en-US": "To get you the best support for your business account, I'll transfer you to an agent. You'll need to use your phone keypad instead of talking to the virtual assistant. Just a moment while I connect you.",
+        "fr-CA": "Pour vous offrir le meilleur soutien pour votre compte d'affaires, je vais vous transférer à un agent. Vous devrez utiliser le clavier de votre téléphone au lieu de parler à l'assistant virtuel. Un instant pendant que je vous mets en relation.",
     },
-    "pin_verified": {
-        "en-US": "Secret PIN verified successfully.",
-        "fr-CA": "NIP secret vérifié avec succès.",
-        "es-US": "PIN secreto verificado con éxito.",
+    "payment_method_preamble": {
+        "en-US": "Before we continue, please note that your payment details are protected and processed securely, and I will only ever refer to the last four digits of your card or account.",
+        "fr-CA": "Avant de continuer, sachez que vos renseignements de paiement sont protégés et traités de façon sécurisée, et que je ne mentionnerai jamais que les quatre derniers chiffres de votre carte ou de votre compte.",
     },
-    "request_submitted": {
-        "en-US": "Your request has been submitted successfully.",
-        "fr-CA": "Votre demande a été soumise avec succès.",
-        "es-US": "Su solicitud ha sido enviada con éxito.",
+    "contract_cancellation_fee_disclosure": {
+        "en-US": "Please note that cancelling before the end of your contract term may result in an early termination fee and a final bill, as set out in your service agreement.",
+        "fr-CA": "Veuillez noter qu'une résiliation avant la fin de la durée de votre contrat peut entraîner des frais de résiliation anticipée et une facture finale, comme le prévoit votre entente de service.",
+    },
+    "refund_confirmation_pattern": {
+        "en-US": "Your refund of $[amount] will appear on your next statement within [days] business days.",
+        "fr-CA": "Votre remboursement de [amount] $ apparaîtra sur votre prochain relevé d'ici [days] jours ouvrables.",
+    },
+    "empathy_protocol": {
+        "en-US": "I'm very sorry to hear that you are facing challenges. I will ensure we handle your request with the utmost care.",
+        "fr-CA": "Je suis vraiment désolé d'apprendre que vous éprouvez des difficultés. Je veillerai à ce que votre demande soit traitée avec le plus grand soin.",
+    },
+    "outage_active": {
+        "en-US": "I see there's an active outage in your area. We're working on it. Would you like me to text you when it's restored?",
+        "fr-CA": "Je constate qu'il y a une panne active dans votre secteur. Nous y travaillons. Voulez-vous que je vous envoie un texto lorsque le service sera rétabli?",
+    },
+    "transfer_to_specialist": {
+        "en-US": "I'll connect you to a billing specialist now — they'll have everything we've already discussed.",
+        "fr-CA": "Je vais vous mettre en relation avec un spécialiste de la facturation — il aura tout ce dont nous avons déjà discuté.",
+    },
+    "otp_callback_confirm": {
+        "en-US": "I'll send a 6-digit code to the number ending in [last4]. Ready?",
+        "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro se terminant par [last4]. Êtes-vous prêt?",
     },
     "restricted_caller": {
-        "en-US": "This number is not authorized for telephone service. Please visit our website or a retail store for assistance.",
-        "fr-CA": "Ce numéro n'est pas autorisé pour le service téléphonique. Veuillez visiter notre site Web ou un magasin pour obtenir de l'aide.",
-        "es-US": "Este número no está autorizado para el servicio telefónico. Visite nuestro sitio web o una tienda para obtener ayuda.",
+        "en-US": "We're unable to help with this call on this line. Please visit one of our stores for assistance. Goodbye.",
+        "fr-CA": "Nous ne pouvons pas traiter cet appel sur cette ligne. Veuillez vous rendre dans l'une de nos boutiques pour obtenir de l'aide. Au revoir.",
     },
     "ai_disclosure": {
         "en-US": "I'm an artificial intelligence customer care assistant.",
         "fr-CA": "Je suis un assistant de service à la clientèle basé sur l'intelligence artificielle.",
-        "es-US": "Soy un asistente de atención al cliente con inteligencia artificial.",
     },
     "malicious_closing": {
         "en-US": "I am unable to continue this conversation. Thank you for calling and have a good day.",
         "fr-CA": "Je ne peux pas poursuivre cette conversation. Merci de votre appel et bonne journée.",
-        "es-US": "No puedo continuar con esta conversación. Gracias por llamar y que tenga un buen día.",
-    },
-    "recording_notice": {
-        "en-US": "This call may be monitored or recorded for quality and training purposes.",
-        "fr-CA": "Cet appel peut être surveillé ou enregistré à des fins de qualité et de formation.",
-        "es-US": "Esta llamada puede ser monitoreada o grabada con fines de calidad y capacitación.",
-    },
-    "card_declined": {
-        "en-US": "That card was declined. Would you like to try another card or a different payment method?",
-        "fr-CA": "Cette carte a été refusée. Souhaitez-vous essayer une autre carte ou un autre mode de paiement?",
-        "es-US": "Esa tarjeta fue rechazada. ¿Desea probar con otra tarjeta o un método de pago diferente?",
     },
 }
 
@@ -131,14 +126,14 @@ def build_language_sheet(locale: str, agent_name: str = "router") -> str:  # pra
     """Generate dynamic language sheet containing localized rules and verbatim lines."""
     loc = resolve_locale(locale)
     lang_name = WORLD_LANGUAGE_NAMES.get(loc, loc)
-    keys = AGENT_VERBATIM_KEYS.get(agent_name, AGENT_VERBATIM_KEYS.get("router", ("greeting", "handover")))
+    keys = AGENT_VERBATIM_KEYS.get(agent_name, AGENT_VERBATIM_KEYS["router"])
 
     lines = [
         LANGUAGE_SHEET_SENTINEL,
         f'<active_language_sheet locale="{loc}" language="{lang_name}">',
     ]
 
-    if loc in ("en-US", "fr-CA", "es-US"):
+    if loc in ("en-US", "fr-CA"):
         lines.append("### Required Disclosures & Spoken Lines (Emit Exact Wording):")
         for k in keys:
             line_text = spoken_line(k, loc)
@@ -171,7 +166,7 @@ def build_language_sheet(locale: str, agent_name: str = "router") -> str:  # pra
         )
 
     lines.append("</active_language_sheet>")
-    return "\\n".join(lines)
+    return "\n".join(lines)
 
 _DP_EXPLICIT_SWITCH_TERMS: tuple[tuple[str, tuple[str, ...]], ...] = (  # pragma: no cover
     ("fr-CA", ("en français", "en francais", "parlez-vous français", "parlez vous francais", "in french", "speak french", "french please", "switch to french")),
@@ -398,7 +393,7 @@ def apply_language_prompt_filter(  # pragma: no cover
     def _update_text(text: str) -> str:
         if LANGUAGE_SHEET_SENTINEL in text:
             text = text.split(LANGUAGE_SHEET_SENTINEL, 1)[0].rstrip()
-        return f"{text}\\n\\n{sheet}"
+        return f"{text}\n\n{sheet}"
 
     if isinstance(sys_inst, str):
         config.system_instruction = _update_text(sys_inst)

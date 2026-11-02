@@ -10,7 +10,9 @@
     "rubrics": [],
     "scenarioExpectations": [],
     "userFacts": [],
-    "variableOverrides": {}
+    "variableOverrides": {
+      "fx_outage_status": "active"
+    }
   },
   "tags": [
     "public",

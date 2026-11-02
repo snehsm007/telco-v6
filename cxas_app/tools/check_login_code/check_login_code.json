@@ -4,7 +4,7 @@
   "executionType": "SYNCHRONOUS",
   "pythonFunction": {
     "name": "check_login_code",
-    "description": "Checks the login code the caller read back. Call this as soon as the caller says or keys in the code. It sets the session login status to pass when the code matches.",
+    "description": "Checks the verification code the caller read back or keyed in. Use it for the texted login code and for the emailed step-up code. Three wrong codes or PINs on a call lock the caller out.",
     "pythonCode": "tools/check_login_code/python_function/python_code.py"
   }
 }

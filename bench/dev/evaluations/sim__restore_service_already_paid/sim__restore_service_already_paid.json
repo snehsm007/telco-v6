@@ -11,7 +11,10 @@
     "rubrics": [],
     "scenarioExpectations": [],
     "userFacts": [],
-    "variableOverrides": {}
+    "variableOverrides": {
+      "fx_service_status": "suspended_nonpayment",
+      "fx_recent_payment": "posted_yesterday"
+    }
   },
   "tags": [
     "public",

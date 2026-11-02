@@ -2,19 +2,25 @@ from typing import Any
 
 
 
-def lookup_account(phone_or_account: str | int | float, language: str = "") -> dict[str, Any]:
-    """Finds the caller's account from the phone number or account number they gave.
-
-    Call this as soon as the caller gives a phone number or account number.
+def lookup_account(
+    phone_or_account: str | int | float,
+    language: str = "",
+) -> dict[str, Any]:
+    """Finds the caller's account from the phone number or account number they gave and
+      remembers it for the call. Call it as soon as the caller gives a number. Returns
+      business_flag and service_status; a blocked number returns error
+      PERMISSION_DENIED.
 
     Args:
-      phone_or_account: The number exactly as the caller gave it.
-      language: BCP-47 language code (e.g. en-US, fr-CA, es-US).
+      phone_or_account: The phone number or account number exactly as the caller said or
+        keyed it, as a quoted string.
+      language: Active language code (en-US or fr-CA).
 
     Returns:
-      dict: status, data (account_id, first_name, phone_last4,
-        caller_provided_phone_last4, account_status), error_message and
-        tracking_id. Errors also carry error and agent_action.
+      status, data (identification_status, account_id_last4, phone_last4, business_flag,
+        customer_type, lines_of_business, region, service_status), error_message,
+        tracking_id. Errors add error (NOT_FOUND, PERMISSION_DENIED, TOO_MANY_ERRORS)
+        and agent_action.
     """
     ctx = globals().get("context")
     state = getattr(ctx, "state", None) if ctx is not None else None
@@ -22,8 +28,8 @@ def lookup_account(phone_or_account: str | int | float, language: str = "") -> d
         state = ctx
     return lookup_account_impl(
         phone_or_account=phone_or_account,
-        state=state,
         language=language,
+        state=state,
     )
 
 
@@ -33,9 +39,22 @@ from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 import hashlib
+import json
 import re
 
 BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199"})  # pragma: no cover
+
+DEFAULT_REGION = "Region-C"  # pragma: no cover
+
+REGION_BY_POSTAL_LETTER: dict[str, str] = {  # pragma: no cover
+    **{letter: "Region-A" for letter in "GHJ"},
+    **{letter: "Region-B" for letter in "KLMNP"},
+}
+
+def _region_for_postal(postal_code: str) -> str:  # pragma: no cover
+    """Region class from a Canadian postal code's first letter (DESIGN_RULES rule 40)."""
+    first = str(postal_code or "").strip()[:1].upper()
+    return REGION_BY_POSTAL_LETTER.get(first, DEFAULT_REGION)
 
 ERROR_CODES = (  # pragma: no cover
     "INVALID_INPUT",
@@ -62,6 +81,20 @@ ERROR_CODES = (  # pragma: no cover
     "SYSTEM_UNAVAILABLE",
     "SYSTEM_DOWN",
     "PERMISSION_DENIED",
+    "TOO_MANY_ERRORS",
+    "MALFORMED_REQUEST",
+    "AUTH_SERVICE_UNAVAILABLE",
+    "INSUFFICIENT_FUNDS",
+    "REFUND_THRESHOLD_EXCEEDED",
+    "TECHNICIAN_EN_ROUTE",
+    "NO_AVAILABILITY",
+    "STEP_UP_REQUIRED",
+    "NO_PAYMENT_FOUND",
+    "CONFIRMATION_REQUIRED",
+    "TV_SUB_TYPE_REQUIRED",
+    "CARD_EXPIRED",
+    "NOT_SUSPENDED",
+    "DELIVERY_FAILED",
 )
 
 ERROR_CODE_DEFAULTS: dict[str, tuple[str, str]] = {  # pragma: no cover
@@ -147,19 +180,75 @@ ERROR_CODE_DEFAULTS: dict[str, tuple[str, str]] = {  # pragma: no cover
     ),
     "SERVICE_UNAVAILABLE": (
         "The upstream service is currently unavailable.",
-        "Apologize for the outage and hand the caller over to a person.",
+        "Hand over with reason system_unavailable.",
     ),
     "SYSTEM_DOWN": (
         "The service is temporarily unavailable.",
-        "Apologize for the outage and hand the caller over to a person.",
+        "Hand over with reason system_unavailable.",
     ),
     "SYSTEM_UNAVAILABLE": (
         "The service is temporarily unavailable.",
-        "Apologize for the outage and hand the caller over to a person.",
+        "Hand over with reason system_unavailable.",
     ),
     "PERMISSION_DENIED": (
         "Permission denied.",
         "Explain the restriction and hand the caller over to a person.",
+    ),
+    "TOO_MANY_ERRORS": (
+        "Too many invalid entries on this call.",
+        "Hand over with reason too_many_errors.",
+    ),
+    "MALFORMED_REQUEST": (
+        "The request was malformed.",
+        "Ask the caller to repeat the details.",
+    ),
+    "AUTH_SERVICE_UNAVAILABLE": (
+        "The login service is unavailable.",
+        "Hand over with reason system_unavailable.",
+    ),
+    "INSUFFICIENT_FUNDS": (
+        "The payment method has insufficient funds.",
+        "Tell the caller and ask for another payment method.",
+    ),
+    "REFUND_THRESHOLD_EXCEEDED": (
+        "The amount is above the self-serve limit.",
+        "Hand over with reason refund_threshold_exceeded.",
+    ),
+    "TECHNICIAN_EN_ROUTE": (
+        "The technician is already on the way.",
+        "Explain it can't be cancelled and offer to add a note.",
+    ),
+    "NO_AVAILABILITY": (
+        "No slots are available in that window.",
+        "Offer a text when a slot opens.",
+    ),
+    "STEP_UP_REQUIRED": (
+        "This change needs an extra verification step.",
+        "Send an email code with send_login_code channel=email.",
+    ),
+    "NO_PAYMENT_FOUND": (
+        "No posted payment covers the past-due amount.",
+        "Offer to take a payment or set up an arrangement.",
+    ),
+    "CONFIRMATION_REQUIRED": (
+        "The caller must confirm before this is applied.",
+        "Read back the details and ask the caller to confirm.",
+    ),
+    "TV_SUB_TYPE_REQUIRED": (
+        "The TV service type is needed first.",
+        "Ask if the TV is streaming, satellite or streaming only.",
+    ),
+    "CARD_EXPIRED": (
+        "The card on file has expired.",
+        "Tell the caller and ask for another payment method.",
+    ),
+    "NOT_SUSPENDED": (
+        "The service is not suspended.",
+        "Tell the caller the service is active.",
+    ),
+    "DELIVERY_FAILED": (
+        "The text message could not be delivered.",
+        "Apologize and offer a transfer to a representative.",
     ),
 }
 
@@ -237,142 +326,73 @@ def error_reply(  # pragma: no cover
             reply[key] = payload[key]
     return reply
 
-def _check_mock_error(  # pragma: no cover
-    state: dict[str, Any],
-    lang: str = "en-US",
-    tool_name: str = "tool",
-) -> dict[str, Any] | None:
-    """Return SYSTEM_UNAVAILABLE error reply when mock_error is set (fault injection for evals)."""
+def check_mock_error(state: dict[str, Any], lang: str = "en-US", tool_name: str = "tool") -> dict[str, Any] | None:  # pragma: no cover
+    """Fault injection: `mock_error` set in session state makes every tool return a system error."""
     if str(state.get("mock_error") or "").strip():
         ref = tracking_id(tool_name, "mock_error", state.get("account_id", ""))
         state["last_tracking_id"] = ref
-        return error_reply("SYSTEM_UNAVAILABLE", reference=ref, language=lang)
+        return error_reply(
+            "SYSTEM_UNAVAILABLE",
+            agent_action="Hand over with reason system_unavailable.",
+            reference=ref,
+            language=lang,
+        )
     return None
 
-MAX_LOGIN_ATTEMPTS = 3  # pragma: no cover
-
-_DEFAULT_STATE: dict[str, Any] = {}  # pragma: no cover
-
-def read_count(state: dict[str, Any] | None, key: str) -> int:  # pragma: no cover
-    """Read a whole-number variable; the platform hands them to tools as decimals (5 -> 5.0)."""
-    if not isinstance(state, dict):
-        return 0
-    try:
-        return int(float(state.get(key) or 0))
-    except (TypeError, ValueError):
-        return 0
-
-def _get_state(  # pragma: no cover
-    state: dict[str, Any] | None = None,
-    session_state: dict[str, Any] | None = None,
-    reset_if_locked: bool = False,
-) -> dict[str, Any]:
-    """Return the caller's session state dict, falling back to module default state when omitted."""
-    if state is not None:
-        return state
-    if session_state is not None:
-        return session_state
-    if reset_if_locked and (
-        _DEFAULT_STATE.get("auth_status") == "locked"
-        or max(read_count(_DEFAULT_STATE, "auth_failure_count"), read_count(_DEFAULT_STATE, "login_attempts")) >= MAX_LOGIN_ATTEMPTS
-    ):
-        _DEFAULT_STATE.clear()
-    return _DEFAULT_STATE
-
-def resolve_locale(language: str | None) -> str:  # pragma: no cover
-    """Normalize a language tag or prefix to a supported BCP-47 locale code."""
-    raw = str(language or "").strip()
-    if not raw:
-        return "en-US"
-    low = raw.lower().replace("_", "-")
-    if low.startswith("fr"):
-        return "fr-CA"
-    if low.startswith("es"):
-        return "es-US"
-    if low.startswith("en"):
-        return "en-US"
-    return "en-US"
-
-resolve_copy_locale = resolve_locale  # pragma: no cover
-
-def _session_language(state: dict[str, Any] | None, language: Any = "") -> str:  # pragma: no cover
-    """Resolve session language with asymmetric lock: non-English locks over English.
-
-    When state has no language or is default 'en-US', a model-supplied
-    non-English locale (fr-CA/es-US/...) is accepted and becomes the lock.
-    Once state holds a non-English locale, a model-supplied 'en-US' or empty
-    value is ignored (PRD BR-TV-004 lock).
-    """
-    has_state_dict = callable(getattr(state, "get", None))
-    current = ""
-    if has_state_dict:
-        existing = state.get("language")
-        if existing and str(existing).strip():
-            current = resolve_copy_locale(str(existing))
-
-    arg_lang = ""
-    if language and str(language).strip():
-        arg_lang = resolve_copy_locale(str(language))
-
-    # 1. Once state holds a non-English locale, model-supplied en-US/empty is ignored.
-    if current and current != "en-US":
-        if callable(getattr(state, "__setitem__", None)):
-            state["language"] = current
-            if not state.get("preferred_language"):
-                state["preferred_language"] = current
-        return current
-
-    # 2. When state has no language or is default 'en-US':
-    # A model-supplied non-English locale (fr-CA/es-US/...) is accepted and becomes the lock.
-    if arg_lang and arg_lang != "en-US":
-        if callable(getattr(state, "__setitem__", None)):
-            state["language"] = arg_lang
-            state["preferred_language"] = arg_lang
-        return arg_lang
-
-    # 3. If state already had 'en-US', keep it.
-    if current == "en-US":
-        return "en-US"
-
-    # 4. State had no language and model passed non-empty 'en-US'.
-    if arg_lang == "en-US":
-        if callable(getattr(state, "__setitem__", None)):
-            state["language"] = "en-US"
-        return "en-US"
-
-    # 5. Check preferred_language in state if any.
-    if has_state_dict:
-        pref = state.get("preferred_language")
-        if pref and str(pref).strip():
-            pref_loc = resolve_copy_locale(str(pref))
-            if pref_loc != "en-US":
-                if callable(getattr(state, "__setitem__", None)):
-                    state["language"] = pref_loc
-                return pref_loc
-            return "en-US"
-
-    return resolve_copy_locale(None)
-
-ACCOUNTS: tuple[dict[str, str], ...] = (  # pragma: no cover
+ACCOUNTS: tuple[dict[str, Any], ...] = (  # pragma: no cover
     {
         "account_id": "A1001",
         "phone": "2025550186",
-        "first_name": "Jordan",
+        "first_name": "Morgan",
         "email": "m.okafor@mailprovider.example",
         "status": "active",
         "preferred_language": "en-US",
         "card_last4": "7742",
+        "card_brand": "Visa",
+        "customer_type": "Existing",
+        "postal_code": "K2P 1L4",
+        "service_address_last_line": "Ottawa, ON K2P 1L4",
+        "lines_of_business": ["mobility", "internet", "tv", "homephone"],
+        "business_flag": False,
     },
     {
-        "account_id": "ACC-1002",
+        "account_id": "A1002",
         "phone": "2025550198",
         "first_name": "Taylor",
         "email": "taylor.r@mailprovider.example",
         "status": "active",
         "preferred_language": "fr-CA",
         "card_last4": "8853",
+        "card_brand": "Mastercard",
+        "customer_type": "Existing",
+        "postal_code": "K1A 0B1",
+        "service_address_last_line": "Ottawa, ON K1A 0B1",
+        "lines_of_business": ["mobility", "internet"],
+        "business_flag": False,
     },
 )
+
+def _synthetic_account(account_number: str, phone: str) -> dict[str, Any]:  # pragma: no cover
+    """A record for a well-formed number this world doesn't know (fact-less simulated callers)."""
+    base = dict(ACCOUNTS[0])
+    base["account_id"] = "A" + account_number[-6:]
+    base["phone"] = phone
+    base["first_name"] = ""
+    return base
+
+def is_weak_code(digits: str) -> bool:  # pragma: no cover
+    """A code made of one repeated digit (e.g. all sevens) is never a valid credential."""
+    return bool(digits) and len(set(digits)) == 1
+
+def is_plausible_phone(digits: str) -> bool:  # pragma: no cover
+    """North American number plan check: area code and exchange start with 2-9, not one repeated digit."""
+    if len(digits) != 10 or not digits.isdigit():
+        return False
+    if digits[0] in "01" or digits[3] in "01":
+        return False
+    if is_weak_code(digits) or digits in ("1234567890", "0123456789", "9876543210"):
+        return False
+    return True
 
 def normalize_code(value: Any) -> str:  # pragma: no cover
     """Coerce ints, floats (e.g. 5903.0), and formatted strings into a clean digit string."""
@@ -390,13 +410,10 @@ def normalize_code(value: Any) -> str:  # pragma: no cover
     return "".join(ch for ch in text if ch.isdigit())
 
 def normalize_identifier(raw: object) -> dict[str, str]:  # pragma: no cover
-    """Postel normalizer for caller-provided phone, account, or reference identifiers.
+    """Postel normalizer for caller-provided identifiers (DESIGN_RULES rule 43).
 
-    10 digits or +1+10 = phone;
-    +/00 + 10-15 digits = international_phone;
-    4-9 digits = account;
-    [A-Za-z]{1,4}-?[0-9]{4,8} or [0-9]{4,9}-?[A-Za-z]{1,4} = reference;
-    anything else = unknown.
+    10 digits or +1+10 = phone; +/00 + 10-15 digits = international_phone;
+    4-9 digits = account; letters+digits = reference; anything else = unknown.
     """
     s = str(raw or "").strip()
     if not s:
@@ -428,59 +445,70 @@ def normalize_identifier(raw: object) -> dict[str, str]:  # pragma: no cover
         return {"kind": "account", "value": compact}
     return {"kind": "unknown", "value": s}
 
-def find_account(identifier: Any) -> dict[str, str] | None:  # pragma: no cover
-    """Find an account by phone number or account number; None when there is none."""
+def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
+    """Find an account by phone number or account number; None when the number is malformed."""
     raw_str = re.sub(r"\.0+$", "", str(identifier or "").strip())
     raw = raw_str.upper()
     if not raw:
         return None
-    k_last4 = "phone_" + "last" + "4"
-    k_caller = "caller_provided_" + k_last4
     has_alpha = any(c.isalpha() for c in raw_str)
     digits = normalize_code(raw_str)
-    canonical_id = ("A" + digits) if (raw.startswith("A") and len(digits) >= 4) else raw
-    norm = normalize_identifier(raw_str)
     for record in ACCOUNTS:
-        if raw == record["account_id"] or canonical_id == record["account_id"] or (
-            not has_alpha and digits and digits == record["phone"]
-        ):
-            rec = dict(record)
-            rec[k_last4] = rec["phone"][-4:]
-            rec[k_caller] = (
-                digits[-4:] if (not has_alpha and len(digits) in (9, 10)) else ""
-            )
-            return rec
-    if norm["kind"] in ("phone", "international_phone"):
-        p_val = norm["value"].lstrip("+")
-        if p_val.startswith("1") and len(p_val) == 11:
-            p_val = p_val[1:]
-        for record in ACCOUNTS:
-            if p_val == record["phone"]:
-                rec = dict(record)
-                rec[k_last4] = rec["phone"][-4:]
-                rec[k_caller] = p_val[-4:]
-                return rec
-    if not has_alpha and len(digits) in (9, 10):
-        return {
-            "account_id": "A" + digits[-6:],
-            "phone": digits,
-            k_last4: digits[-4:],
-            k_caller: digits[-4:],
-            "first_name": "",
-            "status": "active",
-            "preferred_language": "en-US",
-        }
-    if (
-        (has_alpha and not raw.startswith("ACC-") and re.fullmatch(r"[A-Z]{2,4}-\d{4,8}", raw))
-        or (norm["kind"] == "reference" and not norm["value"].startswith("ACC-"))
-    ):
-        ref_id = norm["value"] if norm["kind"] == "reference" else raw
-        base = dict(ACCOUNTS[0])
-        base["account_id"] = ref_id
-        base[k_last4] = base["phone"][-4:]
-        base[k_caller] = ""
-        return base
+        if raw == record["account_id"] or (not has_alpha and digits and digits == record["phone"]):
+            return dict(record)
+    norm = normalize_identifier(raw_str)
+    if norm["kind"] == "phone":
+        if not is_plausible_phone(norm["value"]):
+            return None
+        return _synthetic_account(norm["value"], norm["value"])
+    if norm["kind"] == "international_phone":
+        tail = norm["value"].lstrip("+")[-10:]
+        return _synthetic_account(tail, tail) if len(tail) == 10 else None
+    if not has_alpha and len(digits) == 9 and not is_weak_code(digits):
+        return _synthetic_account(digits, ACCOUNTS[0]["phone"])
+    if norm["kind"] == "reference" and re.fullmatch(r"A\d{4,8}", norm["value"].replace("-", "")):
+        return _synthetic_account(normalize_code(norm["value"]), ACCOUNTS[0]["phone"])
     return None
+
+FIXTURE_DEFAULTS: dict[str, str] = {  # pragma: no cover
+    "fx_pin_on_file": "",
+    "fx_otp_on_file": "",
+    "fx_card_on_file_status": "valid",
+    "fx_service_status": "active",
+    "fx_recent_payment": "none",
+    "fx_business_account": "false",
+    "fx_outage_status": "",
+    "fx_technician_status": "scheduled",
+    "fx_duplicate_payment": "false",
+    "fx_extra_bill_line": "",
+    "fx_device_warranty": "in_warranty",
+    "fx_mfa_enabled": "false",
+    "fx_sms_delivery": "delivered",
+}
+
+def fixture(state: dict[str, Any] | None, name: str) -> str:  # pragma: no cover
+    """Read a backend fixture (`fx_*`): the session override when set, else FIXTURE_DEFAULTS."""
+    raw = ""
+    if isinstance(state, dict):
+        raw = str(state.get(name) or "").strip()
+    if not raw:
+        raw = FIXTURE_DEFAULTS.get(name, "")
+    return raw.strip().lower() if name not in ("fx_pin_on_file", "fx_otp_on_file", "fx_extra_bill_line") else raw.strip()
+
+def fixture_flag(state: dict[str, Any] | None, name: str) -> bool:  # pragma: no cover
+    """Read a true/false fixture."""
+    return fixture(state, name) in ("true", "1", "yes")
+
+def get_state(  # pragma: no cover
+    state: dict[str, Any] | None = None,
+    session_state: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return the session state dict. A missing state gets a fresh dict, never a shared one."""
+    if state is not None:
+        return state
+    if session_state is not None:
+        return session_state
+    return {}
 
 OK_STATUS = _StatusStr("ok")  # pragma: no cover
 
@@ -519,167 +547,169 @@ def ok_reply(  # pragma: no cover
     return reply
 
 def only_digits(text: Any) -> str:  # pragma: no cover
-    """Keep the digits of what the caller said ("(202) 555-0143" -> "2025550186")."""
+    """Keep the digits of what the caller said ("(202) 555-0143" -> "2025550143")."""
     return normalize_code(text)
 
-SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
-    "greeting": {
-        "en-US": "Hello, thanks for calling. Which phone number or account number can I look up for you?",
-        "fr-CA": "Bonjour, merci de votre appel. Quel numéro de téléphone ou numéro de compte puis-je rechercher pour vous?",
-        "es-US": "Hola, gracias por su llamada. ¿Qué número de teléfono o número de cuenta puedo buscar para usted?",
-    },
-    "code_sent": {
-        "en-US": "I've sent a login code to the phone number ending in [destination_last4]. Please read it to me when it arrives.",
-        "fr-CA": "J'ai envoyé un code de connexion au numéro se terminant par [destination_last4]. Lisez-le-moi dès que vous le recevez.",
-        "es-US": "Envié un código de acceso al número que termina en [destination_last4]. Léamelo cuando lo reciba.",
-    },
-    "handover": {
-        "en-US": "I'm transferring you to a member of our team now. Thank you for your patience.",
-        "fr-CA": "Je vous transfère maintenant à un membre de notre équipe. Merci de votre patience.",
-        "es-US": "Le transfiero ahora con un miembro de nuestro equipo. Gracias por su paciencia.",
-    },
-    "account_found": {
-        "en-US": "Account found for [first_name].",
-        "fr-CA": "Compte trouvé pour [first_name].",
-        "es-US": "Cuenta encontrada para [first_name].",
-    },
-    "code_verified": {
-        "en-US": "Login verified successfully.",
-        "fr-CA": "Connexion vérifiée avec succès.",
-        "es-US": "Inicio de sesión verificado con éxito.",
-    },
-    "already_verified": {
-        "en-US": "Account is already verified.",
-        "fr-CA": "Le compte est déjà vérifié.",
-        "es-US": "La cuenta ya está verificada.",
-    },
-    "pin_verified": {
-        "en-US": "Secret PIN verified successfully.",
-        "fr-CA": "NIP secret vérifié avec succès.",
-        "es-US": "PIN secreto verificado con éxito.",
-    },
-    "request_submitted": {
-        "en-US": "Your request has been submitted successfully.",
-        "fr-CA": "Votre demande a été soumise avec succès.",
-        "es-US": "Su solicitud ha sido enviada con éxito.",
-    },
-    "restricted_caller": {
-        "en-US": "This number is not authorized for telephone service. Please visit our website or a retail store for assistance.",
-        "fr-CA": "Ce numéro n'est pas autorisé pour le service téléphonique. Veuillez visiter notre site Web ou un magasin pour obtenir de l'aide.",
-        "es-US": "Este número no está autorizado para el servicio telefónico. Visite nuestro sitio web o una tienda para obtener ayuda.",
-    },
-    "ai_disclosure": {
-        "en-US": "I'm an artificial intelligence customer care assistant.",
-        "fr-CA": "Je suis un assistant de service à la clientèle basé sur l'intelligence artificielle.",
-        "es-US": "Soy un asistente de atención al cliente con inteligencia artificial.",
-    },
-    "malicious_closing": {
-        "en-US": "I am unable to continue this conversation. Thank you for calling and have a good day.",
-        "fr-CA": "Je ne peux pas poursuivre cette conversation. Merci de votre appel et bonne journée.",
-        "es-US": "No puedo continuar con esta conversación. Gracias por llamar y que tenga un buen día.",
-    },
-    "recording_notice": {
-        "en-US": "This call may be monitored or recorded for quality and training purposes.",
-        "fr-CA": "Cet appel peut être surveillé ou enregistré à des fins de qualité et de formation.",
-        "es-US": "Esta llamada puede ser monitoreada o grabada con fines de calidad y capacitación.",
-    },
-    "card_declined": {
-        "en-US": "That card was declined. Would you like to try another card or a different payment method?",
-        "fr-CA": "Cette carte a été refusée. Souhaitez-vous essayer une autre carte ou un autre mode de paiement?",
-        "es-US": "Esa tarjeta fue rechazada. ¿Desea probar con otra tarjeta o un método de pago diferente?",
-    },
-}
+def service_status(state: dict[str, Any]) -> str:  # pragma: no cover
+    """Current service status: the value tools wrote this call, else the backend fixture."""
+    live = str(state.get("service_status") or "").strip()
+    return live or fixture(state, "fx_service_status")
 
-def spoken_line(key: str, language: str | None = "en-US", **slots: object) -> str:  # pragma: no cover
-    """Return the fixed spoken line for `key` and `language`, filling any `[slot]` placeholders."""
-    locale = resolve_locale(language)
-    table = SPOKEN_LINES.get(key, {})
-    template = table.get(locale) or table.get("en-US") or ""
-    for slot_name, slot_val in slots.items():
-        template = template.replace(f"[{slot_name}]", str(slot_val))
-    return template
+def resolve_locale(language: str | None) -> str:  # pragma: no cover
+    """Normalize a language tag or prefix to a supported locale (en-US or fr-CA)."""
+    low = str(language or "").strip().lower().replace("_", "-")
+    if low.startswith("fr"):
+        return "fr-CA"
+    return "en-US"
+
+resolve_copy_locale = resolve_locale  # pragma: no cover
+
+def session_language(state: dict[str, Any] | None, language: Any = "") -> str:  # pragma: no cover
+    """Resolve the call language with an asymmetric lock (DESIGN_RULES rule 41).
+
+    A non-English language locks the call; a later en-US or empty value from the
+    model never downgrades it. An empty state takes the model's language.
+    """
+    current = ""
+    if isinstance(state, dict):
+        existing = state.get("language")
+        if existing and str(existing).strip():
+            current = resolve_copy_locale(str(existing))
+    arg_lang = resolve_copy_locale(str(language)) if language and str(language).strip() else ""
+    if current and current != "en-US":
+        return current
+    if arg_lang and arg_lang != "en-US":
+        if isinstance(state, dict):
+            state["language"] = arg_lang
+        return arg_lang
+    if current:
+        return current
+    if arg_lang and isinstance(state, dict):
+        state["language"] = arg_lang
+        return arg_lang
+    return "en-US"
+
+MAX_VALIDATION_ERRORS = 3  # pragma: no cover
+
+def read_count(state: dict[str, Any] | None, key: str) -> int:  # pragma: no cover
+    """Read a whole-number variable; the platform hands them to tools as decimals (5 -> 5.0)."""
+    if not isinstance(state, dict):
+        return 0
+    try:
+        return int(float(state.get(key) or 0))
+    except (TypeError, ValueError):
+        return 0
+
+def validation_error(  # pragma: no cover
+    state: dict[str, Any],
+    message: str,
+    agent_action: str,
+    reference: str,
+    lang: str,
+    code: str = "INVALID_INPUT",
+    data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """BR-TV-010: count validation errors; the third on a call ends in TOO_MANY_ERRORS."""
+    count = read_count(state, "global_err_count") + 1
+    state["global_err_count"] = count
+    if count >= MAX_VALIDATION_ERRORS:
+        return error_reply(
+            "TOO_MANY_ERRORS",
+            "Too many invalid entries on this call.",
+            "Hand over with reason too_many_errors.",
+            reference,
+            language=lang,
+            data={"global_err_count": count},
+        )
+    payload = dict(data or {})
+    payload["global_err_count"] = count
+    return error_reply(code, message, agent_action, reference, language=lang, data=payload)
 
 def lookup_account_impl(  # pragma: no cover
-    phone_or_account: str,
+    phone_or_account: str | int | float,
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     language: str = "",
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Find the caller's account and remember it for the rest of the call."""
-    state = _get_state(state, session_state, reset_if_locked=True)
-    lang = _session_language(state, language)
-    mock_err = _check_mock_error(state, lang, "lookup_account")
-    if mock_err:
-        return mock_err
-    reference = tracking_id("lookup_account", phone_or_account)
-    if not str(phone_or_account or "").strip():
-        return error_reply(
-            "INVALID_INPUT",
+    """Find the caller's account (Guest -> Identified) and remember it for the call."""
+    state = get_state(state, session_state)
+    lang = session_language(state, language)
+    err = check_mock_error(state, lang, "lookup_account")
+    if err:
+        return err
+    raw = str(phone_or_account or "").strip()
+    raw = re.sub(r"\.0+$", "", raw)
+    reference = tracking_id("lookup_account", raw)
+    if not raw:
+        return validation_error(
+            state,
             "No phone number or account number was given.",
-            "Ask the caller for the phone number or account number on the account.",
+            "Ask for the phone number or account number on the account.",
             reference,
+            lang,
         )
-    digits = only_digits(phone_or_account)
+    digits = only_digits(raw)
     norm_digits = digits[1:] if (len(digits) == 11 and digits.startswith("1")) else digits
     if digits in BLOCKED_CALLER_NUMBERS or norm_digits in BLOCKED_CALLER_NUMBERS:
         state["is_blocked"] = True
-        blocked_msg = spoken_line("restricted_caller", lang)
         state["last_tracking_id"] = reference
         return error_reply(
             "PERMISSION_DENIED",
-            message=blocked_msg,
-            agent_action="Speak the restricted caller notice and end the session.",
-            reference=reference,
-            language=lang,
-            data={
-                "blocked": True,
-                "spoken_message": blocked_msg,
-                "spoken_summary": blocked_msg,
-            },
-        )
-    account = find_account(phone_or_account)
-    if account is None:
-        return error_reply(
-            "NOT_FOUND",
-            "No account matches that number.",
-            "Ask the caller to say the number again, one digit at a time.",
+            "This number is on the restricted list.",
+            "Say the restricted_caller line and end the session with reason blocked_caller.",
             reference,
+            language=lang,
+            data={"blocked": True},
         )
-    if state.get("account_id") != account["account_id"]:
+    account = find_account(raw)
+    if account is None:
+        return validation_error(
+            state,
+            "No account matches that number.",
+            "Say you couldn't find that account and ask for the number again.",
+            reference,
+            lang,
+            code="NOT_FOUND",
+        )
+    if state.get("account_id") and state.get("account_id") != account["account_id"]:
         # A different account: a login on the previous one must not carry over.
-        state["auth_status"] = "none"
+        # The call's failed-login count is kept, so switching accounts never resets a lockout.
+        state["auth_status"] = "none" if state.get("auth_status") != "locked" else "locked"
         state["logged_in"] = False
         state["login_code_sent"] = False
-        state["auth_failure_count"] = 0
-        state["login_attempts"] = 0
-        state["pin_failure_count"] = 0
-        state["pin_attempts"] = 0
+        state["step_up_verified"] = False
+    business = bool(account.get("business_flag")) or fixture_flag(state, "fx_business_account")
+    status = service_status(state)
     state["account_id"] = account["account_id"]
     state["phone_last4"] = account["phone"][-4:]
-    ident = normalize_identifier(phone_or_account)
-    if ident["kind"] in ("phone", "international_phone"):
-        caller_digits = only_digits(ident["value"])
-        if len(caller_digits) >= 4:
-            state["caller_provided_phone_last4"] = caller_digits[-4:]
-        else:
-            state["caller_provided_phone_last4"] = account.get("caller_provided_phone_last4", "")
-    else:
-        state["caller_provided_phone_last4"] = account.get("caller_provided_phone_last4", "")
+    ident = normalize_identifier(raw)
+    state["caller_provided_phone_last4"] = (
+        only_digits(ident["value"])[-4:] if ident["kind"] in ("phone", "international_phone") else ""
+    )
+    state["identification_status"] = "Pass"
+    state["business_flag"] = business
+    state["customer_type"] = account.get("customer_type", "Existing")
+    state["region"] = _region_for_postal(account.get("postal_code", ""))
+    state["service_status"] = status
     if account.get("preferred_language") and not state.get("preferred_language"):
         state["preferred_language"] = account["preferred_language"]
     state["last_tracking_id"] = reference
-    summary_text = spoken_line("account_found", lang, first_name=account.get("first_name", ""))
-    return ok_reply(
-        {
-            "account_id": account["account_id"],
-            "first_name": account["first_name"],
-            "phone_last4": account["phone"][-4:],
-            "caller_provided_phone_last4": state["caller_provided_phone_last4"],
-            "account_status": account["status"],
-        },
-        reference,
-        language=lang,
-        spoken_summary=summary_text,
-    )
+    data = {
+        "identification_status": "Pass",
+        "account_id_last4": normalize_code(account["account_id"])[-4:] or account["account_id"][-4:],
+        "phone_last4": account["phone"][-4:],
+        "caller_provided_phone_last4": state["caller_provided_phone_last4"],
+        "business_flag": business,
+        "customer_type": state["customer_type"],
+        "lines_of_business": list(account.get("lines_of_business", [])),
+        "region": state["region"],
+        "service_status": status,
+    }
+    reply = ok_reply(data, reference, language=lang)
+    if business:
+        reply["agent_action"] = "Business account: hand over with reason business_handoff."
+    elif state.get("auth_status") == "locked":
+        reply["agent_action"] = "Login is locked on this call: hand over with reason auth_failure_handoff."
+    return reply
 # --- END GENERATED SHARED BUNDLE ---

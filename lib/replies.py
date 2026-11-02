@@ -63,6 +63,20 @@ ERROR_CODES = (
     "SYSTEM_UNAVAILABLE",
     "SYSTEM_DOWN",
     "PERMISSION_DENIED",
+    "TOO_MANY_ERRORS",
+    "MALFORMED_REQUEST",
+    "AUTH_SERVICE_UNAVAILABLE",
+    "INSUFFICIENT_FUNDS",
+    "REFUND_THRESHOLD_EXCEEDED",
+    "TECHNICIAN_EN_ROUTE",
+    "NO_AVAILABILITY",
+    "STEP_UP_REQUIRED",
+    "NO_PAYMENT_FOUND",
+    "CONFIRMATION_REQUIRED",
+    "TV_SUB_TYPE_REQUIRED",
+    "CARD_EXPIRED",
+    "NOT_SUSPENDED",
+    "DELIVERY_FAILED",
 )
 
 ERROR_CODE_DEFAULTS: dict[str, tuple[str, str]] = {
@@ -148,19 +162,75 @@ ERROR_CODE_DEFAULTS: dict[str, tuple[str, str]] = {
     ),
     "SERVICE_UNAVAILABLE": (
         "The upstream service is currently unavailable.",
-        "Apologize for the outage and hand the caller over to a person.",
+        "Hand over with reason system_unavailable.",
     ),
     "SYSTEM_DOWN": (
         "The service is temporarily unavailable.",
-        "Apologize for the outage and hand the caller over to a person.",
+        "Hand over with reason system_unavailable.",
     ),
     "SYSTEM_UNAVAILABLE": (
         "The service is temporarily unavailable.",
-        "Apologize for the outage and hand the caller over to a person.",
+        "Hand over with reason system_unavailable.",
     ),
     "PERMISSION_DENIED": (
         "Permission denied.",
         "Explain the restriction and hand the caller over to a person.",
+    ),
+    "TOO_MANY_ERRORS": (
+        "Too many invalid entries on this call.",
+        "Hand over with reason too_many_errors.",
+    ),
+    "MALFORMED_REQUEST": (
+        "The request was malformed.",
+        "Ask the caller to repeat the details.",
+    ),
+    "AUTH_SERVICE_UNAVAILABLE": (
+        "The login service is unavailable.",
+        "Hand over with reason system_unavailable.",
+    ),
+    "INSUFFICIENT_FUNDS": (
+        "The payment method has insufficient funds.",
+        "Tell the caller and ask for another payment method.",
+    ),
+    "REFUND_THRESHOLD_EXCEEDED": (
+        "The amount is above the self-serve limit.",
+        "Hand over with reason refund_threshold_exceeded.",
+    ),
+    "TECHNICIAN_EN_ROUTE": (
+        "The technician is already on the way.",
+        "Explain it can't be cancelled and offer to add a note.",
+    ),
+    "NO_AVAILABILITY": (
+        "No slots are available in that window.",
+        "Offer a text when a slot opens.",
+    ),
+    "STEP_UP_REQUIRED": (
+        "This change needs an extra verification step.",
+        "Send an email code with send_login_code channel=email.",
+    ),
+    "NO_PAYMENT_FOUND": (
+        "No posted payment covers the past-due amount.",
+        "Offer to take a payment or set up an arrangement.",
+    ),
+    "CONFIRMATION_REQUIRED": (
+        "The caller must confirm before this is applied.",
+        "Read back the details and ask the caller to confirm.",
+    ),
+    "TV_SUB_TYPE_REQUIRED": (
+        "The TV service type is needed first.",
+        "Ask if the TV is streaming, satellite or streaming only.",
+    ),
+    "CARD_EXPIRED": (
+        "The card on file has expired.",
+        "Tell the caller and ask for another payment method.",
+    ),
+    "NOT_SUSPENDED": (
+        "The service is not suspended.",
+        "Tell the caller the service is active.",
+    ),
+    "DELIVERY_FAILED": (
+        "The text message could not be delivered.",
+        "Apologize and offer a transfer to a representative.",
     ),
 }
 

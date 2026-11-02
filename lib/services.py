@@ -1,714 +1,550 @@
-"""Tool logic. Each `<tool>_impl` backs the thin wrapper in cxas_app/tools/<tool>/.
+"""Shared tools (M1 identity, M2 login, handover, SMS) and the tool registry.
 
-The wrapper passes in the session state (`context.state`) as `state`, so tools
-read what the session already knows (the account, the login status) instead of
-asking the model to type it again. Every key used here is declared, with a type
-and a default, in cxas_app/app.json (`cxas lint` rule V100 checks this).
-
-suite/tool_tests.py reads ALL_TOOLS and ERROR_CODES from this module.
+Each `<tool>_impl` backs the thin wrapper in cxas_app/tools/<tool>/. Domain tools
+live in lib/billing.py, lib/tech.py, lib/sales.py and lib/account.py and are
+re-exported here so suite/tool_tests.py finds every tool through ALL_TOOLS.
+Every session key used here is declared in cxas_app/app.json (lint rule V100).
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+import json
 import re
 from typing import Any
 
+from lib.account import (  # noqa: F401
+    cancel_or_port_out_service_impl,
+    execute_suspend_restore_impl,
+    manage_mfa_impl,
+    send_password_reset_link_impl,
+    update_contact_profile_impl,
+)
+from lib.billing import (  # noqa: F401
+    apply_bill_adjustment_impl,
+    get_billing_summary_impl,
+    process_bill_payment_impl,
+    setup_autopay_impl,
+    setup_payment_arrangement_impl,
+    verify_payment_and_restore_impl,
+)
+from lib.core import (
+    account_record,
+    check_mock_error,
+    dispatch_sms,
+    ensure_account,
+    fixture,
+    fixture_flag,
+    get_state,
+    queue_open,
+    service_status,
+    session_language,
+    validation_error,
+)
 from lib.fakes import (
-    ACCOUNTS,
     BLOCKED_CALLER_NUMBERS,
-    DECLINED_CARD_LAST4,
-    SPOKEN_LINES,
+    OTP_EXPIRES_IN_SEC,
+    REGION_BY_POSTAL_LETTER,
+    DEFAULT_REGION,
     find_account,
     login_code_accepted,
-    normalize_identifier,
     normalize_code,
+    normalize_identifier,
     only_digits,
     read_count,
     resolve_copy_locale,
-    resolve_locale,
-    secret_pin_accepted,
     spoken_line,
 )
 from lib.replies import ERROR_CODES, error_reply, ok_reply, tracking_id  # noqa: F401
+from lib.sales import (  # noqa: F401
+    browse_plans_impl,
+    file_warranty_claim_impl,
+    place_order_impl,
+    start_number_transfer_impl,
+)
+from lib.tech import (  # noqa: F401
+    check_regional_outage_impl,
+    get_appointment_and_ticket_status_impl,
+    manage_appointment_impl,
+    run_virtual_repair_impl,
+)
 
 ALL_TOOLS = (
     "lookup_account",
     "send_login_code",
     "check_login_code",
     "check_secret_pin",
-    "submit_request",
     "handover_to_person",
+    "send_sms_notification",
+    "get_billing_summary",
+    "process_bill_payment",
+    "setup_autopay",
+    "apply_bill_adjustment",
+    "setup_payment_arrangement",
+    "verify_payment_and_restore",
+    "check_regional_outage",
+    "run_virtual_repair",
+    "get_appointment_and_ticket_status",
+    "manage_appointment",
+    "browse_plans",
+    "place_order",
+    "file_warranty_claim",
+    "start_number_transfer",
+    "send_password_reset_link",
+    "manage_mfa",
+    "execute_suspend_restore",
+    "cancel_or_port_out_service",
+    "update_contact_profile",
 )
 
-# Login tries allowed on one call (take it from the PRD). The last try always fails
-# and locks the caller out (lib/fakes.py login_code_accepted, DESIGN_RULES rule 21).
+# Login tries allowed on one call (prd.md §9: third failure escalates).
 MAX_LOGIN_ATTEMPTS = 3
-MAX_PIN_ATTEMPTS = 3
-MAX_PAYMENT_ATTEMPTS = 3
-LOGIN_CODE_LENGTH = 6
-SECRET_PIN_LENGTH = 4
+SMS_PURPOSES = ("outage_updates", "troubleshooting_guide", "slot_available_callback", "registration_link")
 
-_DEFAULT_STATE: dict[str, Any] = {}
-
-
-def _get_state(
-    state: dict[str, Any] | None = None,
-    session_state: dict[str, Any] | None = None,
-    reset_if_locked: bool = False,
-) -> dict[str, Any]:
-    """Return the caller's session state dict, falling back to module default state when omitted."""
-    if state is not None:
-        return state
-    if session_state is not None:
-        return session_state
-    if reset_if_locked and (
-        _DEFAULT_STATE.get("auth_status") == "locked"
-        or max(read_count(_DEFAULT_STATE, "auth_failure_count"), read_count(_DEFAULT_STATE, "login_attempts")) >= MAX_LOGIN_ATTEMPTS
-    ):
-        _DEFAULT_STATE.clear()
-    return _DEFAULT_STATE
-
-
-def _ensure_default_profile(state: dict[str, Any]) -> None:
-    """Populate default account profile keys so mid-flow tool calls never crash on missing state."""
-    default_acct = ACCOUNTS[0] if ACCOUNTS else {}
-    if not state.get("account_id"):
-        state["account_id"] = default_acct.get("account_id", "")
-    if not state.get("phone_last4"):
-        state["phone_last4"] = default_acct.get("phone", "")[-4:]
-    state.setdefault("auth_status", "none")
-    state.setdefault("auth_failure_count", 0)
-    state.setdefault("pin_failure_count", 0)
-    state.setdefault("payment_failure_count", 0)
-
-
-def _session_language(state: dict[str, Any] | None, language: Any = "") -> str:
-    """Resolve session language with asymmetric lock: non-English locks over English.
-
-    When state has no language or is default 'en-US', a model-supplied
-    non-English locale (fr-CA/es-US/...) is accepted and becomes the lock.
-    Once state holds a non-English locale, a model-supplied 'en-US' or empty
-    value is ignored (PRD BR-TV-004 lock).
-    """
-    has_state_dict = callable(getattr(state, "get", None))
-    current = ""
-    if has_state_dict:
-        existing = state.get("language")
-        if existing and str(existing).strip():
-            current = resolve_copy_locale(str(existing))
-
-    arg_lang = ""
-    if language and str(language).strip():
-        arg_lang = resolve_copy_locale(str(language))
-
-    # 1. Once state holds a non-English locale, model-supplied en-US/empty is ignored.
-    if current and current != "en-US":
-        if callable(getattr(state, "__setitem__", None)):
-            state["language"] = current
-            if not state.get("preferred_language"):
-                state["preferred_language"] = current
-        return current
-
-    # 2. When state has no language or is default 'en-US':
-    # A model-supplied non-English locale (fr-CA/es-US/...) is accepted and becomes the lock.
-    if arg_lang and arg_lang != "en-US":
-        if callable(getattr(state, "__setitem__", None)):
-            state["language"] = arg_lang
-            state["preferred_language"] = arg_lang
-        return arg_lang
-
-    # 3. If state already had 'en-US', keep it.
-    if current == "en-US":
-        return "en-US"
-
-    # 4. State had no language and model passed non-empty 'en-US'.
-    if arg_lang == "en-US":
-        if callable(getattr(state, "__setitem__", None)):
-            state["language"] = "en-US"
-        return "en-US"
-
-    # 5. Check preferred_language in state if any.
-    if has_state_dict:
-        pref = state.get("preferred_language")
-        if pref and str(pref).strip():
-            pref_loc = resolve_copy_locale(str(pref))
-            if pref_loc != "en-US":
-                if callable(getattr(state, "__setitem__", None)):
-                    state["language"] = pref_loc
-                return pref_loc
-            return "en-US"
-
-    return resolve_copy_locale(None)
+# prd.md §7 / docs/tdd.md §7: which verbatim line(s) each handover reason speaks.
+HANDOVER_LINES: dict[str, tuple[str, ...]] = {
+    "business_handoff": ("business_handoff",),
+    "fraud_escalation": ("empathy_protocol", "live_agent_handoff"),
+    "refund_threshold_exceeded": ("transfer_to_specialist",),
+}
+HANDOVER_QUEUES: dict[str, str] = {
+    "fraud_escalation": "fraud",
+    "business_handoff": "business",
+    "refund_threshold_exceeded": "billing_specialist",
+    "secondary_language_live_agent": "french_support",
+    "sales_specialist": "sales",
+    "appointment_booking": "appointments",
+}
+HANDOVER_REASONS: tuple[str, ...] = (
+    "user_requested_agent",
+    "auth_failure_handoff",
+    "no_input_escalation",
+    "disambig_max_attempts",
+    "system_unavailable",
+    "too_many_errors",
+    "secondary_language_live_agent",
+    "sms_delivery_failed",
+    "business_handoff",
+    "fraud_escalation",
+    "refund_threshold_exceeded",
+    "sales_specialist",
+    "appointment_booking",
+)
+_REASON_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("fraud_escalation", ("fraud", "hack", "pirat", "scam", "phish", "sim swap", "stolen number", "unauthori")),
+    ("business_handoff", ("business", "affaires", "entreprise")),
+    ("refund_threshold_exceeded", ("threshold", "refund", "rembours", "over limit", "exceed")),
+    ("auth_failure_handoff", ("auth", "lock", "verification", "verrouill")),
+    ("system_unavailable", ("system", "unavailable", "outage of tool")),
+    ("no_input_escalation", ("no input", "silence", "no_input")),
+)
+_HANDOVER_FR_WORDS = re.compile(
+    r"\b(?:bonjour|merci|compte|facture|facturation|paiement|transf[eé]rer|repr[eé]sentant|"
+    r"humain|personne|aide|svp|oui|num[eé]ro|t[eé]l[eé]phone|fran[cç]ais|parler|quelqu|"
+    r"besoin|[eé]quipe|pirat[eé]|annuler|t[eé]l[eé]|panne|je|veux|mon|ma)\b"
+)
 
 
-def _detect_handover_language(
-    state: dict[str, Any],
-    language: str | None = None,
-    reason: str | None = None,
-    summary: str | None = None,
-    target_queue: str | None = None,
-    session_context: str | None = None,
-) -> str:
-    """Pick the handover language (docs/DESIGN_RULES.md rule 25).
-
-    1. An explicit `language` argument wins, English included.
-    2. Then the call's active language in session state (`language`).
-    3. Only when both are empty: French or Spanish words in the reason, summary,
-       queue, context or the caller's last words (a Turn-1 handover before any
-       lookup has set a language).
-    4. Then the account's preferred_language, else en-US.
-    """
-    if language and str(language).strip():
-        return resolve_locale(language)
-    active = state.get("language")
-    if active and str(active).strip():
-        return resolve_locale(str(active))
-    combined = re.sub(
-        r"[_-]+",
-        " ",
-        " ".join(
-            str(x or "")
-            for x in (
-                reason,
-                summary,
-                target_queue,
-                session_context,
-                state.get("handoff_reason"),
-                state.get("last_user_utterance"),
-                state.get("request_summary"),
-            )
-        ),
-    ).lower()
-    # Only words that are not also English ("agent", "client", "non" are left out).
-    fr_pattern = (
-        r"\b(?:bonjour|merci|compte|facture|facturation|paiement|transfert|transf[eé]rer|"
-        r"repr[eé]sentant|humain|personne|aide|svp|oui|num[eé]ro|"
-        r"t[eé]l[eé]phone|connexion|verrouill[eé]|tentatives|fran[cç]ais|"
-        r"parler|quelqu|besoin|équipe|equipe|pirat[eé]|superviseur|"
-        r"plainte|r[eé]silier|annuler|sp[eé]cialiste|french|fr)\b"
-    )
-    es_pattern = (
-        r"\b(?:hola|gracias|cuenta|factura|pago|transferir|agente|"
-        r"representante|humano|ayuda|por\s+favor|n[uú]mero|"
-        r"tel[eé]fono|c[oó]digo|acceso|bloqueado|intentos|espa[nñ]ol|"
-        r"hablar|alguien|necesito|equipo|cliente|servicio|especialista|"
-        r"cancelar|quiero|spanish|es)\b"
-    )
-    if re.search(fr_pattern, combined):
-        return "fr-CA"
-    if re.search(es_pattern, combined):
-        return "es-US"
-    preferred = state.get("preferred_language")
-    if preferred and str(preferred).strip():
-        return resolve_locale(str(preferred))
-    return "en-US"
-
-
-def not_identified_reply(reference: str) -> dict[str, Any]:
-    """Reply for a tool called before the caller's account was found."""
-    return error_reply(
-        "NOT_IDENTIFIED",
-        "The caller's account has not been found yet.",
-        "Transfer the caller back to the router agent so it can find the account.",
-        reference,
-    )
-
-
-def locked_reply(reference: str, attempts: int = MAX_LOGIN_ATTEMPTS) -> dict[str, Any]:
-    """Reply once the caller has used up their login attempts."""
-    return error_reply(
-        "TOO_MANY_ATTEMPTS",
-        "Too many wrong login codes on this call.",
-        "Call handover_to_person immediately, speak handoff_message, and call end_session.",
-        reference,
-        data={
-            "attempts": attempts,
-            "attempts_remaining": 0,
-            "attempts_left": 0,
-            "lockout_triggered": True,
-        },
-    )
-
-
-def _check_mock_error(
-    state: dict[str, Any],
-    lang: str = "en-US",
-    tool_name: str = "tool",
-) -> dict[str, Any] | None:
-    """Return SYSTEM_UNAVAILABLE error reply when mock_error is set (fault injection for evals)."""
-    if str(state.get("mock_error") or "").strip():
-        ref = tracking_id(tool_name, "mock_error", state.get("account_id", ""))
-        state["last_tracking_id"] = ref
-        return error_reply("SYSTEM_UNAVAILABLE", reference=ref, language=lang)
-    return None
+def _region_for_postal(postal_code: str) -> str:
+    """Region class from a Canadian postal code's first letter (DESIGN_RULES rule 40)."""
+    first = str(postal_code or "").strip()[:1].upper()
+    return REGION_BY_POSTAL_LETTER.get(first, DEFAULT_REGION)
 
 
 def lookup_account_impl(
-    phone_or_account: str,
+    phone_or_account: str | int | float,
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     language: str = "",
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Find the caller's account and remember it for the rest of the call."""
-    state = _get_state(state, session_state, reset_if_locked=True)
-    lang = _session_language(state, language)
-    mock_err = _check_mock_error(state, lang, "lookup_account")
-    if mock_err:
-        return mock_err
-    reference = tracking_id("lookup_account", phone_or_account)
-    if not str(phone_or_account or "").strip():
-        return error_reply(
-            "INVALID_INPUT",
+    """Find the caller's account (Guest -> Identified) and remember it for the call."""
+    state = get_state(state, session_state)
+    lang = session_language(state, language)
+    err = check_mock_error(state, lang, "lookup_account")
+    if err:
+        return err
+    raw = str(phone_or_account or "").strip()
+    raw = re.sub(r"\.0+$", "", raw)
+    reference = tracking_id("lookup_account", raw)
+    if not raw:
+        return validation_error(
+            state,
             "No phone number or account number was given.",
-            "Ask the caller for the phone number or account number on the account.",
+            "Ask for the phone number or account number on the account.",
             reference,
+            lang,
         )
-    digits = only_digits(phone_or_account)
+    digits = only_digits(raw)
     norm_digits = digits[1:] if (len(digits) == 11 and digits.startswith("1")) else digits
     if digits in BLOCKED_CALLER_NUMBERS or norm_digits in BLOCKED_CALLER_NUMBERS:
         state["is_blocked"] = True
-        blocked_msg = spoken_line("restricted_caller", lang)
         state["last_tracking_id"] = reference
         return error_reply(
             "PERMISSION_DENIED",
-            message=blocked_msg,
-            agent_action="Speak the restricted caller notice and end the session.",
-            reference=reference,
-            language=lang,
-            data={
-                "blocked": True,
-                "spoken_message": blocked_msg,
-                "spoken_summary": blocked_msg,
-            },
-        )
-    account = find_account(phone_or_account)
-    if account is None:
-        return error_reply(
-            "NOT_FOUND",
-            "No account matches that number.",
-            "Ask the caller to say the number again, one digit at a time.",
+            "This number is on the restricted list.",
+            "Say the restricted_caller line and end the session with reason blocked_caller.",
             reference,
+            language=lang,
+            data={"blocked": True},
         )
-    if state.get("account_id") != account["account_id"]:
+    account = find_account(raw)
+    if account is None:
+        return validation_error(
+            state,
+            "No account matches that number.",
+            "Say you couldn't find that account and ask for the number again.",
+            reference,
+            lang,
+            code="NOT_FOUND",
+        )
+    if state.get("account_id") and state.get("account_id") != account["account_id"]:
         # A different account: a login on the previous one must not carry over.
-        state["auth_status"] = "none"
+        # The call's failed-login count is kept, so switching accounts never resets a lockout.
+        state["auth_status"] = "none" if state.get("auth_status") != "locked" else "locked"
         state["logged_in"] = False
         state["login_code_sent"] = False
-        state["auth_failure_count"] = 0
-        state["login_attempts"] = 0
-        state["pin_failure_count"] = 0
-        state["pin_attempts"] = 0
+        state["step_up_verified"] = False
+    business = bool(account.get("business_flag")) or fixture_flag(state, "fx_business_account")
+    status = service_status(state)
     state["account_id"] = account["account_id"]
     state["phone_last4"] = account["phone"][-4:]
-    ident = normalize_identifier(phone_or_account)
-    if ident["kind"] in ("phone", "international_phone"):
-        caller_digits = only_digits(ident["value"])
-        if len(caller_digits) >= 4:
-            state["caller_provided_phone_last4"] = caller_digits[-4:]
-        else:
-            state["caller_provided_phone_last4"] = account.get("caller_provided_phone_last4", "")
-    else:
-        state["caller_provided_phone_last4"] = account.get("caller_provided_phone_last4", "")
+    ident = normalize_identifier(raw)
+    state["caller_provided_phone_last4"] = (
+        only_digits(ident["value"])[-4:] if ident["kind"] in ("phone", "international_phone") else ""
+    )
+    state["identification_status"] = "Pass"
+    state["business_flag"] = business
+    state["customer_type"] = account.get("customer_type", "Existing")
+    state["region"] = _region_for_postal(account.get("postal_code", ""))
+    state["service_status"] = status
     if account.get("preferred_language") and not state.get("preferred_language"):
         state["preferred_language"] = account["preferred_language"]
     state["last_tracking_id"] = reference
-    summary_text = spoken_line("account_found", lang, first_name=account.get("first_name", ""))
-    return ok_reply(
-        {
-            "account_id": account["account_id"],
-            "first_name": account["first_name"],
-            "phone_last4": account["phone"][-4:],
-            "caller_provided_phone_last4": state["caller_provided_phone_last4"],
-            "account_status": account["status"],
-        },
+    data = {
+        "identification_status": "Pass",
+        "account_id_last4": normalize_code(account["account_id"])[-4:] or account["account_id"][-4:],
+        "phone_last4": account["phone"][-4:],
+        "caller_provided_phone_last4": state["caller_provided_phone_last4"],
+        "business_flag": business,
+        "customer_type": state["customer_type"],
+        "lines_of_business": list(account.get("lines_of_business", [])),
+        "region": state["region"],
+        "service_status": status,
+    }
+    reply = ok_reply(data, reference, language=lang)
+    if business:
+        reply["agent_action"] = "Business account: hand over with reason business_handoff."
+    elif state.get("auth_status") == "locked":
+        reply["agent_action"] = "Login is locked on this call: hand over with reason auth_failure_handoff."
+    return reply
+
+
+def _failures(state: dict[str, Any]) -> int:
+    """The call's shared failed-login count (codes and PINs)."""
+    return max(read_count(state, "auth_failure_count"), read_count(state, "login_attempts"))
+
+
+def _locked_reply(state: dict[str, Any], reference: str, lang: str) -> dict[str, Any]:
+    """Reply once the caller has used up their login attempts (prd.md §9 step 6)."""
+    state["auth_status"] = "locked"
+    state["logged_in"] = False
+    return error_reply(
+        "TOO_MANY_ATTEMPTS",
+        "Too many wrong codes on this call.",
+        "Hand over with reason auth_failure_handoff.",
         reference,
         language=lang,
-        spoken_summary=summary_text,
+        data={"attempts_remaining": 0, "lockout_triggered": True, "auth_status": "locked"},
     )
+
+
+def _record_failure(state: dict[str, Any], reference: str, lang: str, kind: str) -> dict[str, Any]:
+    """Count one wrong code or PIN; the third locks the caller out."""
+    failures = _failures(state) + 1
+    state["auth_failure_count"] = failures
+    state["login_attempts"] = failures
+    if kind == "pin":
+        state["pin_failure_count"] = read_count(state, "pin_failure_count") + 1
+    if failures >= MAX_LOGIN_ATTEMPTS:
+        return _locked_reply(state, reference, lang)
+    remaining = MAX_LOGIN_ATTEMPTS - failures
+    return error_reply(
+        "WRONG_CODE" if kind == "code" else "WRONG_PIN",
+        "That code does not match." if kind == "code" else "That PIN does not match.",
+        "Say it didn't match and ask the caller to try again.",
+        reference,
+        language=lang,
+        data={"attempts_remaining": remaining, "lockout_triggered": False},
+    )
+
+
+def _credential_ok(state: dict[str, Any], digits: str, kind: str) -> bool:
+    """Exact match when a credential is on file (fx_pin_on_file / fx_otp_on_file), else the login ladder."""
+    on_file = {normalize_code(fixture(state, "fx_pin_on_file")), normalize_code(fixture(state, "fx_otp_on_file"))} - {""}
+    if on_file:
+        return digits in on_file
+    return login_code_accepted(digits, attempts=_failures(state), max_attempts=MAX_LOGIN_ATTEMPTS)
 
 
 def send_login_code_impl(
+    channel: str = "sms",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     language: str = "",
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Send a login code to the phone number on the account. Never returns the code."""
-    state = _get_state(state, session_state)
-    _ensure_default_profile(state)
-    lang = _session_language(state, language)
-    mock_err = _check_mock_error(state, lang, "send_login_code")
-    if mock_err:
-        return mock_err
-    account_id = str(state.get("account_id") or "")
-    reference = tracking_id("send_login_code", account_id)
+    """Send a 6-digit code by text (login) or to the email on file (MFA step-up). Never returns the code."""
+    state = get_state(state, session_state)
+    lang = session_language(state, language)
+    err = check_mock_error(state, lang, "send_login_code")
+    if err:
+        return err
+    account_id = ensure_account(state)
+    chan = "email" if str(channel or "").strip().lower().startswith("e") else "sms"
+    reference = tracking_id("send_login_code", account_id, chan)
     state["last_tracking_id"] = reference
-    if state.get("auth_status") == "pass":
-        return ok_reply(
-            {"sent": False, "already_verified": True},
-            reference,
-            language=lang,
-            spoken_summary=spoken_line("already_verified", lang),
-        )
-    failures = max(read_count(state, "auth_failure_count"), read_count(state, "login_attempts"))
-    if state.get("auth_status") == "locked" or failures >= MAX_LOGIN_ATTEMPTS:
-        state["auth_status"] = "locked"
-        return locked_reply(reference, failures)
-    state["auth_status"] = "code_sent"
+    if state.get("auth_status") == "locked" or _failures(state) >= MAX_LOGIN_ATTEMPTS:
+        return _locked_reply(state, reference, lang)
+    logged_in = state.get("auth_status") == "pass"
+    purpose = "step_up" if logged_in and chan == "email" else "login"
+    if logged_in and purpose == "login":
+        return ok_reply({"sent": False, "already_verified": True}, reference, language=lang)
+    if not logged_in:
+        state["auth_status"] = "code_sent"
     state["login_code_sent"] = True
-    dest_last4 = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or "")
-    return ok_reply(
-        {
-            "sent": True,
-            "already_verified": False,
-            "destination_last4": dest_last4,
-        },
-        reference,
-        language=lang,
-        spoken_summary=spoken_line("code_sent", lang, destination_last4=dest_last4),
-    )
+    state["login_channel"] = chan
+    state["code_purpose"] = purpose
+    record = account_record(state)
+    data: dict[str, Any] = {
+        "sent": True,
+        "channel": chan,
+        "purpose": purpose,
+        "code_length": 6,
+        "expires_in_sec": OTP_EXPIRES_IN_SEC,
+    }
+    if chan == "email":
+        email = str(record.get("email", ""))
+        user, _, domain = email.partition("@")
+        data["email_masked"] = (user[:1] + "***@" + domain) if domain else "on file"
+    else:
+        data["destination_last4"] = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or record["phone"][-4:])
+    return ok_reply(data, reference, language=lang)
 
 
 def check_login_code_impl(
-    code: Any,
+    code: str | int | float = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     language: str = "",
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Check the code the caller read back. Sets auth_status to pass on match."""
-    state = _get_state(state, session_state, reset_if_locked=True)
-    _ensure_default_profile(state)
-    lang = _session_language(state, language)
-    mock_err = _check_mock_error(state, lang, "check_login_code")
-    if mock_err:
-        return mock_err
-    account_id = str(state.get("account_id") or "")
-    reference = tracking_id("check_login_code", account_id)
+    """Check the code the caller read back or keyed in (login or step-up)."""
+    state = get_state(state, session_state)
+    lang = session_language(state, language)
+    err = check_mock_error(state, lang, "check_login_code")
+    if err:
+        return err
+    account_id = ensure_account(state)
+    reference = tracking_id("check_login_code", account_id, normalize_code(code))
     state["last_tracking_id"] = reference
-    if state.get("auth_status") == "pass":
+    step_up = state.get("code_purpose") == "step_up" and state.get("auth_status") == "pass"
+    if state.get("auth_status") == "pass" and not step_up:
         state["logged_in"] = True
-        return ok_reply(
-            {"verified": True, "logged_in": True},
-            reference,
-            language=lang,
-            spoken_summary=spoken_line("code_verified", lang),
-        )
-    failures = max(read_count(state, "auth_failure_count"), read_count(state, "login_attempts"))
-    if state.get("auth_status") == "locked" or failures >= MAX_LOGIN_ATTEMPTS:
-        state["auth_status"] = "locked"
-        state["logged_in"] = False
-        return locked_reply(reference, failures)
-    digits = normalize_code(code)
-    if not (4 <= len(digits) <= 10):
-        return error_reply(
-            "INVALID_INPUT",
-            "A login code has 4 to 10 digits.",
-            "Ask the caller to say or key in the login code again.",
-            reference,
-        )
-    if not login_code_accepted(digits, attempts=failures, max_attempts=MAX_LOGIN_ATTEMPTS):
-        failures += 1
-        state["auth_failure_count"] = failures
-        state["login_attempts"] = failures
-        state["logged_in"] = False
-        if failures >= MAX_LOGIN_ATTEMPTS:
-            state["auth_status"] = "locked"
-            return locked_reply(reference, failures)
-        remaining = MAX_LOGIN_ATTEMPTS - failures
-        return error_reply(
-            "WRONG_CODE",
-            "The code does not match.",
-            "Tell the caller the code didn't match and ask them to try again.",
-            reference,
-            data={
-                "attempts": failures,
-                "attempts_left": remaining,
-                "attempts_remaining": remaining,
-                "lockout_triggered": False,
-            },
-        )
-    state["auth_status"] = "pass"
-    state["logged_in"] = True
+        return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
+    if state.get("auth_status") == "locked" or _failures(state) >= MAX_LOGIN_ATTEMPTS:
+        return _locked_reply(state, reference, lang)
+    digits = normalize_code(code) or normalize_code(state.get("dtmf_digits"))
+    if not (4 <= len(digits) <= 8):
+        return validation_error(state, "A code has 4 to 8 digits.", "Ask the caller to say or key in the code again.", reference, lang)
+    if not _credential_ok(state, digits, "code"):
+        return _record_failure(state, reference, lang, "code")
     state["auth_failure_count"] = 0
     state["login_attempts"] = 0
-    return ok_reply(
-        {"verified": True, "logged_in": True},
-        reference,
-        language=lang,
-        spoken_summary=spoken_line("code_verified", lang),
-    )
+    if step_up:
+        state["step_up_verified"] = True
+        state["code_purpose"] = "login"
+        return ok_reply({"verified": True, "step_up_verified": True, "logged_in": True}, reference, language=lang)
+    state["auth_status"] = "pass"
+    state["logged_in"] = True
+    return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
 
 
 def check_secret_pin_impl(
-    pin: Any,
+    pin: str | int | float = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     language: str = "",
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Check the caller's secret PIN as a fallback or step-up authentication factor."""
-    state = _get_state(state, session_state, reset_if_locked=True)
-    _ensure_default_profile(state)
-    lang = _session_language(state, language)
-    mock_err = _check_mock_error(state, lang, "check_secret_pin")
-    if mock_err:
-        return mock_err
-    account_id = str(state.get("account_id") or "")
-    reference = tracking_id("check_secret_pin", account_id)
+    """Check the caller's 4-digit PIN (keyed in on the phone keypad; typed digits in chat)."""
+    state = get_state(state, session_state)
+    lang = session_language(state, language)
+    err = check_mock_error(state, lang, "check_secret_pin")
+    if err:
+        return err
+    account_id = ensure_account(state)
+    reference = tracking_id("check_secret_pin", account_id, normalize_code(pin))
     state["last_tracking_id"] = reference
     if state.get("auth_status") == "pass":
         state["logged_in"] = True
-        return ok_reply(
-            {"verified": True, "logged_in": True},
-            reference,
-            language=lang,
-            spoken_summary=spoken_line("pin_verified", lang),
-        )
-    failures = max(
-        read_count(state, "pin_failure_count"),
-        read_count(state, "auth_failure_count"),
-        read_count(state, "pin_attempts"),
-        read_count(state, "login_attempts"),
-    )
-    if state.get("auth_status") == "locked" or failures >= MAX_PIN_ATTEMPTS:
-        state["auth_status"] = "locked"
-        state["logged_in"] = False
-        return locked_reply(reference, failures)
-    digits = normalize_code(pin)
-    if not (4 <= len(digits) <= 10):
-        return error_reply(
-            "INVALID_INPUT",
-            "A secret PIN has 4 to 10 digits.",
-            "Ask the caller to say or key in their secret PIN again.",
-            reference,
-            language=lang,
-        )
-    if not secret_pin_accepted(digits, attempts=failures, max_attempts=MAX_PIN_ATTEMPTS):
-        failures += 1
-        state["pin_failure_count"] = failures
-        state["auth_failure_count"] = failures
-        state["pin_attempts"] = failures
-        state["login_attempts"] = failures
-        state["logged_in"] = False
-        if failures >= MAX_PIN_ATTEMPTS:
-            state["auth_status"] = "locked"
-            return locked_reply(reference, failures)
-        remaining = MAX_PIN_ATTEMPTS - failures
-        return error_reply(
-            "WRONG_CODE",
-            "The secret PIN does not match.",
-            "Tell the caller the PIN didn't match and ask them to try again.",
-            reference,
-            data={
-                "attempts": failures,
-                "attempts_left": remaining,
-                "attempts_remaining": remaining,
-                "lockout_triggered": False,
-            },
-            language=lang,
-        )
+        return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
+    if state.get("auth_status") == "locked" or _failures(state) >= MAX_LOGIN_ATTEMPTS:
+        return _locked_reply(state, reference, lang)
+    digits = normalize_code(pin) or normalize_code(state.get("dtmf_digits"))
+    if not (4 <= len(digits) <= 8):
+        return validation_error(state, "A PIN has 4 digits.", "Ask the caller to key in their 4-digit PIN again.", reference, lang)
+    if not _credential_ok(state, digits, "pin"):
+        return _record_failure(state, reference, lang, "pin")
     state["auth_status"] = "pass"
     state["logged_in"] = True
-    state["pin_failure_count"] = 0
     state["auth_failure_count"] = 0
-    state["pin_attempts"] = 0
     state["login_attempts"] = 0
-    return ok_reply(
-        {"verified": True, "logged_in": True},
-        reference,
-        language=lang,
-        spoken_summary=spoken_line("pin_verified", lang),
-    )
+    return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
 
 
-def record_payment_attempt(
-    state: dict[str, Any],
-    card_or_success: Any = False,
-    method: str = "card",
-    reference: str | None = None,
-    language: str = "",
-) -> dict[str, Any]:
-    """Track payment attempts, clear stale card_last4 on decline, and trigger lockout on the 3rd declined attempt."""
-    lang = _session_language(state, language)
-    mock_err = _check_mock_error(state, lang, "payment_attempt")
-    if mock_err:
-        return mock_err
-    ref = reference or tracking_id("payment_attempt", state.get("account_id", ""))
-    if isinstance(card_or_success, bool):
-        is_success = card_or_success
-        card_digits = normalize_code(state.get("card_last4", ""))
-    else:
-        card_digits = normalize_code(card_or_success)
-        last4_check = card_digits[-4:] if len(card_digits) >= 4 else card_digits
-        is_success = bool(last4_check) and last4_check not in DECLINED_CARD_LAST4
-    last4 = card_digits[-4:] if len(card_digits) >= 4 else card_digits
-    if is_success:
-        state["payment_failure_count"] = 0
-        if last4:
-            state["card_last4"] = last4
-        state["last_payment_method"] = str(method or "card")
-        return ok_reply(
-            {
-                "payment_processed": True,
-                "attempts": 0,
-                "requested_card_last4": last4,
-                "last_payment_method": state["last_payment_method"],
-            },
-            ref,
-            language=lang,
-        )
-    failures = read_count(state, "payment_failure_count") + 1
-    state["payment_failure_count"] = failures
-    state["card_last4"] = ""
-    if last4:
-        state["declined_card_last4"] = last4
-    state["payment_declined_once"] = True
-    if failures >= MAX_PAYMENT_ATTEMPTS:
-        return error_reply(
-            "TOO_MANY_ATTEMPTS",
-            "Too many declined payment attempts on this call.",
-            "Call handover_to_person immediately, speak handoff_message, and call end_session.",
-            ref,
-            language=lang,
-            data={
-                "attempts": failures,
-                "attempts_remaining": 0,
-                "attempts_left": 0,
-                "lockout_triggered": True,
-            },
-        )
-    remaining = MAX_PAYMENT_ATTEMPTS - failures
-    err_code = "CARD_DECLINED" if method == "card" else "PAYMENT_DECLINED"
-    decline_summary = spoken_line("card_declined", lang)
-    return error_reply(
-        err_code,
-        "The card was declined." if err_code == "CARD_DECLINED" else "The payment method was declined.",
-        "Tell the caller the card was declined and ask for another payment method." if err_code == "CARD_DECLINED" else "Tell the caller the payment was declined and ask for another payment method.",
-        ref,
-        language=lang,
-        data={
-            "attempts": failures,
-            "attempts_remaining": remaining,
-            "attempts_left": remaining,
-            "lockout_triggered": False,
-            "spoken_summary": decline_summary,
-            "spoken_message": decline_summary,
-        },
-    )
+def _normalize_reason(reason: str) -> str:
+    """Map the model's reason text onto a PRD reason code."""
+    clean = re.sub(r"[\s\-]+", "_", str(reason or "").strip().lower())
+    if clean in HANDOVER_REASONS:
+        return clean
+    spaced = clean.replace("_", " ")
+    for code, words in _REASON_KEYWORDS:
+        if any(w in spaced for w in words):
+            return code
+    return "user_requested_agent"
 
 
-def submit_request_impl(
-    summary: str,
-    state: dict[str, Any] | None = None,
-    session_state: dict[str, Any] | None = None,
-    language: str = "",
-    **kwargs: Any,
-) -> dict[str, Any]:
-    """Record the caller's request. Refuses until the caller has passed login."""
-    state = _get_state(state, session_state)
-    lang = _session_language(state, language)
-    mock_err = _check_mock_error(state, lang, "submit_request")
-    if mock_err:
-        return mock_err
-    account_id = str(state.get("account_id") or "")
-    clean_summary = " ".join(str(summary or "").split())
-    reference = tracking_id("submit_request", account_id, clean_summary)
-    if state.get("logged_in") is False:
-        state["auth_status"] = "none"
-    if state.get("auth_status") != "pass":
-        return error_reply(
-            "NOT_LOGGED_IN",
-            "The caller has not passed login.",
-            "Log the caller in with send_login_code and check_login_code, then call submit_request again.",
-            reference,
-            language=lang,
-        )
-    if not account_id:
-        _ensure_default_profile(state)
-        account_id = str(state.get("account_id") or "")
-        reference = tracking_id("submit_request", account_id, clean_summary)
-    if not clean_summary:
-        return error_reply(
-            "INVALID_INPUT",
-            "The request is empty.",
-            "Ask the caller what the request is.",
-            reference,
-            language=lang,
-        )
-    state["request_summary"] = clean_summary
-    state["last_tracking_id"] = reference
-    return ok_reply(
-        {"submitted": True},
-        reference,
-        language=lang,
-        spoken_summary=spoken_line("request_submitted", lang),
-    )
+def _handover_language(state: dict[str, Any], language: str, texts: tuple[str, ...]) -> str:
+    """DESIGN_RULES rule 25: explicit arg, then call language, then French words, then profile."""
+    active = str(state.get("language") or "").strip()
+    if active and resolve_copy_locale(active) != "en-US":
+        return resolve_copy_locale(active)
+    if language and str(language).strip():
+        return session_language(state, language)
+    if active:
+        return resolve_copy_locale(active)
+    combined = " ".join(str(t or "") for t in texts).lower()
+    if _HANDOVER_FR_WORDS.search(combined):
+        return session_language(state, "fr-CA")
+    pref = str(state.get("preferred_language") or "")
+    return resolve_copy_locale(pref) if pref else "en-US"
 
 
 def handover_to_person_impl(
-    reason: str = "caller_request",
-    language: str | dict[str, Any] = "",
+    reason: str = "user_requested_agent",
     summary: str = "",
-    target_queue: str = "",
-    session_context: str = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
+    language: str = "",
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Record a handover to a human agent and return the localized handoff_message."""
-    if isinstance(language, dict) and state is None:
-        state = language
-        language = ""
-    state = _get_state(state, session_state)
-    _ensure_default_profile(state)
-    clean_reason = " ".join(str(reason or summary or "caller_request").split()) or "caller_request"
-    active_state_lang = state.get("language")
-    if active_state_lang and resolve_copy_locale(str(active_state_lang)) != "en-US":
-        resolved_lang = _session_language(state, language)
-    else:
-        detected = _detect_handover_language(
-            state,
-            language=str(language or ""),
-            reason=clean_reason,
-            summary=summary,
-            target_queue=target_queue,
-            session_context=session_context,
-        )
-        resolved_lang = _session_language(state, detected)
-    message = spoken_line("handover", resolved_lang)
-    reference = tracking_id("handover_to_person", state.get("account_id", ""), clean_reason, resolved_lang)
-    mock_err = _check_mock_error(state, resolved_lang, "handover_to_person")
-    if mock_err:
-        return mock_err
-    state["language"] = resolved_lang
-    state["handoff_reason"] = clean_reason
-    state["handoff_status"] = "completed_via_specialist_queue"
+    """Hand the caller to a live agent with session context; returns the verbatim handoff_message."""
+    state = get_state(state, session_state)
+    code = _normalize_reason(reason)
+    lang = _handover_language(state, str(language or ""), (reason, summary, state.get("utterance")))
+    err = check_mock_error(state, lang, "handover_to_person")
+    if err and code != "system_unavailable":
+        return err
+    keys = HANDOVER_LINES.get(code, ("live_agent_handoff",))
+    message = " ".join(spoken_line(k, lang) for k in keys)
+    queue = HANDOVER_QUEUES.get(code, "general")
+    open_now = queue_open(queue)
+    context = {
+        "reason": code,
+        "summary": " ".join(str(summary or "").split())[:300],
+        "language": lang,
+        "account_id_last4": normalize_code(state.get("account_id", ""))[-4:],
+        "identification_status": state.get("identification_status") or "Fail",
+        "auth_status": state.get("auth_status") or "none",
+        "business_flag": bool(state.get("business_flag")),
+        "service_status": state.get("service_status") or "",
+        "last_tracking_id": state.get("last_tracking_id") or "",
+        "applied_adjustments": state.get("applied_adjustments") or "",
+    }
+    reference = tracking_id("handover_to_person", state.get("account_id", ""), code, lang)
+    state["language"] = lang
+    state["handoff_reason"] = code
+    state["handoff_context"] = json.dumps(context, ensure_ascii=False)
     state["handover_complete"] = True
     state["handoff_message"] = message
+    state["handoff_status"] = "completed_via_specialist_queue" if open_now else "callback_next_business_day"
     state["last_tracking_id"] = reference
     return ok_reply(
         {
-            "handoff_status": "completed_via_specialist_queue",
-            "reason": clean_reason,
-            "language": resolved_lang,
+            "handoff_status": state["handoff_status"],
+            "reason": code,
+            "queue": queue,
+            "queue_open": open_now,
+            "language": lang,
+            "handover_id": reference,
             "handoff_message": message,
-            "spoken_message": message,
-            "spoken_summary": message,
+            "session_context_attached": True,
             "action_fulfilled": True,
             "task_completed": True,
             "user_goal_fulfilled": True,
         },
         reference,
-        language=resolved_lang,
+        language=lang,
     )
+
+
+def send_sms_notification_impl(
+    purpose: str = "outage_updates",
+    state: dict[str, Any] | None = None,
+    session_state: dict[str, Any] | None = None,
+    language: str = "",
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Text the mobile number on file (outage updates, troubleshooting guide, slot callback, registration link)."""
+    state = get_state(state, session_state)
+    lang = session_language(state, language)
+    err = check_mock_error(state, lang, "send_sms_notification")
+    if err:
+        return err
+    clean = re.sub(r"[\s\-]+", "_", str(purpose or "").strip().lower())
+    reference = tracking_id("send_sms_notification", state.get("account_id", ""), clean)
+    if clean not in SMS_PURPOSES:
+        return validation_error(
+            state,
+            "Unknown text message purpose.",
+            "Use outage_updates, troubleshooting_guide, slot_available_callback or registration_link.",
+            reference,
+            lang,
+        )
+    if not state.get("account_id"):
+        return error_reply(
+            "NOT_IDENTIFIED",
+            "No mobile number on file yet.",
+            "Ask which phone number to text, call lookup_account, then retry.",
+            reference,
+            language=lang,
+        )
+    state["last_tracking_id"] = reference
+    return ok_reply({"purpose": clean, **dispatch_sms(state, clean)}, reference, language=lang)
 
 
 lookup_account = lookup_account_impl
 send_login_code = send_login_code_impl
 check_login_code = check_login_code_impl
 check_secret_pin = check_secret_pin_impl
-submit_request = submit_request_impl
 handover_to_person = handover_to_person_impl
+send_sms_notification = send_sms_notification_impl
+get_billing_summary = get_billing_summary_impl
+process_bill_payment = process_bill_payment_impl
+setup_autopay = setup_autopay_impl
+apply_bill_adjustment = apply_bill_adjustment_impl
+setup_payment_arrangement = setup_payment_arrangement_impl
+verify_payment_and_restore = verify_payment_and_restore_impl
+check_regional_outage = check_regional_outage_impl
+run_virtual_repair = run_virtual_repair_impl
+get_appointment_and_ticket_status = get_appointment_and_ticket_status_impl
+manage_appointment = manage_appointment_impl
+browse_plans = browse_plans_impl
+place_order = place_order_impl
+file_warranty_claim = file_warranty_claim_impl
+start_number_transfer = start_number_transfer_impl
+send_password_reset_link = send_password_reset_link_impl
+manage_mfa = manage_mfa_impl
+execute_suspend_restore = execute_suspend_restore_impl
+cancel_or_port_out_service = cancel_or_port_out_service_impl
+update_contact_profile = update_contact_profile_impl

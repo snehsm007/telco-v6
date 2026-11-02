@@ -4,7 +4,7 @@
   "executionType": "SYNCHRONOUS",
   "pythonFunction": {
     "name": "handover_to_person",
-    "description": "Records a handover to a human representative and returns the localized handoff_message to speak in the same turn before calling end_session.",
+    "description": "Transfers the caller to a live representative with the call's context and returns handoff_message, the exact line to speak for that reason. Speak handoff_message and call end_session in the same turn.",
     "pythonCode": "tools/handover_to_person/python_function/python_code.py"
   }
 }

@@ -1,0 +1,3 @@
+<role>
+Placeholder for the sales_equipment agent.
+</role>

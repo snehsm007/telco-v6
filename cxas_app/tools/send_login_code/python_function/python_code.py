@@ -2,27 +2,31 @@ from typing import Any
 
 
 
-def send_login_code(language: str = "") -> dict[str, Any]:
-    """Sends a login code to the phone number on the caller's account.
-
-    Call this when a task tool returned error NOT_LOGGED_IN. It reads the
-    account from the session, so it takes no arguments, and it never returns
-    the code.
+def send_login_code(
+    channel: str = "sms",
+    language: str = "",
+) -> dict[str, Any]:
+    """Sends a 6-digit verification code by text to the mobile number on file (channel sms,
+      for login) or to the email on file (channel email, for the extra step-up check
+      before an MFA change). Never returns the code.
 
     Args:
-      language: BCP-47 language code (e.g. en-US, fr-CA, es-US).
+      channel: sms (login) or email (step-up verification).
+      language: Active language code (en-US or fr-CA).
 
     Returns:
-      dict: status, data (sent, already_verified, destination_last4),
-        error_message and tracking_id. Errors also carry error and agent_action.
+      status, data (sent, channel, purpose, destination_last4 or email_masked,
+        expires_in_sec), error_message, tracking_id. Errors add error
+        (TOO_MANY_ATTEMPTS) and agent_action.
     """
     ctx = globals().get("context")
     state = getattr(ctx, "state", None) if ctx is not None else None
     if state is None and isinstance(ctx, dict):
         state = ctx
     return send_login_code_impl(
-        state=state,
+        channel=channel,
         language=language,
+        state=state,
     )
 
 
@@ -32,9 +36,25 @@ from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 import hashlib
+import json
 import re
 
 MAX_LOGIN_ATTEMPTS = 3  # pragma: no cover
+
+OTP_EXPIRES_IN_SEC = 300  # pragma: no cover
+
+def read_count(state: dict[str, Any] | None, key: str) -> int:  # pragma: no cover
+    """Read a whole-number variable; the platform hands them to tools as decimals (5 -> 5.0)."""
+    if not isinstance(state, dict):
+        return 0
+    try:
+        return int(float(state.get(key) or 0))
+    except (TypeError, ValueError):
+        return 0
+
+def _failures(state: dict[str, Any]) -> int:  # pragma: no cover
+    """The call's shared failed-login count (codes and PINs)."""
+    return max(read_count(state, "auth_failure_count"), read_count(state, "login_attempts"))
 
 ERROR_CODES = (  # pragma: no cover
     "INVALID_INPUT",
@@ -61,6 +81,20 @@ ERROR_CODES = (  # pragma: no cover
     "SYSTEM_UNAVAILABLE",
     "SYSTEM_DOWN",
     "PERMISSION_DENIED",
+    "TOO_MANY_ERRORS",
+    "MALFORMED_REQUEST",
+    "AUTH_SERVICE_UNAVAILABLE",
+    "INSUFFICIENT_FUNDS",
+    "REFUND_THRESHOLD_EXCEEDED",
+    "TECHNICIAN_EN_ROUTE",
+    "NO_AVAILABILITY",
+    "STEP_UP_REQUIRED",
+    "NO_PAYMENT_FOUND",
+    "CONFIRMATION_REQUIRED",
+    "TV_SUB_TYPE_REQUIRED",
+    "CARD_EXPIRED",
+    "NOT_SUSPENDED",
+    "DELIVERY_FAILED",
 )
 
 ERROR_CODE_DEFAULTS: dict[str, tuple[str, str]] = {  # pragma: no cover
@@ -146,19 +180,75 @@ ERROR_CODE_DEFAULTS: dict[str, tuple[str, str]] = {  # pragma: no cover
     ),
     "SERVICE_UNAVAILABLE": (
         "The upstream service is currently unavailable.",
-        "Apologize for the outage and hand the caller over to a person.",
+        "Hand over with reason system_unavailable.",
     ),
     "SYSTEM_DOWN": (
         "The service is temporarily unavailable.",
-        "Apologize for the outage and hand the caller over to a person.",
+        "Hand over with reason system_unavailable.",
     ),
     "SYSTEM_UNAVAILABLE": (
         "The service is temporarily unavailable.",
-        "Apologize for the outage and hand the caller over to a person.",
+        "Hand over with reason system_unavailable.",
     ),
     "PERMISSION_DENIED": (
         "Permission denied.",
         "Explain the restriction and hand the caller over to a person.",
+    ),
+    "TOO_MANY_ERRORS": (
+        "Too many invalid entries on this call.",
+        "Hand over with reason too_many_errors.",
+    ),
+    "MALFORMED_REQUEST": (
+        "The request was malformed.",
+        "Ask the caller to repeat the details.",
+    ),
+    "AUTH_SERVICE_UNAVAILABLE": (
+        "The login service is unavailable.",
+        "Hand over with reason system_unavailable.",
+    ),
+    "INSUFFICIENT_FUNDS": (
+        "The payment method has insufficient funds.",
+        "Tell the caller and ask for another payment method.",
+    ),
+    "REFUND_THRESHOLD_EXCEEDED": (
+        "The amount is above the self-serve limit.",
+        "Hand over with reason refund_threshold_exceeded.",
+    ),
+    "TECHNICIAN_EN_ROUTE": (
+        "The technician is already on the way.",
+        "Explain it can't be cancelled and offer to add a note.",
+    ),
+    "NO_AVAILABILITY": (
+        "No slots are available in that window.",
+        "Offer a text when a slot opens.",
+    ),
+    "STEP_UP_REQUIRED": (
+        "This change needs an extra verification step.",
+        "Send an email code with send_login_code channel=email.",
+    ),
+    "NO_PAYMENT_FOUND": (
+        "No posted payment covers the past-due amount.",
+        "Offer to take a payment or set up an arrangement.",
+    ),
+    "CONFIRMATION_REQUIRED": (
+        "The caller must confirm before this is applied.",
+        "Read back the details and ask the caller to confirm.",
+    ),
+    "TV_SUB_TYPE_REQUIRED": (
+        "The TV service type is needed first.",
+        "Ask if the TV is streaming, satellite or streaming only.",
+    ),
+    "CARD_EXPIRED": (
+        "The card on file has expired.",
+        "Tell the caller and ask for another payment method.",
+    ),
+    "NOT_SUSPENDED": (
+        "The service is not suspended.",
+        "Tell the caller the service is active.",
+    ),
+    "DELIVERY_FAILED": (
+        "The text message could not be delivered.",
+        "Apologize and offer a transfer to a representative.",
     ),
 }
 
@@ -236,167 +326,94 @@ def error_reply(  # pragma: no cover
             reply[key] = payload[key]
     return reply
 
-def _check_mock_error(  # pragma: no cover
-    state: dict[str, Any],
-    lang: str = "en-US",
-    tool_name: str = "tool",
-) -> dict[str, Any] | None:
-    """Return SYSTEM_UNAVAILABLE error reply when mock_error is set (fault injection for evals)."""
-    if str(state.get("mock_error") or "").strip():
-        ref = tracking_id(tool_name, "mock_error", state.get("account_id", ""))
-        state["last_tracking_id"] = ref
-        return error_reply("SYSTEM_UNAVAILABLE", reference=ref, language=lang)
-    return None
+def _locked_reply(state: dict[str, Any], reference: str, lang: str) -> dict[str, Any]:  # pragma: no cover
+    """Reply once the caller has used up their login attempts (prd.md §9 step 6)."""
+    state["auth_status"] = "locked"
+    state["logged_in"] = False
+    return error_reply(
+        "TOO_MANY_ATTEMPTS",
+        "Too many wrong codes on this call.",
+        "Hand over with reason auth_failure_handoff.",
+        reference,
+        language=lang,
+        data={"attempts_remaining": 0, "lockout_triggered": True, "auth_status": "locked"},
+    )
 
-ACCOUNTS: tuple[dict[str, str], ...] = (  # pragma: no cover
+ACCOUNTS: tuple[dict[str, Any], ...] = (  # pragma: no cover
     {
         "account_id": "A1001",
         "phone": "2025550186",
-        "first_name": "Jordan",
+        "first_name": "Morgan",
         "email": "m.okafor@mailprovider.example",
         "status": "active",
         "preferred_language": "en-US",
         "card_last4": "7742",
+        "card_brand": "Visa",
+        "customer_type": "Existing",
+        "postal_code": "K2P 1L4",
+        "service_address_last_line": "Ottawa, ON K2P 1L4",
+        "lines_of_business": ["mobility", "internet", "tv", "homephone"],
+        "business_flag": False,
     },
     {
-        "account_id": "ACC-1002",
+        "account_id": "A1002",
         "phone": "2025550198",
         "first_name": "Taylor",
         "email": "taylor.r@mailprovider.example",
         "status": "active",
         "preferred_language": "fr-CA",
         "card_last4": "8853",
+        "card_brand": "Mastercard",
+        "customer_type": "Existing",
+        "postal_code": "K1A 0B1",
+        "service_address_last_line": "Ottawa, ON K1A 0B1",
+        "lines_of_business": ["mobility", "internet"],
+        "business_flag": False,
     },
 )
 
-def _ensure_default_profile(state: dict[str, Any]) -> None:  # pragma: no cover
-    """Populate default account profile keys so mid-flow tool calls never crash on missing state."""
-    default_acct = ACCOUNTS[0] if ACCOUNTS else {}
+def account_record(state: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover
+    """The active account record, falling back to the default account."""
+    account_id = str(state.get("account_id") or "")
+    for record in ACCOUNTS:
+        if record["account_id"] == account_id:
+            return dict(record)
+    base = dict(ACCOUNTS[0])
+    if account_id:
+        base["account_id"] = account_id
+    return base
+
+def check_mock_error(state: dict[str, Any], lang: str = "en-US", tool_name: str = "tool") -> dict[str, Any] | None:  # pragma: no cover
+    """Fault injection: `mock_error` set in session state makes every tool return a system error."""
+    if str(state.get("mock_error") or "").strip():
+        ref = tracking_id(tool_name, "mock_error", state.get("account_id", ""))
+        state["last_tracking_id"] = ref
+        return error_reply(
+            "SYSTEM_UNAVAILABLE",
+            agent_action="Hand over with reason system_unavailable.",
+            reference=ref,
+            language=lang,
+        )
+    return None
+
+def ensure_account(state: dict[str, Any]) -> str:  # pragma: no cover
+    """Make sure an account is active (login tools fill the default; DESIGN_RULES rule 21)."""
     if not state.get("account_id"):
-        state["account_id"] = default_acct.get("account_id", "")
-    if not state.get("phone_last4"):
-        state["phone_last4"] = default_acct.get("phone", "")[-4:]
-    state.setdefault("auth_status", "none")
-    state.setdefault("auth_failure_count", 0)
-    state.setdefault("pin_failure_count", 0)
-    state.setdefault("payment_failure_count", 0)
+        state["account_id"] = ACCOUNTS[0]["account_id"]
+        state["phone_last4"] = ACCOUNTS[0]["phone"][-4:]
+        state["identification_status"] = "Pass"
+    return str(state["account_id"])
 
-_DEFAULT_STATE: dict[str, Any] = {}  # pragma: no cover
-
-def read_count(state: dict[str, Any] | None, key: str) -> int:  # pragma: no cover
-    """Read a whole-number variable; the platform hands them to tools as decimals (5 -> 5.0)."""
-    if not isinstance(state, dict):
-        return 0
-    try:
-        return int(float(state.get(key) or 0))
-    except (TypeError, ValueError):
-        return 0
-
-def _get_state(  # pragma: no cover
+def get_state(  # pragma: no cover
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
-    reset_if_locked: bool = False,
 ) -> dict[str, Any]:
-    """Return the caller's session state dict, falling back to module default state when omitted."""
+    """Return the session state dict. A missing state gets a fresh dict, never a shared one."""
     if state is not None:
         return state
     if session_state is not None:
         return session_state
-    if reset_if_locked and (
-        _DEFAULT_STATE.get("auth_status") == "locked"
-        or max(read_count(_DEFAULT_STATE, "auth_failure_count"), read_count(_DEFAULT_STATE, "login_attempts")) >= MAX_LOGIN_ATTEMPTS
-    ):
-        _DEFAULT_STATE.clear()
-    return _DEFAULT_STATE
-
-def resolve_locale(language: str | None) -> str:  # pragma: no cover
-    """Normalize a language tag or prefix to a supported BCP-47 locale code."""
-    raw = str(language or "").strip()
-    if not raw:
-        return "en-US"
-    low = raw.lower().replace("_", "-")
-    if low.startswith("fr"):
-        return "fr-CA"
-    if low.startswith("es"):
-        return "es-US"
-    if low.startswith("en"):
-        return "en-US"
-    return "en-US"
-
-resolve_copy_locale = resolve_locale  # pragma: no cover
-
-def _session_language(state: dict[str, Any] | None, language: Any = "") -> str:  # pragma: no cover
-    """Resolve session language with asymmetric lock: non-English locks over English.
-
-    When state has no language or is default 'en-US', a model-supplied
-    non-English locale (fr-CA/es-US/...) is accepted and becomes the lock.
-    Once state holds a non-English locale, a model-supplied 'en-US' or empty
-    value is ignored (PRD BR-TV-004 lock).
-    """
-    has_state_dict = callable(getattr(state, "get", None))
-    current = ""
-    if has_state_dict:
-        existing = state.get("language")
-        if existing and str(existing).strip():
-            current = resolve_copy_locale(str(existing))
-
-    arg_lang = ""
-    if language and str(language).strip():
-        arg_lang = resolve_copy_locale(str(language))
-
-    # 1. Once state holds a non-English locale, model-supplied en-US/empty is ignored.
-    if current and current != "en-US":
-        if callable(getattr(state, "__setitem__", None)):
-            state["language"] = current
-            if not state.get("preferred_language"):
-                state["preferred_language"] = current
-        return current
-
-    # 2. When state has no language or is default 'en-US':
-    # A model-supplied non-English locale (fr-CA/es-US/...) is accepted and becomes the lock.
-    if arg_lang and arg_lang != "en-US":
-        if callable(getattr(state, "__setitem__", None)):
-            state["language"] = arg_lang
-            state["preferred_language"] = arg_lang
-        return arg_lang
-
-    # 3. If state already had 'en-US', keep it.
-    if current == "en-US":
-        return "en-US"
-
-    # 4. State had no language and model passed non-empty 'en-US'.
-    if arg_lang == "en-US":
-        if callable(getattr(state, "__setitem__", None)):
-            state["language"] = "en-US"
-        return "en-US"
-
-    # 5. Check preferred_language in state if any.
-    if has_state_dict:
-        pref = state.get("preferred_language")
-        if pref and str(pref).strip():
-            pref_loc = resolve_copy_locale(str(pref))
-            if pref_loc != "en-US":
-                if callable(getattr(state, "__setitem__", None)):
-                    state["language"] = pref_loc
-                return pref_loc
-            return "en-US"
-
-    return resolve_copy_locale(None)
-
-def locked_reply(reference: str, attempts: int = MAX_LOGIN_ATTEMPTS) -> dict[str, Any]:  # pragma: no cover
-    """Reply once the caller has used up their login attempts."""
-    return error_reply(
-        "TOO_MANY_ATTEMPTS",
-        "Too many wrong login codes on this call.",
-        "Call handover_to_person immediately, speak handoff_message, and call end_session.",
-        reference,
-        data={
-            "attempts": attempts,
-            "attempts_remaining": 0,
-            "attempts_left": 0,
-            "lockout_triggered": True,
-        },
-    )
+    return {}
 
 OK_STATUS = _StatusStr("ok")  # pragma: no cover
 
@@ -434,121 +451,81 @@ def ok_reply(  # pragma: no cover
             reply[key] = payload[key]
     return reply
 
-SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
-    "greeting": {
-        "en-US": "Hello, thanks for calling. Which phone number or account number can I look up for you?",
-        "fr-CA": "Bonjour, merci de votre appel. Quel numéro de téléphone ou numéro de compte puis-je rechercher pour vous?",
-        "es-US": "Hola, gracias por su llamada. ¿Qué número de teléfono o número de cuenta puedo buscar para usted?",
-    },
-    "code_sent": {
-        "en-US": "I've sent a login code to the phone number ending in [destination_last4]. Please read it to me when it arrives.",
-        "fr-CA": "J'ai envoyé un code de connexion au numéro se terminant par [destination_last4]. Lisez-le-moi dès que vous le recevez.",
-        "es-US": "Envié un código de acceso al número que termina en [destination_last4]. Léamelo cuando lo reciba.",
-    },
-    "handover": {
-        "en-US": "I'm transferring you to a member of our team now. Thank you for your patience.",
-        "fr-CA": "Je vous transfère maintenant à un membre de notre équipe. Merci de votre patience.",
-        "es-US": "Le transfiero ahora con un miembro de nuestro equipo. Gracias por su paciencia.",
-    },
-    "account_found": {
-        "en-US": "Account found for [first_name].",
-        "fr-CA": "Compte trouvé pour [first_name].",
-        "es-US": "Cuenta encontrada para [first_name].",
-    },
-    "code_verified": {
-        "en-US": "Login verified successfully.",
-        "fr-CA": "Connexion vérifiée avec succès.",
-        "es-US": "Inicio de sesión verificado con éxito.",
-    },
-    "already_verified": {
-        "en-US": "Account is already verified.",
-        "fr-CA": "Le compte est déjà vérifié.",
-        "es-US": "La cuenta ya está verificada.",
-    },
-    "pin_verified": {
-        "en-US": "Secret PIN verified successfully.",
-        "fr-CA": "NIP secret vérifié avec succès.",
-        "es-US": "PIN secreto verificado con éxito.",
-    },
-    "request_submitted": {
-        "en-US": "Your request has been submitted successfully.",
-        "fr-CA": "Votre demande a été soumise avec succès.",
-        "es-US": "Su solicitud ha sido enviada con éxito.",
-    },
-    "restricted_caller": {
-        "en-US": "This number is not authorized for telephone service. Please visit our website or a retail store for assistance.",
-        "fr-CA": "Ce numéro n'est pas autorisé pour le service téléphonique. Veuillez visiter notre site Web ou un magasin pour obtenir de l'aide.",
-        "es-US": "Este número no está autorizado para el servicio telefónico. Visite nuestro sitio web o una tienda para obtener ayuda.",
-    },
-    "ai_disclosure": {
-        "en-US": "I'm an artificial intelligence customer care assistant.",
-        "fr-CA": "Je suis un assistant de service à la clientèle basé sur l'intelligence artificielle.",
-        "es-US": "Soy un asistente de atención al cliente con inteligencia artificial.",
-    },
-    "malicious_closing": {
-        "en-US": "I am unable to continue this conversation. Thank you for calling and have a good day.",
-        "fr-CA": "Je ne peux pas poursuivre cette conversation. Merci de votre appel et bonne journée.",
-        "es-US": "No puedo continuar con esta conversación. Gracias por llamar y que tenga un buen día.",
-    },
-    "recording_notice": {
-        "en-US": "This call may be monitored or recorded for quality and training purposes.",
-        "fr-CA": "Cet appel peut être surveillé ou enregistré à des fins de qualité et de formation.",
-        "es-US": "Esta llamada puede ser monitoreada o grabada con fines de calidad y capacitación.",
-    },
-    "card_declined": {
-        "en-US": "That card was declined. Would you like to try another card or a different payment method?",
-        "fr-CA": "Cette carte a été refusée. Souhaitez-vous essayer une autre carte ou un autre mode de paiement?",
-        "es-US": "Esa tarjeta fue rechazada. ¿Desea probar con otra tarjeta o un método de pago diferente?",
-    },
-}
+def resolve_locale(language: str | None) -> str:  # pragma: no cover
+    """Normalize a language tag or prefix to a supported locale (en-US or fr-CA)."""
+    low = str(language or "").strip().lower().replace("_", "-")
+    if low.startswith("fr"):
+        return "fr-CA"
+    return "en-US"
 
-def spoken_line(key: str, language: str | None = "en-US", **slots: object) -> str:  # pragma: no cover
-    """Return the fixed spoken line for `key` and `language`, filling any `[slot]` placeholders."""
-    locale = resolve_locale(language)
-    table = SPOKEN_LINES.get(key, {})
-    template = table.get(locale) or table.get("en-US") or ""
-    for slot_name, slot_val in slots.items():
-        template = template.replace(f"[{slot_name}]", str(slot_val))
-    return template
+resolve_copy_locale = resolve_locale  # pragma: no cover
+
+def session_language(state: dict[str, Any] | None, language: Any = "") -> str:  # pragma: no cover
+    """Resolve the call language with an asymmetric lock (DESIGN_RULES rule 41).
+
+    A non-English language locks the call; a later en-US or empty value from the
+    model never downgrades it. An empty state takes the model's language.
+    """
+    current = ""
+    if isinstance(state, dict):
+        existing = state.get("language")
+        if existing and str(existing).strip():
+            current = resolve_copy_locale(str(existing))
+    arg_lang = resolve_copy_locale(str(language)) if language and str(language).strip() else ""
+    if current and current != "en-US":
+        return current
+    if arg_lang and arg_lang != "en-US":
+        if isinstance(state, dict):
+            state["language"] = arg_lang
+        return arg_lang
+    if current:
+        return current
+    if arg_lang and isinstance(state, dict):
+        state["language"] = arg_lang
+        return arg_lang
+    return "en-US"
 
 def send_login_code_impl(  # pragma: no cover
+    channel: str = "sms",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     language: str = "",
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Send a login code to the phone number on the account. Never returns the code."""
-    state = _get_state(state, session_state)
-    _ensure_default_profile(state)
-    lang = _session_language(state, language)
-    mock_err = _check_mock_error(state, lang, "send_login_code")
-    if mock_err:
-        return mock_err
-    account_id = str(state.get("account_id") or "")
-    reference = tracking_id("send_login_code", account_id)
+    """Send a 6-digit code by text (login) or to the email on file (MFA step-up). Never returns the code."""
+    state = get_state(state, session_state)
+    lang = session_language(state, language)
+    err = check_mock_error(state, lang, "send_login_code")
+    if err:
+        return err
+    account_id = ensure_account(state)
+    chan = "email" if str(channel or "").strip().lower().startswith("e") else "sms"
+    reference = tracking_id("send_login_code", account_id, chan)
     state["last_tracking_id"] = reference
-    if state.get("auth_status") == "pass":
-        return ok_reply(
-            {"sent": False, "already_verified": True},
-            reference,
-            language=lang,
-            spoken_summary=spoken_line("already_verified", lang),
-        )
-    failures = max(read_count(state, "auth_failure_count"), read_count(state, "login_attempts"))
-    if state.get("auth_status") == "locked" or failures >= MAX_LOGIN_ATTEMPTS:
-        state["auth_status"] = "locked"
-        return locked_reply(reference, failures)
-    state["auth_status"] = "code_sent"
+    if state.get("auth_status") == "locked" or _failures(state) >= MAX_LOGIN_ATTEMPTS:
+        return _locked_reply(state, reference, lang)
+    logged_in = state.get("auth_status") == "pass"
+    purpose = "step_up" if logged_in and chan == "email" else "login"
+    if logged_in and purpose == "login":
+        return ok_reply({"sent": False, "already_verified": True}, reference, language=lang)
+    if not logged_in:
+        state["auth_status"] = "code_sent"
     state["login_code_sent"] = True
-    dest_last4 = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or "")
-    return ok_reply(
-        {
-            "sent": True,
-            "already_verified": False,
-            "destination_last4": dest_last4,
-        },
-        reference,
-        language=lang,
-        spoken_summary=spoken_line("code_sent", lang, destination_last4=dest_last4),
-    )
+    state["login_channel"] = chan
+    state["code_purpose"] = purpose
+    record = account_record(state)
+    data: dict[str, Any] = {
+        "sent": True,
+        "channel": chan,
+        "purpose": purpose,
+        "code_length": 6,
+        "expires_in_sec": OTP_EXPIRES_IN_SEC,
+    }
+    if chan == "email":
+        email = str(record.get("email", ""))
+        user, _, domain = email.partition("@")
+        data["email_masked"] = (user[:1] + "***@" + domain) if domain else "on file"
+    else:
+        data["destination_last4"] = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or record["phone"][-4:])
+    return ok_reply(data, reference, language=lang)
 # --- END GENERATED SHARED BUNDLE ---

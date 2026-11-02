@@ -11,7 +11,9 @@
     "rubrics": [],
     "scenarioExpectations": [],
     "userFacts": [],
-    "variableOverrides": {}
+    "variableOverrides": {
+      "fx_technician_status": "en_route"
+    }
   },
   "tags": [
     "public",

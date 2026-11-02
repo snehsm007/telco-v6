@@ -10,7 +10,10 @@
     "rubrics": [],
     "scenarioExpectations": [],
     "userFacts": [],
-    "variableOverrides": {}
+    "variableOverrides": {
+      "fx_pin_on_file": "4321",
+      "fx_extra_bill_line": "Internet service overcharge|15.00|internet"
+    }
   },
   "tags": [
     "public",

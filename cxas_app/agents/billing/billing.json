@@ -1,0 +1,35 @@
+{
+  "name": "billing",
+  "displayName": "billing",
+  "description": "Billing and payments: balance, charges and disputes, credits and refunds, payments, autopay, payment arrangements, and restoring service suspended for non-payment.",
+  "instruction": "agents/billing/instruction.txt",
+  "tools": [
+    "lookup_account",
+    "send_login_code",
+    "check_login_code",
+    "check_secret_pin",
+    "get_billing_summary",
+    "process_bill_payment",
+    "setup_autopay",
+    "apply_bill_adjustment",
+    "setup_payment_arrangement",
+    "verify_payment_and_restore",
+    "handover_to_person",
+    "end_session"
+  ],
+  "childAgents": [
+    "router"
+  ],
+  "beforeModelCallbacks": [
+    {
+      "pythonCode": "agents/billing/before_model_callbacks/language_prompt_filter/python_code.py",
+      "description": "Inject active call language instructions and verbatim lines"
+    }
+  ],
+  "afterModelCallbacks": [
+    {
+      "pythonCode": "agents/billing/after_model_callbacks/speech_hygiene/python_code.py",
+      "description": "Strip markdown and cut long numbers to their last 4 digits before the reply is spoken"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 {
   "name": "20090eab-e39c-417d-a181-142052ce81d5",
   "displayName": "telco-v6",
-  "description": "telco-v6 voice and chat agent.",
+  "description": "Telco Voice Central: voice and chat agent for billing, technical support, sales and equipment, appointments and account management.",
   "rootAgent": "router",
   "globalInstruction": "global_instruction.txt",
   "modelSettings": {
@@ -272,6 +272,357 @@
     {
       "name": "request_summary",
       "description": "Summary of the most recent submitted request.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "identification_status",
+      "description": "Pass once lookup_account found the caller's account (PRD §5).",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "business_flag",
+      "description": "True when the account is a business account (business handoff).",
+      "schema": {
+        "type": "BOOLEAN",
+        "default": false,
+        "required": []
+      }
+    },
+    {
+      "name": "customer_type",
+      "description": "New or Existing, from the account profile.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "region",
+      "description": "Region-A, Region-B or Region-C, for coverage and outage lookups.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "service_status",
+      "description": "active, suspended_nonpayment, suspended_lost_stolen or suspended_travel.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "login_channel",
+      "description": "sms or email: where the last verification code went.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "code_purpose",
+      "description": "login or step_up: what the last verification code is for.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "step_up_verified",
+      "description": "True once the emailed step-up code was verified (MFA changes).",
+      "schema": {
+        "type": "BOOLEAN",
+        "default": false,
+        "required": []
+      }
+    },
+    {
+      "name": "handoff_context",
+      "description": "JSON session context passed to the live agent (BR-TV-015).",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "global_err_count",
+      "description": "Validation errors on this call; 3 ends in a too_many_errors handover.",
+      "schema": {
+        "type": "INTEGER",
+        "default": 0,
+        "required": []
+      }
+    },
+    {
+      "name": "local_noinput_counter",
+      "description": "Consecutive silent turns on the current module.",
+      "schema": {
+        "type": "INTEGER",
+        "default": 0,
+        "required": []
+      }
+    },
+    {
+      "name": "no_match_confirmation_count",
+      "description": "Unresolved clarification attempts on the current module.",
+      "schema": {
+        "type": "INTEGER",
+        "default": 0,
+        "required": []
+      }
+    },
+    {
+      "name": "misc_counter",
+      "description": "Generic per-flow counter.",
+      "schema": {
+        "type": "INTEGER",
+        "default": 0,
+        "required": []
+      }
+    },
+    {
+      "name": "dtmf_digits",
+      "description": "Keypad digits captured on the current turn.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "sms_sent",
+      "description": "Comma list of text messages sent on this call.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "mock_mode",
+      "description": "Eval harness flag (PRD §17); never set in production.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "lob",
+      "description": "Line of business: mobility, internet, tv, homephone or smarthome.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "tv_sub_type",
+      "description": "streaming, satellite or streaming_only.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "route",
+      "description": "Module handling the caller's current goal.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "utterance",
+      "description": "The caller's latest goal in their own words, for topic switches.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "last_pmt_amt",
+      "description": "Last payment amount on this call.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "amount",
+      "description": "Amount currently under discussion.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "ticket_state",
+      "description": "open, in_progress or closed for the ticket under discussion.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "vr_task_count",
+      "description": "Virtual-repair steps sent on this call.",
+      "schema": {
+        "type": "INTEGER",
+        "default": 0,
+        "required": []
+      }
+    },
+    {
+      "name": "applied_adjustments",
+      "description": "Comma list of credits applied on this call (no double credits).",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "pending_confirmation",
+      "description": "The action waiting for the caller's confirmation.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "fx_pin_on_file",
+      "description": "Backend fixture: the 4-digit PIN on file (empty = login ladder).",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "fx_otp_on_file",
+      "description": "Backend fixture: the code carried by the last text (empty = login ladder).",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "fx_card_on_file_status",
+      "description": "Backend fixture: valid, declined or expired.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "fx_service_status",
+      "description": "Backend fixture: active or a suspension reason.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "fx_recent_payment",
+      "description": "Backend fixture: none or posted_yesterday.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "fx_business_account",
+      "description": "Backend fixture: true for a business account.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "fx_outage_status",
+      "description": "Backend fixture: empty (regional table), active or none.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "fx_technician_status",
+      "description": "Backend fixture: scheduled, en_route or delayed.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "fx_duplicate_payment",
+      "description": "Backend fixture: true when the ledger shows a duplicate payment.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "fx_extra_bill_line",
+      "description": "Backend fixture: extra bill line as description|amount|lob.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "fx_device_warranty",
+      "description": "Backend fixture: in_warranty or out_of_warranty.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "fx_mfa_enabled",
+      "description": "Backend fixture: true when MFA is on.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "fx_sms_delivery",
+      "description": "Backend fixture: delivered or failed.",
       "schema": {
         "type": "STRING",
         "default": "",

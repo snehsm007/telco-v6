@@ -1,0 +1,10 @@
+{
+  "name": "send_sms_notification",
+  "displayName": "send_sms_notification",
+  "executionType": "SYNCHRONOUS",
+  "pythonFunction": {
+    "name": "send_sms_notification",
+    "description": "Texts the mobile number on file: outage restoration updates, a troubleshooting guide, a callback when an appointment slot opens, or a self-serve registration link. Needs the caller's account to be found first.",
+    "pythonCode": "tools/send_sms_notification/python_function/python_code.py"
+  }
+}

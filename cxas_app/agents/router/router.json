@@ -1,7 +1,7 @@
 {
   "name": "router",
   "displayName": "router",
-  "description": "First agent: greets the caller, finds their account and routes them to the agent that handles their goal. Never logs callers in.",
+  "description": "First agent: greets the caller, finds their account, handles fraud, business and live-agent requests, and routes everything else to the right specialist. Never logs callers in.",
   "instruction": "agents/router/instruction.txt",
   "tools": [
     "lookup_account",
@@ -9,7 +9,10 @@
     "end_session"
   ],
   "childAgents": [
-    "specialist"
+    "billing",
+    "tech_support",
+    "sales_equipment",
+    "account"
   ],
   "beforeModelCallbacks": [
     {

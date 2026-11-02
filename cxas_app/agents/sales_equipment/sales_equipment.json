@@ -1,0 +1,33 @@
+{
+  "name": "sales_equipment",
+  "displayName": "sales_equipment",
+  "description": "Sales and equipment: plan upgrades and add-ons, new orders, device warranty replacements, and transferring a number in from another provider.",
+  "instruction": "agents/sales_equipment/instruction.txt",
+  "tools": [
+    "lookup_account",
+    "send_login_code",
+    "check_login_code",
+    "check_secret_pin",
+    "browse_plans",
+    "place_order",
+    "file_warranty_claim",
+    "start_number_transfer",
+    "handover_to_person",
+    "end_session"
+  ],
+  "childAgents": [
+    "router"
+  ],
+  "beforeModelCallbacks": [
+    {
+      "pythonCode": "agents/sales_equipment/before_model_callbacks/language_prompt_filter/python_code.py",
+      "description": "Inject active call language instructions and verbatim lines"
+    }
+  ],
+  "afterModelCallbacks": [
+    {
+      "pythonCode": "agents/sales_equipment/after_model_callbacks/speech_hygiene/python_code.py",
+      "description": "Strip markdown and cut long numbers to their last 4 digits before the reply is spoken"
+    }
+  ]
+}

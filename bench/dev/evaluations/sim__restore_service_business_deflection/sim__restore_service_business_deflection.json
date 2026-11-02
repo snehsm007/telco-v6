@@ -10,7 +10,10 @@
     "rubrics": [],
     "scenarioExpectations": [],
     "userFacts": [],
-    "variableOverrides": {}
+    "variableOverrides": {
+      "fx_service_status": "suspended_nonpayment",
+      "fx_business_account": "true"
+    }
   },
   "tags": [
     "public",

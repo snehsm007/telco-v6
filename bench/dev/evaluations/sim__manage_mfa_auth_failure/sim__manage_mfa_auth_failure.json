@@ -10,7 +10,11 @@
     "rubrics": [],
     "scenarioExpectations": [],
     "userFacts": [],
-    "variableOverrides": {}
+    "variableOverrides": {
+      "fx_pin_on_file": "7315",
+      "fx_otp_on_file": "804627",
+      "fx_mfa_enabled": "true"
+    }
   },
   "tags": [
     "public",

@@ -23,8 +23,11 @@ WORLD_LANGUAGE_NAMES: dict[str, str] = {
 }
 
 AGENT_VERBATIM_KEYS: dict[str, tuple[str, ...]] = {
-    "router": ("greeting", "handover", "ai_disclosure", "malicious_closing", "recording_notice"),
-    "specialist": ("code_sent", "handover", "ai_disclosure", "malicious_closing", "recording_notice"),
+    "router": ("greeting_main", "restricted_caller", "live_agent_handoff", "business_handoff", "empathy_protocol", "recording_notice", "ai_disclosure", "malicious_closing"),
+    "billing": ("id_verification_otp", "id_verification_pin", "otp_callback_confirm", "payment_method_preamble", "refund_confirmation_pattern", "transfer_to_specialist", "live_agent_handoff", "business_handoff", "empathy_protocol", "recording_notice", "ai_disclosure", "malicious_closing"),
+    "tech_support": ("id_verification_otp", "id_verification_pin", "otp_callback_confirm", "outage_active", "live_agent_handoff", "business_handoff", "empathy_protocol", "recording_notice", "ai_disclosure", "malicious_closing"),
+    "sales_equipment": ("id_verification_otp", "id_verification_pin", "otp_callback_confirm", "live_agent_handoff", "business_handoff", "empathy_protocol", "recording_notice", "ai_disclosure", "malicious_closing"),
+    "account": ("id_verification_otp", "id_verification_pin", "otp_callback_confirm", "contract_cancellation_fee_disclosure", "live_agent_handoff", "business_handoff", "empathy_protocol", "recording_notice", "ai_disclosure", "malicious_closing"),
 }
 
 _FRENCH_MARKERS: frozenset[str] = frozenset({
@@ -255,14 +258,14 @@ def build_language_sheet(locale: str, agent_name: str = "router") -> str:
     """Generate dynamic language sheet containing localized rules and verbatim lines."""
     loc = resolve_locale(locale)
     lang_name = WORLD_LANGUAGE_NAMES.get(loc, loc)
-    keys = AGENT_VERBATIM_KEYS.get(agent_name, AGENT_VERBATIM_KEYS.get("router", ("greeting", "handover")))
+    keys = AGENT_VERBATIM_KEYS.get(agent_name, AGENT_VERBATIM_KEYS["router"])
 
     lines = [
         LANGUAGE_SHEET_SENTINEL,
         f'<active_language_sheet locale="{loc}" language="{lang_name}">',
     ]
 
-    if loc in ("en-US", "fr-CA", "es-US"):
+    if loc in ("en-US", "fr-CA"):
         lines.append("### Required Disclosures & Spoken Lines (Emit Exact Wording):")
         for k in keys:
             line_text = spoken_line(k, loc)
@@ -295,7 +298,7 @@ def build_language_sheet(locale: str, agent_name: str = "router") -> str:
         )
 
     lines.append("</active_language_sheet>")
-    return "\\n".join(lines)
+    return "\n".join(lines)
 
 
 def apply_language_prompt_filter(
@@ -319,7 +322,7 @@ def apply_language_prompt_filter(
     def _update_text(text: str) -> str:
         if LANGUAGE_SHEET_SENTINEL in text:
             text = text.split(LANGUAGE_SHEET_SENTINEL, 1)[0].rstrip()
-        return f"{text}\\n\\n{sheet}"
+        return f"{text}\n\n{sheet}"
 
     if isinstance(sys_inst, str):
         config.system_instruction = _update_text(sys_inst)
