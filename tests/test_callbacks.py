@@ -24,7 +24,7 @@ LANG_FILTER = {
 @pytest.mark.parametrize("name", AGENTS)
 def test_hygiene_prefers_caller_last4_and_strips_markdown(name: str) -> None:
     state = {"phone_last4": "0186", "caller_provided_phone_last4": "0199", "handover_complete": False}
-    resp = SimpleNamespace(content=SimpleNamespace(parts=[SimpleNamespace(text="**Your number ending in 0143 is ready.**")]))
+    resp = SimpleNamespace(content=SimpleNamespace(parts=[SimpleNamespace(text="**Your number ending in 0186 is ready.**")]))
     assert HYGIENE[name].after_model_callback(SimpleNamespace(state=state), resp) is resp
     assert resp.content.parts[0].text == "Your number ending in 0199 is ready."
 
