@@ -423,6 +423,8 @@ def get_state(  # pragma: no cover
         return session_state
     return {}
 
+DUMMY_NUMBERS: frozenset[str] = frozenset({"1234567890", "0123456789", "9876543210"})  # pragma: no cover
+
 def is_weak_code(digits: str) -> bool:  # pragma: no cover
     """A code made of one repeated digit (e.g. all sevens) is never a valid credential."""
     return bool(digits) and len(set(digits)) == 1
@@ -431,7 +433,7 @@ def is_plausible_phone(digits: str) -> bool:  # pragma: no cover
     """A 10-digit number that isn't one repeated digit or an obvious dummy run (Postel: accept generously)."""
     if len(digits) != 10 or not digits.isdigit():
         return False
-    return not is_weak_code(digits) and digits not in ("1234567890", "0123456789", "9876543210")
+    return not is_weak_code(digits) and digits not in DUMMY_NUMBERS
 
 OK_STATUS = _StatusStr("ok")  # pragma: no cover
 

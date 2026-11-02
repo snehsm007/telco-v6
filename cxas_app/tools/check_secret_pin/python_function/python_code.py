@@ -39,6 +39,10 @@ import re
 
 MAX_LOGIN_ATTEMPTS = 3  # pragma: no cover
 
+OTP_RE = re.compile(r"^[0-9]{6}$")  # pragma: no cover
+
+PIN_RE = re.compile(r"^[0-9]{4}$")  # pragma: no cover
+
 def read_count(state: dict[str, Any] | None, key: str) -> int:  # pragma: no cover
     """Read a whole-number variable; the platform hands them to tools as decimals (5 -> 5.0)."""
     if not isinstance(state, dict):
@@ -109,14 +113,14 @@ def login_code_accepted(code_digits: Any, attempts: int = 0, max_attempts: int =
 
     `attempts` is the number of wrong tries so far on this call:
       - weak codes (one repeated digit) and ALWAYS_WRONG_LOGIN_CODES never pass;
-      - first try (attempts == 0): any 4- to 8-digit code;
+      - first try (attempts == 0): any 4-digit PIN or 6-digit code;
       - second try: only VALID_LOGIN_CODES;
       - the last try (attempts == max_attempts - 1): always wrong.
     Lookups with a credential on file (fx_pin_on_file / fx_otp_on_file) bypass
     the ladder in lib/services.py and compare exactly.
     """
     digits = normalize_code(code_digits)
-    if not (4 <= len(digits) <= 8):
+    if not (PIN_RE.fullmatch(digits) or OTP_RE.fullmatch(digits)):
         return False
     if digits in ALWAYS_WRONG_LOGIN_CODES or is_weak_code(digits):
         return False
@@ -620,8 +624,11 @@ def check_login_code_impl(  # pragma: no cover
     if state.get("auth_status") == "locked" or _failures(state) >= MAX_LOGIN_ATTEMPTS:
         return _locked_reply(state, reference, lang)
     digits = normalize_code(code) or normalize_code(state.get("dtmf_digits"))
-    if not (4 <= len(digits) <= 8):
-        return validation_error(state, "A code has 4 to 8 digits.", "Ask the caller to say or key in the code again.", reference, lang)
+    if PIN_RE.fullmatch(digits) and not step_up:
+        # The caller gave their 4-digit PIN instead of the texted code.
+        return check_secret_pin_impl(digits, state=state, language=lang)
+    if not OTP_RE.fullmatch(digits):
+        return validation_error(state, "A verification code has 6 digits.", "Ask the caller to say or key in the 6-digit code again.", reference, lang)
     if not _credential_ok(state, digits, "code"):
         return _record_failure(state, reference, lang, "code")
     state["auth_failure_count"] = 0
@@ -659,7 +666,10 @@ def check_secret_pin_impl(  # pragma: no cover
     if state.get("auth_status") == "locked" or _failures(state) >= MAX_LOGIN_ATTEMPTS:
         return _locked_reply(state, reference, lang)
     digits = normalize_code(pin) or normalize_code(state.get("dtmf_digits"))
-    if not (4 <= len(digits) <= 8):
+    if OTP_RE.fullmatch(digits) and state.get("login_code_sent"):
+        # The caller read back the 6-digit texted code.
+        return check_login_code_impl(digits, state=state, language=lang)
+    if not PIN_RE.fullmatch(digits):
         return validation_error(state, "A PIN has 4 digits.", "Ask the caller to key in their 4-digit PIN again.", reference, lang)
     if not _credential_ok(state, digits, "pin"):
         return _record_failure(state, reference, lang, "pin")

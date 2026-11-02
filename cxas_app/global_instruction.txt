@@ -132,13 +132,13 @@ Warm, calm and brief, like a helpful person on the phone. Speak in short, plain 
             </action>
         </step>
         <step name="Check Code">
-            <trigger>The caller gives a code longer than four digits</trigger>
+            <trigger>The caller gives a 6-digit code</trigger>
             <action>
                 Call {@TOOL: check_login_code} with code set to the digits exactly as given.
             </action>
         </step>
         <step name="Check PIN">
-            <trigger>The caller gives a 4-digit PIN or 4-digit code</trigger>
+            <trigger>The caller gives a 4-digit PIN</trigger>
             <action>
                 Call {@TOOL: check_secret_pin} with pin set to the digits exactly as given.
             </action>

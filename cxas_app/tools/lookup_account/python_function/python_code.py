@@ -372,6 +372,8 @@ ACCOUNTS: tuple[dict[str, Any], ...] = (  # pragma: no cover
     },
 )
 
+DUMMY_NUMBERS: frozenset[str] = frozenset({"1234567890", "0123456789", "9876543210"})  # pragma: no cover
+
 def _synthetic_account(account_number: str, phone: str) -> dict[str, Any]:  # pragma: no cover
     """A record for a well-formed number this world doesn't know (fact-less simulated callers)."""
     base = dict(ACCOUNTS[0])
@@ -380,15 +382,17 @@ def _synthetic_account(account_number: str, phone: str) -> dict[str, Any]:  # pr
     base["first_name"] = ""
     return base
 
-def is_weak_code(digits: str) -> bool:  # pragma: no cover
-    """A code made of one repeated digit (e.g. all sevens) is never a valid credential."""
-    return bool(digits) and len(set(digits)) == 1
+ACCOUNT_NUMBER_RE = re.compile(r"^[0-9](?:[\s\-]?[0-9]){5,14}$")  # pragma: no cover
 
-def is_plausible_phone(digits: str) -> bool:  # pragma: no cover
-    """A 10-digit number that isn't one repeated digit or an obvious dummy run (Postel: accept generously)."""
-    if len(digits) != 10 or not digits.isdigit():
-        return False
-    return not is_weak_code(digits) and digits not in ("1234567890", "0123456789", "9876543210")
+ACCOUNT_REFERENCE_RE = re.compile(  # pragma: no cover
+    r"^(?=(?:[^0-9]*[0-9]){4})(?=.*[A-Za-z])[A-Za-z0-9](?:[A-Za-z0-9]|[\s\-](?=[A-Za-z0-9])){3,24}$"
+)
+
+PHONE_INTL_RE = re.compile(r"^(?:\+|00)[1-9](?:[\s.\-]?[0-9]){9,14}$")  # pragma: no cover
+
+PHONE_LOCAL_PAIRS_RE = re.compile(r"^0[1-9](?:[\s.\-]?[0-9]{2}){4}$")  # pragma: no cover
+
+PHONE_NANP_RE = re.compile(r"^(?:\+?1[\s.\-]?)?\(?[0-9]{3}\)?[\s.\-]?[0-9]{3}[\s.\-]?[0-9]{4}$")  # pragma: no cover
 
 def normalize_code(value: Any) -> str:  # pragma: no cover
     """Coerce ints, floats (e.g. 5903.0), and formatted strings into a clean digit string."""
@@ -405,38 +409,60 @@ def normalize_code(value: Any) -> str:  # pragma: no cover
         text = text.split(".", 1)[0]
     return "".join(ch for ch in text if ch.isdigit())
 
+def classify_identifier(raw: Any) -> tuple[str, str]:  # pragma: no cover
+    """Match a caller identifier against the format patterns.
+
+    Returns (kind, digits): kind is phone, intl_phone, account_number,
+    account_reference, or "" when no pattern matches.
+    """
+    text = re.sub(r"\.0+$", "", str(raw or "").strip())
+    digits = normalize_code(text)
+    if PHONE_NANP_RE.fullmatch(text):
+        return "phone", digits[-10:]
+    if PHONE_LOCAL_PAIRS_RE.fullmatch(text):
+        return "phone", digits
+    if PHONE_INTL_RE.fullmatch(text):
+        return "intl_phone", digits
+    if ACCOUNT_NUMBER_RE.fullmatch(text):
+        return "account_number", digits
+    if ACCOUNT_REFERENCE_RE.fullmatch(text):
+        return "account_reference", digits
+    return "", digits
+
+def is_weak_code(digits: str) -> bool:  # pragma: no cover
+    """A code made of one repeated digit (e.g. all sevens) is never a valid credential."""
+    return bool(digits) and len(set(digits)) == 1
+
+def is_plausible_phone(digits: str) -> bool:  # pragma: no cover
+    """A 10-digit number that isn't one repeated digit or an obvious dummy run (Postel: accept generously)."""
+    if len(digits) != 10 or not digits.isdigit():
+        return False
+    return not is_weak_code(digits) and digits not in DUMMY_NUMBERS
+
 def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
     """Find an account by phone number, account number or account reference.
 
-    Accept generously (DESIGN_RULES rule 43): fact-less callers invent numbers in
-    many formats (555-012-3456, European mobiles, 12-digit account numbers,
-    MOB-773421, ACCT-9988-XJ). Any of these resolves to a synthetic record; only
-    input with fewer than 4 digits, one repeated digit, or a dummy run is unknown.
+    The identifier must match one of the format patterns above. Within those
+    formats this accepts generously (DESIGN_RULES rule 43): fact-less callers
+    invent numbers, so a well-formed unknown identifier resolves to a synthetic
+    record. One repeated digit and dummy runs are never accounts.
     """
     raw_str = re.sub(r"\.0+$", "", str(identifier or "").strip())
-    raw = raw_str.upper()
-    if not raw:
+    if not raw_str:
         return None
-    has_alpha = any(c.isalpha() for c in raw_str)
+    raw = raw_str.upper()
     digits = normalize_code(raw_str)
     for record in ACCOUNTS:
-        if raw == record["account_id"] or (not has_alpha and digits and digits == record["phone"]):
+        if raw == record["account_id"] or (digits and digits == record["phone"] and not any(c.isalpha() for c in raw_str)):
             return dict(record)
-    if len(digits) < 4 or is_weak_code(digits):
+    kind, digits = classify_identifier(raw_str)
+    if not kind or is_weak_code(digits) or digits in DUMMY_NUMBERS:
         return None
-    if not has_alpha:
-        if len(digits) == 11 and digits.startswith("1"):
-            digits = digits[1:]
-        if len(digits) == 10:
-            return _synthetic_account(digits, digits) if is_plausible_phone(digits) else None
-        if raw_str.lstrip().startswith(("+", "00")) and 10 <= len(digits) <= 15:
-            return _synthetic_account(digits, digits[-10:])
-        if 6 <= len(digits) <= 15:
-            return _synthetic_account(digits, ACCOUNTS[0]["phone"])
-        return None
-    if re.fullmatch(r"[A-Z0-9][A-Z0-9 \-]{3,24}", raw) and len(digits) >= 4:
-        return _synthetic_account(digits, ACCOUNTS[0]["phone"])
-    return None
+    if kind == "phone":
+        return _synthetic_account(digits, digits) if is_plausible_phone(digits) else None
+    if kind == "intl_phone":
+        return _synthetic_account(digits, digits[-10:])
+    return _synthetic_account(digits, ACCOUNTS[0]["phone"])
 
 FIXTURE_DEFAULTS: dict[str, str] = {  # pragma: no cover
     "fx_pin_on_file": "",

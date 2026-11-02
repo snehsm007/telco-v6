@@ -45,6 +45,8 @@ from lib.fakes import (
     OTP_EXPIRES_IN_SEC,
     REGION_BY_POSTAL_LETTER,
     DEFAULT_REGION,
+    OTP_RE,
+    PIN_RE,
     find_account,
     login_code_accepted,
     normalize_code,
@@ -354,8 +356,11 @@ def check_login_code_impl(
     if state.get("auth_status") == "locked" or _failures(state) >= MAX_LOGIN_ATTEMPTS:
         return _locked_reply(state, reference, lang)
     digits = normalize_code(code) or normalize_code(state.get("dtmf_digits"))
-    if not (4 <= len(digits) <= 8):
-        return validation_error(state, "A code has 4 to 8 digits.", "Ask the caller to say or key in the code again.", reference, lang)
+    if PIN_RE.fullmatch(digits) and not step_up:
+        # The caller gave their 4-digit PIN instead of the texted code.
+        return check_secret_pin_impl(digits, state=state, language=lang)
+    if not OTP_RE.fullmatch(digits):
+        return validation_error(state, "A verification code has 6 digits.", "Ask the caller to say or key in the 6-digit code again.", reference, lang)
     if not _credential_ok(state, digits, "code"):
         return _record_failure(state, reference, lang, "code")
     state["auth_failure_count"] = 0
@@ -394,7 +399,10 @@ def check_secret_pin_impl(
     if state.get("auth_status") == "locked" or _failures(state) >= MAX_LOGIN_ATTEMPTS:
         return _locked_reply(state, reference, lang)
     digits = normalize_code(pin) or normalize_code(state.get("dtmf_digits"))
-    if not (4 <= len(digits) <= 8):
+    if OTP_RE.fullmatch(digits) and state.get("login_code_sent"):
+        # The caller read back the 6-digit texted code.
+        return check_login_code_impl(digits, state=state, language=lang)
+    if not PIN_RE.fullmatch(digits):
         return validation_error(state, "A PIN has 4 digits.", "Ask the caller to key in their 4-digit PIN again.", reference, lang)
     if not _credential_ok(state, digits, "pin"):
         return _record_failure(state, reference, lang, "pin")

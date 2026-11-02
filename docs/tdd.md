@@ -117,6 +117,8 @@ Which evals carry overrides is listed in `docs/requirements.md` §Eval fixtures,
 - When `fx_pin_on_file` / `fx_otp_on_file` is set, only that exact value passes, on any attempt.
 - Otherwise the ladder: attempt 1 accepts any well-formed code (4 digits for PIN, 4–8 for codes) that is not weak; attempt 2 accepts only `VALID_PINS | VALID_OTPS`; attempt 3 always fails.
 - Weak codes (all one repeated digit) always fail.
+- Formats are enforced with the patterns in `lib/fakes.py`: a verification code is exactly 6 digits (`OTP_RE`), a PIN exactly 4 (`PIN_RE`). Anything else is a validation error (re-ask, never a strike). A 4-digit value given to `check_login_code` is checked as a PIN; a 6-digit value given to `check_secret_pin` after a code was sent is checked as the code.
+- Caller identifiers must match `PHONE_NANP_RE`, `PHONE_LOCAL_PAIRS_RE`, `PHONE_INTL_RE`, `ACCOUNT_NUMBER_RE` (6–15 digits) or `ACCOUNT_REFERENCE_RE` (letters + at least 4 digits); one repeated digit and dummy runs are rejected.
 - One shared failure counter for codes and PINs per call; it survives account switches.
 - PIN entry: in text the caller's typed digits count as keypad entry; in voice, PIN capture uses DTMF (`dtmf_digits`). Tools read `dtmf_digits` when the argument is empty.
 

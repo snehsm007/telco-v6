@@ -361,7 +361,7 @@ tests:
       phone_last4: 0186
   - tool: check_login_code
     args:
-      code: '4444'
+      code: '444444'
     expected_status: error
     expected_error: WRONG_CODE
   - tool: check_login_code

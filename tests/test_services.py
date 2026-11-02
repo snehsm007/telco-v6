@@ -5,7 +5,7 @@ import json
 import pytest
 
 import lib.services as services
-from lib.fakes import ACCOUNTS, SPOKEN_LINES, VALID_OTPS, VALID_PINS
+from lib.fakes import ACCOUNTS, SPOKEN_LINES, VALID_OTPS, VALID_PINS, read_count
 from lib.replies import ERROR_CODES
 from lib.services import (
     ALL_TOOLS,
@@ -126,15 +126,15 @@ def test_lookup_service_status_comes_from_the_fixture() -> None:
 
 def test_switching_accounts_clears_the_login_but_keeps_the_failure_count() -> None:
     state = logged_in()
-    assert check_login_code_impl("4444", state=state)["status"] == "ok"  # already logged in
+    assert check_login_code_impl("444444", state=state)["status"] == "ok"  # already logged in
     lookup_account_impl(OTHER_PHONE, state=state)
     assert state["auth_status"] == "none" and state["logged_in"] is False
     assert state["step_up_verified"] is False
 
     state = identified()
     send_login_code_impl(state=state)
-    assert check_login_code_impl("4444", state=state)["error"] == "WRONG_CODE"
-    assert check_login_code_impl("4444", state=state)["error"] == "WRONG_CODE"
+    assert check_login_code_impl("444444", state=state)["error"] == "WRONG_CODE"
+    assert check_login_code_impl("444444", state=state)["error"] == "WRONG_CODE"
     lookup_account_impl(OTHER_PHONE, state=state)
     # The switch does not grant fresh attempts: the third try still locks.
     assert check_login_code_impl(OTP, state=state)["error"] == "TOO_MANY_ATTEMPTS"
@@ -202,7 +202,7 @@ def test_login_ladder_first_try_accepts_any_well_formed_code() -> None:
 
 def test_login_ladder_second_try_accepts_only_known_codes_third_always_fails() -> None:
     state = identified()
-    first = check_login_code_impl("4444", state=state)  # weak: always fails
+    first = check_login_code_impl("444444", state=state)  # weak: always fails
     assert first["error"] == "WRONG_CODE" and first["data"]["attempts_remaining"] == 2
     assert check_login_code_impl("314159", state=state)["error"] == "WRONG_CODE"
     third = check_login_code_impl(OTP, state=state)
@@ -212,16 +212,16 @@ def test_login_ladder_second_try_accepts_only_known_codes_third_always_fails() -
     assert state["auth_status"] == "locked"
 
     state = identified()
-    check_login_code_impl("4444", state=state)
+    check_login_code_impl("444444", state=state)
     ok = check_login_code_impl(OTP, state=state)
     assert ok["status"] == "ok"
     assert state["auth_failure_count"] == 0
 
 
-@pytest.mark.parametrize("weak", ["1111", "000000", "77777777"])
-def test_weak_codes_always_fail(weak: str) -> None:
-    assert check_login_code_impl(weak, state=identified())["error"] == "WRONG_CODE"
-    assert check_secret_pin_impl(weak, state=identified())["error"] == "WRONG_PIN"
+@pytest.mark.parametrize("weak_code,weak_pin", [("111111", "1111"), ("000000", "0000"), ("777777", "7777")])
+def test_weak_codes_always_fail(weak_code: str, weak_pin: str) -> None:
+    assert check_login_code_impl(weak_code, state=identified())["error"] == "WRONG_CODE"
+    assert check_secret_pin_impl(weak_pin, state=identified())["error"] == "WRONG_PIN"
 
 
 def test_exact_otp_on_file_overrides_the_ladder_on_any_attempt() -> None:
@@ -430,3 +430,20 @@ def test_every_error_code_used_here_is_documented() -> None:
             continue
         if code.isupper() and "_" in code:
             assert code in ERROR_CODES, code
+
+
+def test_code_and_pin_formats_are_enforced_and_routed() -> None:
+    state: dict = {}
+    lookup_account_impl("514-555-0199", state=state)
+    bad = check_login_code_impl("12345", state=state)
+    assert bad["error"] == "INVALID_INPUT" and read_count(state, "auth_failure_count") == 0
+    assert check_secret_pin_impl("123", state=state)["error"] == "INVALID_INPUT"
+    # A 4-digit PIN given to the code tool is checked as a PIN.
+    assert check_login_code_impl("2468", state=state)["status"] == "ok" and state["auth_status"] == "pass"
+
+
+def test_texted_code_given_to_the_pin_tool_is_checked_as_a_code() -> None:
+    state: dict = {}
+    lookup_account_impl("514-555-0199", state=state)
+    send_login_code_impl(state=state)
+    assert check_secret_pin_impl("482913", state=state)["status"] == "ok"

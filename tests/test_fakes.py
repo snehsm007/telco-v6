@@ -137,3 +137,41 @@ def test_login_ladder_for_codes_and_secret_pins() -> None:
     assert not login_code_accepted("123456789")
     assert not login_code_accepted("4444")  # weak
     assert all(not login_code_accepted(code) for code in ALWAYS_WRONG_LOGIN_CODES)
+
+
+import pytest  # noqa: E402
+
+from lib.fakes import OTP_RE, PIN_RE, classify_identifier  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "raw,kind",
+    [
+        ("514-555-0199", "phone"),
+        ("(514) 555-0199", "phone"),
+        ("514.555.0199", "phone"),
+        ("+1 514 555 0199", "phone"),
+        ("1-514-555-0199", "phone"),
+        ("06 12 34 56 78", "phone"),
+        ("+44 20 7946 0958", "intl_phone"),
+        ("0044 20 7946 0958", "intl_phone"),
+        ("883726152", "account_number"),
+        ("8827-4091-332", "account_number"),
+        ("MOB-773421", "account_reference"),
+        ("ACCT-9988-XJ", "account_reference"),
+    ],
+)
+def test_identifier_formats_accepted(raw: str, kind: str) -> None:
+    assert classify_identifier(raw)[0] == kind
+
+
+@pytest.mark.parametrize("raw", ["", "abc", "12-34", "12345", "+12", "514--555", "ABC-12", "#5145550199"])
+def test_identifier_formats_rejected(raw: str) -> None:
+    assert classify_identifier(raw)[0] == ""
+    assert find_account(raw) is None
+
+
+def test_credential_formats() -> None:
+    assert OTP_RE.fullmatch("482913") and not OTP_RE.fullmatch("48291") and not OTP_RE.fullmatch("4829130")
+    assert PIN_RE.fullmatch("5903") and not PIN_RE.fullmatch("590") and not PIN_RE.fullmatch("59031")
+    assert not login_code_accepted("59031", attempts=0)  # neither a PIN nor a code
