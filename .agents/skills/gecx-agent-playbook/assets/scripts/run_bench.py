@@ -39,7 +39,8 @@ Usage (normally through the Makefile):
   python3 scripts/run_bench.py --dry-run [--app <APP>]                          # no cloud calls
   python3 scripts/run_bench.py --self-test                                     # offline
 
-Exit codes: 0 ok, 1 error, 2 another push changed the app mid-run, 3 re-login needed.
+Exit codes: 0 ok, 1 error, 2 another push changed the app mid-run, 3 re-login needed,
+4 a --smoke run finished with GATE 1: stop (the report is still written).
 """
 
 from __future__ import annotations
@@ -1262,9 +1263,10 @@ def compute_smoke_gate(records: list[dict], outcomes: list[dict]) -> dict:
             )
         n = len(eval_recs)
         threshold = max(1, (2 * n + 2) // 3) if n else 2
-        any_exp_go = any(p >= threshold for p in exp_passes.values())
+        # The whole eval must pass in >= threshold runs; one expectation passing
+        # in enough runs while the eval fails is not a go.
         verdict_go = o["pass_runs"] >= threshold
-        eval_go = (verdict_go or any_exp_go) and not any(c["tool_errors"] for c in conv_rows)
+        eval_go = verdict_go and not any(c["tool_errors"] for c in conv_rows)
         per_eval[ve] = {
             "pass_runs": o["pass_runs"],
             "total_runs": n,
@@ -1902,6 +1904,15 @@ def sync_and_run_bench(args) -> int:
             file=sys.stderr,
         )
         return 2
+    return smoke_exit_code(payload)
+
+
+def smoke_exit_code(payload: dict) -> int:
+    """4 when a smoke run's Gate 1 verdict is stop, else 0 (the report is written either way)."""
+    gate = payload.get("smoke_gate") or {}
+    if gate and gate.get("gate_verdict") != "go":
+        print("GATE 1 stop: fix the failing evals before the next gate (see the report above).", file=sys.stderr)
+        return 4
     return 0
 
 
@@ -1990,6 +2001,28 @@ def _self_test() -> int:
     assert payload["comparison"]["newly_passing"][0]["ve_id"] == "VE-01"
     assert payload["comparison"]["regressions"][0]["ve_id"] == "VE-02"
     assert payload["smoke_gate"]["gate_verdict"] == "stop"  # VE-02 has 1/1 scored runs but no 2/3
+    assert smoke_exit_code(payload) == 4 and smoke_exit_code({"smoke_gate": {"gate_verdict": "go"}}) == 0
+    assert smoke_exit_code({}) == 0  # not a smoke run
+
+    # 3b. Gate 1 needs the whole eval to pass in >= 2/3 runs: one expectation passing
+    #     3/3 while the eval fails 2 of 3 runs is a stop, not a go.
+    def _smoke_rec(slot: int, passed: bool) -> dict:
+        exps = [{"prompt": "says the line", "outcome": 1}, {"prompt": "does the task", "outcome": 1 if passed else 2}]
+        return {"round": 0, "evaluation_run": run, "slot": slot, "evaluation": "ev/x",
+                "classification": "PASS" if passed else "FAIL", "tool_calls": [],
+                "raw": {"scenario_result": {"evaluation_expectation_results": exps}}}
+
+    one_exp = compute_smoke_gate(
+        [_smoke_rec(1, True), _smoke_rec(2, False), _smoke_rec(3, False)],
+        [{"ve_id": "VE-09", "evaluation_name": "ev/x", "total_runs": 3, "pass_runs": 1}],
+    )
+    assert one_exp["per_eval"]["VE-09"]["expectations"]["says the line"] == "3/3"
+    assert one_exp["per_eval"]["VE-09"]["eval_go"] is False and one_exp["gate_verdict"] == "stop", one_exp
+    two_of_three = compute_smoke_gate(
+        [_smoke_rec(1, True), _smoke_rec(2, True), _smoke_rec(3, False)],
+        [{"ve_id": "VE-09", "evaluation_name": "ev/x", "total_runs": 3, "pass_runs": 2}],
+    )
+    assert two_of_three["gate_verdict"] == "go", two_of_three
     md = render_report_md(payload)
     assert "GATE 1 SMOKE RUN" in md and "| VE-01 |" in md and "Efficiency (passing runs only)" in md
     assert "strict 3/3:" in md

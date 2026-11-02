@@ -869,7 +869,7 @@ def scan_localized_sibling_keys_ast(
     rel_path: str,
     content: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Scan reply dicts in lib/services.py / lib/replies.py for localized sibling keys."""
+    """Scan reply dicts in lib/ tool modules (services, core, domain modules, replies) for localized sibling keys."""
     findings: list[dict[str, Any]] = []
     if content is None:
         try:
@@ -1340,7 +1340,9 @@ def check_app(
                         allowed_lower=allowed_lower,
                     )
                 )
-            if py_path.name in ("services.py", "replies.py"):
+            if py_path.name != "fakes.py":
+                # Every tool module builds replies: services.py, core.py, the domain
+                # modules (billing.py, tech.py, ...) and replies.py.
                 findings.extend(
                     scan_localized_sibling_keys_ast(
                         py_path,
@@ -1572,6 +1574,55 @@ def _run_self_test() -> int:
         assert res_clean["ok"], f"Expected clean app to pass, got: {res_clean}"
         assert res_clean["warning_count"] == 0, f"Expected 0 warnings, got: {res_clean}"
         assert res_clean["fake_values_checked"] and res_clean["expected_phrases_checked"], res_clean
+
+        # 1b. Per-scenario fixtures: a domain module that reads fx_* fixtures and compares
+        #     them with enum values is clean; hard-coding a credential seeded by a
+        #     scenario's variableOverrides is a leak; sibling keys in any tool module fail.
+        (bench_dir / "pin_retry.json").write_text(
+            json.dumps(
+                {
+                    "displayName": "pin_retry",
+                    "scenario": {
+                        "task": "Enter the wrong PIN first, then the right one.",
+                        "variableOverrides": {
+                            "fx_pin_on_file": "4321",
+                            "fx_service_status": "suspended_nonpayment",
+                            "fx_recent_payment": "posted_yesterday",
+                            "fx_business_account": "true",
+                            "fx_extra_bill_line": "Internet service overcharge|15.00|internet",
+                        },
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        (lib_dir / "core.py").write_text(
+            "def fixture(state, name):\n    return str(state.get(name) or '')\n",
+            encoding="utf-8",
+        )
+        (lib_dir / "billing.py").write_text(
+            "from lib.core import fixture\n"
+            "def restore_impl(state):\n"
+            '    if fixture(state, "fx_service_status") == "suspended_nonpayment" and '
+            'fixture(state, "fx_recent_payment") == "posted_yesterday":\n'
+            '        line = fixture(state, "fx_extra_bill_line").split("|")\n'
+            '        return {"status": "ok", "data": {"pin_on_file": bool(fixture(state, "fx_pin_on_file")), "line": line}}\n'
+            '    return {"status": "ok", "data": {}}\n',
+            encoding="utf-8",
+        )
+        res_fx = run()
+        assert res_fx["ok"] and res_fx["warning_count"] == 0, f"Fixture reads must be clean: {res_fx}"
+        (lib_dir / "billing.py").write_text(
+            "def check_pin_impl(pin):\n"
+            '    return {"status": "ok", "data": {"ok": pin == "4321", "message_fr": "x"}}\n',
+            encoding="utf-8",
+        )
+        found_fx = {(f["code"], f["file"]) for f in run()["findings"]}
+        assert ("LEAKED_EVAL_LITERAL", "lib/billing.py") in found_fx, found_fx
+        assert ("LOCALIZED_SIBLING_KEY", "lib/billing.py") in found_fx, found_fx
+        (lib_dir / "billing.py").unlink()
+        (lib_dir / "core.py").unlink()
+        (bench_dir / "pin_retry.json").unlink()
 
         # 2. Overfitted and bloated agent.
         (agent_dir / "instruction.txt").write_text(
