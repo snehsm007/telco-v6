@@ -430,6 +430,20 @@ NEXT_BILL_CYCLE_DAYS = 30
 DISPUTE_ETA_BUSINESS_DAYS = 10
 RECENT_PAYMENT_DAYS_AGO = 1          # fx_recent_payment=posted_yesterday
 CARD_BRANDS_BY_PREFIX: dict[str, str] = {"4": "Visa", "5": "Mastercard", "2": "Mastercard", "3": "American Express"}
+# Autopay follow-up facts (DESIGN_RULES rule 33), (en-US, fr-CA). [days] = bill date to due date.
+AUTOPAY_WITHDRAWAL_NOTE = (
+    "Autopay charges the full statement balance on each bill's due date, [days] days after the bill date.",
+    "Le paiement préautorisé prélève le solde total du relevé à la date d'échéance de chaque facture, [days] jours après la date de facturation.",
+)
+BILL_DATE_CHANGE_NOTE = (
+    "The monthly bill date is set by the account's billing cycle and can't be changed; autopay always follows each bill's due date.",
+    "La date de facturation mensuelle est fixée par le cycle de facturation du compte et ne peut pas être modifiée; le paiement préautorisé suit toujours la date d'échéance de chaque facture.",
+)
+AUTOPAY_DISCOUNT = "0.00"
+AUTOPAY_DISCOUNT_NOTE = (
+    "There's no discount or incentive for autopay; it makes sure each bill is paid on time, with no fee.",
+    "Le paiement préautorisé ne donne pas de rabais ni d'avantage; il assure que chaque facture est payée à temps, sans frais.",
+)
 # --- end billing fixtures ---
 
 

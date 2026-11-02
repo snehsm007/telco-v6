@@ -13,8 +13,8 @@ def setup_autopay(
 
     Args:
       payment_method: card_on_file, new_card or bank_account.
-      card_number: Full card number for new_card (or bank account number), exactly as
-        given; empty for card_on_file.
+      card_number: The last 4 digits of the card the caller named, or a keyed card
+        number (or bank account number), exactly as given; empty for card_on_file.
       language: Active language code (en-US or fr-CA).
 
     Returns:
@@ -49,6 +49,55 @@ BILL_DUE_IN_DAYS = 18  # pragma: no cover
 NEXT_BILL_CYCLE_DAYS = 30  # pragma: no cover
 
 _BILL_ZERO = Decimal("0.00")  # pragma: no cover
+
+AUTOPAY_DISCOUNT = "0.00"  # pragma: no cover
+
+AUTOPAY_DISCOUNT_NOTE = (  # pragma: no cover
+    "There's no discount or incentive for autopay; it makes sure each bill is paid on time, with no fee.",
+    "Le paiement préautorisé ne donne pas de rabais ni d'avantage; il assure que chaque facture est payée à temps, sans frais.",
+)
+
+AUTOPAY_WITHDRAWAL_NOTE = (  # pragma: no cover
+    "Autopay charges the full statement balance on each bill's due date, [days] days after the bill date.",
+    "Le paiement préautorisé prélève le solde total du relevé à la date d'échéance de chaque facture, [days] jours après la date de facturation.",
+)
+
+BILL_CYCLE_DAYS_AGO = 3  # pragma: no cover
+
+BILL_DATE_CHANGE_NOTE = (  # pragma: no cover
+    "The monthly bill date is set by the account's billing cycle and can't be changed; autopay always follows each bill's due date.",
+    "La date de facturation mensuelle est fixée par le cycle de facturation du compte et ne peut pas être modifiée; le paiement préautorisé suit toujours la date d'échéance de chaque facture.",
+)
+
+def _bill_text(lang: str, en: str, fr: str) -> str:  # pragma: no cover
+    """One localized string in the call language (DESIGN_RULES rule 5: no sibling keys)."""
+    return fr if lang == "fr-CA" else en
+
+def display_amount(value: Any) -> str:  # pragma: no cover
+    """Format money for the agent to say: 85.5 -> "85.50" (two decimals, half-up rounding).
+
+    Return it next to the number, never instead of it:
+    {"amount": 85.5, "amount_display": "85.50", "currency": "CAD"}.
+    """
+    if isinstance(value, bool) or value is None:
+        raise ValueError(f"not an amount: {value!r}")
+    try:
+        amount = Decimal(str(value).replace(",", "").strip())
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(f"not an amount: {value!r}") from exc
+    if not amount.is_finite():
+        raise ValueError(f"not an amount: {value!r}")
+    return str(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+def _bill_autopay_facts(lang: str) -> dict[str, str]:  # pragma: no cover
+    """Turn N+1 autopay facts (DESIGN_RULES rule 33): withdrawal day, bill date change, discount."""
+    days = BILL_CYCLE_DAYS_AGO + BILL_DUE_IN_DAYS
+    return {
+        "autopay_withdrawal_note": _bill_text(lang, *AUTOPAY_WITHDRAWAL_NOTE).replace("[days]", str(days)),
+        "bill_date_change_note": _bill_text(lang, *BILL_DATE_CHANGE_NOTE),
+        "autopay_discount_display": display_amount(AUTOPAY_DISCOUNT),
+        "autopay_discount_note": _bill_text(lang, *AUTOPAY_DISCOUNT_NOTE),
+    }
 
 _EN_DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")  # pragma: no cover
 
@@ -111,8 +160,6 @@ PAST_DUE_AMOUNT = "87.65"  # pragma: no cover
 def _bill_charges_total(lines: list[dict[str, Any]]) -> Decimal:  # pragma: no cover
     return sum((Decimal(str(line["amount"])) for line in lines), _BILL_ZERO)
 
-BILL_CYCLE_DAYS_AGO = 3  # pragma: no cover
-
 BILL_EXTRA_LINES: tuple[dict[str, Any], ...] = (  # pragma: no cover
     {"charge_id": "CH-STR-01", "description": "AppleStreaming purchase", "amount": "12.50", "lob": "tv", "days_ago": 7},
     {"charge_id": "CH-LD-01", "description": "Long distance calls", "amount": "18.40", "lob": "mobility", "days_ago": 12},
@@ -150,10 +197,6 @@ SERVICE_PRICES: dict[str, str] = {  # pragma: no cover
     "tv": "42.00",
     "homephone": "28.00",
 }
-
-def _bill_text(lang: str, en: str, fr: str) -> str:  # pragma: no cover
-    """One localized string in the call language (DESIGN_RULES rule 5: no sibling keys)."""
-    return fr if lang == "fr-CA" else en
 
 ACCOUNTS: tuple[dict[str, Any], ...] = (  # pragma: no cover
     {
@@ -225,22 +268,6 @@ def fixture(state: dict[str, Any] | None, name: str) -> str:  # pragma: no cover
     return raw.strip().lower() if name not in ("fx_pin_on_file", "fx_otp_on_file", "fx_extra_bill_line") else raw.strip()
 
 CURRENCY = "CAD"  # pragma: no cover
-
-def display_amount(value: Any) -> str:  # pragma: no cover
-    """Format money for the agent to say: 85.5 -> "85.50" (two decimals, half-up rounding).
-
-    Return it next to the number, never instead of it:
-    {"amount": 85.5, "amount_display": "85.50", "currency": "CAD"}.
-    """
-    if isinstance(value, bool) or value is None:
-        raise ValueError(f"not an amount: {value!r}")
-    try:
-        amount = Decimal(str(value).replace(",", "").strip())
-    except (InvalidOperation, ValueError) as exc:
-        raise ValueError(f"not an amount: {value!r}") from exc
-    if not amount.is_finite():
-        raise ValueError(f"not an amount: {value!r}")
-    return str(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 def to_decimal(value: Any) -> Decimal | None:  # pragma: no cover
     """Parse a caller or model amount ("$85.50", 85.5, "85,50") into Decimal; None when not a number."""
@@ -785,20 +812,25 @@ def _bill_resolve_method(  # pragma: no cover
             return None, _bill_decline(state, card["last4"], "CARD_DECLINED" if card["status"] == "declined" else "CARD_EXPIRED", lang, reference, tool)
         return {"method": method, "last4": card["last4"], "brand": card["brand"]}, None
     if method == "new_card":
-        if len(digits) in (0, 4):
-            # Only a card ending (or nothing) so far: ask for the full number. Incomplete,
-            # not malformed, so it does not count towards too_many_errors.
+        if not digits:
+            # No card named yet. Incomplete, not malformed: not counted towards too_many_errors.
             return None, _bill_finish(
                 state,
                 error_reply(
                     "INVALID_INPUT",
-                    "The full card number is needed for a new card.",
-                    "Ask the caller to enter the full card number.",
+                    "No card was given.",
+                    "Ask which card to use by its last four digits, or to key the card number on the keypad.",
                     reference,
                     language=lang,
-                    data={"needs_full_card_number": True, "card_ending_given": digits},
+                    data={"needs_card": True},
                 ),
             )
+        if len(digits) == 4:
+            # A card the caller names by its ending is one they already hold on file or keyed
+            # upstream (prd.md §10: card digits are tokenized upstream, never spoken in full).
+            if digits in DECLINED_CARD_LAST4 or digits == str(state.get("declined_card_last4") or ""):
+                return None, _bill_decline(state, digits, "CARD_DECLINED", lang, reference, tool)
+            return {"method": method, "last4": digits, "brand": ""}, None
         if not 13 <= len(digits) <= 19:
             return None, validation_error(
                 state,
@@ -1003,6 +1035,7 @@ def setup_autopay_impl(  # pragma: no cover
         "first_charge_date": first["iso"],
         "first_charge_date_display": first["display"],
         "charges": "full_statement_balance_on_due_date",
+        **_bill_autopay_facts(lang),
         "current_balance_included": live["balance"] > _BILL_ZERO,
         **money(live["balance"], "balance_due"),
         "confirmation_sms_sent": True,
