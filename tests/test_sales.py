@@ -305,6 +305,17 @@ def test_transfer_pending_until_provider_account_given() -> None:
     assert len(pending["agent_action"]) <= 120
 
 
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_transfer_without_provider_name_uses_number_lookup(lang: str) -> None:
+    """Callers often don't know the losing carrier; portability lookup finds it from the number."""
+    state = _logged_in(language=lang)
+    reply = start_number_transfer_impl("(416) 555-0123", "", "AC-55120", "", "new line", state=state)
+    data = reply["data"]
+    assert data["status"] == "submitted" and data["transfer_started"] is True
+    assert data["provider_found_by_lookup"] is True
+    assert data["current_provider"] == SALES_COPY["port_provider_lookup"][lang]
+
+
 def test_transfer_new_line_submitted_once_without_pin_echo() -> None:
     state = _logged_in()
     reply = start_number_transfer_impl("416.555.0123", "Other Mobile", "AC-55120", "73519", "add my daughter", state=state)

@@ -693,6 +693,11 @@ def start_number_transfer_impl(
             state, "A transfer PIN has 4 to 10 digits.", "Ask for the transfer PIN again; never repeat it back.", reference, lang
         )
     provider = "" if _sales_placeholder(current_provider) else str(current_provider).strip()
+    # Number portability: the losing carrier is identified from the number itself,
+    # so a caller who doesn't know the provider's name is never blocked on it.
+    provider_found_by_lookup = not provider
+    if provider_found_by_lookup:
+        provider = _sales_text("port_provider_lookup", lang)
 
     target_digits = normalize_code(target_line)
     target_last4 = ""
@@ -704,12 +709,13 @@ def start_number_transfer_impl(
     else:
         target = "existing_line"
 
-    missing = [name for name, val in (("current_provider", provider), ("current_account_number", account_number)) if not val]
+    missing = [name for name, val in (("current_account_number", account_number),) if not val]
     eta = _sales_port_eta(number_type, lang)
     data: dict[str, Any] = {
         "number_last4": number[-4:],
         "number_type": number_type,
         "current_provider": provider,
+        "provider_found_by_lookup": provider_found_by_lookup,
         "current_account_number_last4": account_number[-4:] if account_number else "",
         "transfer_pin_received": bool(pin_digits),
         "target": target,

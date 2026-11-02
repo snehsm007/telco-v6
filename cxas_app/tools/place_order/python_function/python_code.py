@@ -204,6 +204,10 @@ SALES_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "Trade-in credit toward a new phone",
         "fr-CA": "Un crédit d'échange applicable à un nouveau téléphone",
     },
+    "port_provider_lookup": {
+        "en-US": "the current provider on record for that number (found by number lookup)",
+        "fr-CA": "le fournisseur actuel inscrit pour ce numéro (trouvé par recherche de numéro)",
+    },
     "port_keep_active": {
         "en-US": "Keep the service with the current provider active until the transfer is done; it closes automatically when the number moves.",
         "fr-CA": "Gardez le service actif chez le fournisseur actuel jusqu'à la fin du transfert; il se ferme automatiquement quand le numéro est transféré.",
