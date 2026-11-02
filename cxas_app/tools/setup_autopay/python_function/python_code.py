@@ -785,6 +785,20 @@ def _bill_resolve_method(  # pragma: no cover
             return None, _bill_decline(state, card["last4"], "CARD_DECLINED" if card["status"] == "declined" else "CARD_EXPIRED", lang, reference, tool)
         return {"method": method, "last4": card["last4"], "brand": card["brand"]}, None
     if method == "new_card":
+        if len(digits) in (0, 4):
+            # Only a card ending (or nothing) so far: ask for the full number. Incomplete,
+            # not malformed, so it does not count towards too_many_errors.
+            return None, _bill_finish(
+                state,
+                error_reply(
+                    "INVALID_INPUT",
+                    "The full card number is needed for a new card.",
+                    "Ask the caller to enter the full card number.",
+                    reference,
+                    language=lang,
+                    data={"needs_full_card_number": True, "card_ending_given": digits},
+                ),
+            )
         if not 13 <= len(digits) <= 19:
             return None, validation_error(
                 state,

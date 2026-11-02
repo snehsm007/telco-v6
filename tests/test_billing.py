@@ -280,6 +280,18 @@ def test_last4_of_another_card_needs_full_number():
     assert reply["error"] == "INVALID_INPUT"
 
 
+def test_card_ending_only_does_not_count_as_a_hard_error():
+    state = logged_in()
+    for _ in range(3):
+        reply = process_bill_payment_impl("", "new_card", "6150", state=state)
+        assert reply["error"] == "INVALID_INPUT"
+        assert reply["data"]["card_ending_given"] == "6150"
+    assert not state.get("global_err_count")
+    short = process_bill_payment_impl("", "new_card", "51051051", state=state)
+    assert short["error"] == "INVALID_INPUT"
+    assert state["global_err_count"] == 1
+
+
 def test_full_number_with_card_on_file_wording_is_a_new_card():
     reply = process_bill_payment_impl("", "credit card", NEW_CARD, state=logged_in())
     assert reply["data"]["payment_method"] == "new_card"

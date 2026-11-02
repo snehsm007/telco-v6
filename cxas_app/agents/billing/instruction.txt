@@ -179,16 +179,16 @@ EXCEPTION — a handover to a person is one turn: the transfer sentence, {@TOOL:
         </step>
     </subtask>
     <subtask name="M3 Restore From Non-Payment">
+        <step name="Caller Says Already Paid">
+            <trigger>The caller says, now or earlier in the call, that they already paid the overdue amount</trigger>
+            <action>
+                Call {@TOOL: verify_payment_and_restore}.
+            </action>
+        </step>
         <step name="Suspended For Non-Payment">
             <trigger>The caller wants service restored and the service_status is "suspended_nonpayment"</trigger>
             <action>
                 Say the service is suspended for non-payment and give the amount_to_restore_display. Offer to pay it now, or a payment arrangement if they can't today.
-            </action>
-        </step>
-        <step name="Caller Says Already Paid">
-            <trigger>The caller says they already paid the overdue amount</trigger>
-            <action>
-                Call {@TOOL: verify_payment_and_restore}.
             </action>
         </step>
         <step name="No Payment Found">
