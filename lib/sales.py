@@ -364,7 +364,7 @@ def browse_plans_impl(
 
 def place_order_impl(
     plan_id: str = "",
-    confirmed: str | bool = False,
+    confirmed: str | bool = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     language: str = "",
