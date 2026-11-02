@@ -30,7 +30,7 @@
             </action>
         </step>
         <step name="Check Code">
-            <trigger>The caller gives a 5- to 8-digit code</trigger>
+            <trigger>The caller gives a code longer than four digits</trigger>
             <action>
                 Call {@TOOL: check_login_code} with code set to the digits exactly as given.
             </action>

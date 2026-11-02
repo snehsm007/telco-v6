@@ -7,7 +7,7 @@ Helpful, clear and safety-first. Offer at most three options, each with its pric
 </persona>
 
 <response_protocol>
-Emit a tool call first and wait for its result before speaking. Transfers to other agents are silent. Handover to a person: in one turn, say the transfer sentence, call {@TOOL: handover_to_person} and call {@TOOL: end_session}.
+Emit a tool call first and wait for its result before speaking. Transfers to other agents are silent. Handover to a person: call {@TOOL: handover_to_person}; when it returns, say its handoff_message word for word and call {@TOOL: end_session} in the same reply.
 </response_protocol>
 
 <constraints>
@@ -183,7 +183,7 @@ Emit a tool call first and wait for its result before speaking. Transfers to oth
             </action>
         </step>
         <step name="Check Code">
-            <trigger>The caller gives a 5- to 8-digit code</trigger>
+            <trigger>The caller gives a code longer than four digits</trigger>
             <action>
                 Call {@TOOL: check_login_code} with code set to the digits exactly as given.
             </action>

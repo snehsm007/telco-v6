@@ -45,7 +45,7 @@ def render_wrapper(spec: dict) -> str:
         if default is None:
             sig_lines.append(f"    {p['name']}: {p['type']},")
         else:
-            sig_lines.append(f"    {p['name']}: {p['type']} = {json.dumps(default)},")
+            sig_lines.append(f"    {p['name']}: {p['type']} = {default!r},")
     doc_args = "\n".join(_wrap(f"{p['name']}: {p['doc']}", "      ") for p in params)
     call_args = "\n".join(f"        {p['name']}={p['name']}," for p in params)
     desc = _wrap(spec["description"], "    ").lstrip()
