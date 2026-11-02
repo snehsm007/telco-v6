@@ -153,6 +153,14 @@ SALES_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "The transferred number replaces the current number on that line when the transfer completes.",
         "fr-CA": "Le numéro transféré remplacera le numéro actuel de cette ligne à la fin du transfert.",
     },
+    "latency_fibre": {
+        "en-US": "Fibre has low latency, typically under 10 milliseconds on a wired connection, well suited to video calls.",
+        "fr-CA": "La fibre a une faible latence, habituellement moins de 10 millisecondes sur une connexion câblée, idéale pour les appels vidéo.",
+    },
+    "new_line_pricing": {
+        "en-US": "Added as an additional line, the plan adds its own price to the account and the current line keeps its plan; as a plan change, it replaces the current mobile plan.",
+        "fr-CA": "Ajouté comme ligne supplémentaire, le forfait ajoute son propre prix au compte et la ligne actuelle garde son forfait; comme changement de forfait, il remplace le forfait mobile actuel.",
+    },
 }
 
 def resolve_locale(language: str | None) -> str:  # pragma: no cover

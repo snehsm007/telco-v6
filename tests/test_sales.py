@@ -344,3 +344,50 @@ def test_transfer_validation() -> None:
     assert start_number_transfer_impl("4165550123", "X", "123456", "12", state=_logged_in())["error"] == "INVALID_INPUT"
     assert start_number_transfer_impl("4165550123", state=_identified())["error"] == "NOT_LOGGED_IN"
     assert start_number_transfer_impl("4165550123", state={"mock_error": "x"})["error"] == "SYSTEM_UNAVAILABLE"
+
+
+# ----------------------------------------------------------------------------- follow-up facts (DEF C5 / C11)
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_browse_internet_plans_carry_upload_symmetry_and_latency(lang: str) -> None:
+    reply = browse_plans_impl("internet", need="work from home video calls", state=_identified(), language=lang)
+    plans = reply["data"]["plans"]
+    assert plans
+    for plan in plans:
+        assert plan["upload_speed_display"] == plan["speed_display"]
+        assert plan["symmetric"] is True
+        assert plan["latency_note"]
+    assert ("Gbit/s" in plans[0]["upload_speed_display"]) == (lang == "fr-CA")
+    assert not [k for k in _keys(reply) if SIBLING.search(k)]
+
+
+def test_browse_tv_addons_carry_channel_examples_and_hd() -> None:
+    en = browse_plans_impl("tv", need="sports", state=_identified())["data"]["plans"][0]
+    fr = browse_plans_impl("tv", need="sports", state=_identified(), language="fr-CA")["data"]["plans"][0]
+    assert en["plan_id"] == "TV-SPORTS" and en["hd_included"] is True
+    assert len(en["channel_examples"]) >= 3
+    assert len(fr["channel_examples"]) == len(en["channel_examples"]) and fr["channel_examples"] != en["channel_examples"]
+
+
+def test_place_order_mobility_quote_has_unambiguous_new_line_price() -> None:
+    quote = place_order_impl("MOB-20", False, state=_logged_in())["data"]
+    plan_price = float(next(p for p in PLANS if p["plan_id"] == "MOB-20")["price"])
+    account_total = sum(float(v) for v in SERVICE_PRICES.values())
+    assert quote["new_line_monthly_price"] == pytest.approx(plan_price)
+    assert quote["new_line_account_monthly_total"] == pytest.approx(account_total + plan_price)
+    assert quote["new_line_pricing_note"]
+    assert "new_line_monthly_price" not in place_order_impl("INT-1G", False, state=_logged_in())["data"]
+
+
+def test_warranty_unknown_named_model_is_not_swapped_for_a_device_on_file() -> None:
+    state = _logged_in()
+    reply = file_warranty_claim_impl("Orbit Z9 Max", "screen flickers", False, False, state=state)
+    data = reply["data"]
+    assert data["device_model"] == "Orbit Z9 Max"
+    assert data["device_matched"] is False
+    assert data["in_warranty"] is True and data["claim_filed"] is True
+    assert all(d["model"] not in str(reply) for d in DEVICES_ON_FILE)
+    old = file_warranty_claim_impl("Orbit Z9 Max", "mic dead", state=_logged_in(fx_device_warranty="out_of_warranty"))
+    assert old["error"] == "NOT_ELIGIBLE" and old["data"]["device_model"] == "Orbit Z9 Max"
+    assert file_warranty_claim_impl("mon téléphone", "écran", False, False, state=_logged_in())["data"]["device_matched"] is False

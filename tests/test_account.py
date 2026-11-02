@@ -481,3 +481,21 @@ def test_no_shared_default_state_between_calls() -> None:
     second = manage_mfa_impl("enable")
     assert first["error"] == second["error"] == "NOT_LOGGED_IN"
     assert send_password_reset_link_impl()["error"] == "NOT_IDENTIFIED"
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_cancel_quote_and_confirmation_say_other_services_and_final_bill(lang: str) -> None:
+    state = _logged_in(language=lang)
+    quote = cancel_or_port_out_service_impl("homephone", "cancel", state=state, language=lang)
+    assert quote["error"] == "CONFIRMATION_REQUIRED"
+    assert quote["data"]["other_services_note"] and quote["data"]["final_bill_note"]
+    done = cancel_or_port_out_service_impl("homephone", "cancel", confirmed=True, state=state, language=lang)
+    assert done["data"]["other_services_note"] == quote["data"]["other_services_note"]
+    assert done["data"]["final_bill_note"]
+
+
+def test_mfa_enable_says_what_to_do_if_the_phone_is_lost() -> None:
+    on = manage_mfa_impl("enable", state=_logged_in())
+    assert "PIN" in on["data"]["lost_phone_note"]
+    fr = manage_mfa_impl("enable", state=_logged_in(), language="fr-CA")
+    assert "NIP" in fr["data"]["lost_phone_note"]

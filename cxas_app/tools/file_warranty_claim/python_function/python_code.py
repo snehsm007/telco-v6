@@ -98,13 +98,62 @@ DEVICES_ON_FILE: tuple[dict[str, Any], ...] = (  # pragma: no cover
     {"device_id": "DEV-03", "model": "Google Pixel 8", "keywords": ["pixel", "google"], "purchased_days_ago": 120},
 )
 
+SALES_GENERIC_DEVICE_WORDS: frozenset[str] = frozenset({  # pragma: no cover
+    "my", "the", "a", "an", "this", "it", "old", "new", "current", "phone", "cell", "cellphone", "smartphone",
+    "mobile", "device", "handset", "mon", "ma", "le", "la", "un", "une", "ce", "téléphone", "telephone",
+    "cellulaire", "appareil", "portable", "intelligent",
+})
+
+SALES_PLACEHOLDERS: frozenset[str] = frozenset(  # pragma: no cover
+    {"", "unknown", "external", "none", "n/a", "na", "tbd", "pending", "not sure", "?", "inconnu", "aucun", "other", "autre"}
+)
+
+def _sales_placeholder(value: Any) -> bool:  # pragma: no cover
+    return str(value if value is not None else "").strip().lower() in SALES_PLACEHOLDERS
+
+def normalize_code(value: Any) -> str:  # pragma: no cover
+    """Coerce ints, floats (e.g. 5903.0), and formatted strings into a clean digit string."""
+    if value is None or isinstance(value, bool):
+        return ""
+    if isinstance(value, int):
+        return str(abs(value))
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(abs(value)))
+        return re.sub(r"\D", "", str(value))
+    text = str(value).strip()
+    if re.fullmatch(r"[+-]?\d+\.0+", text):
+        text = text.split(".", 1)[0]
+    return "".join(ch for ch in text if ch.isdigit())
+
+def tracking_id(tool: str, *inputs: object) -> str:  # pragma: no cover
+    """Return a reference number built from the tool name and its inputs.
+
+    The same inputs always give the same number, so a retried call can't
+    create a second record under a new number.
+    """
+    raw = "|".join([tool, *(str(value).strip().lower() for value in inputs)])
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return "R" + str(int(digest[:8], 16) % 1_000_000).zfill(6)
+
 def _sales_device(device: Any, issue: Any) -> tuple[dict[str, Any], bool]:  # pragma: no cover
-    """Match the caller's words to a device on file; fall back to the most recent purchase."""
+    """Match the caller's words to a device on file.
+
+    A model the caller names that isn't on file gets a record of its own (same default
+    purchase age as the newest device), so a claim is never filed for a phone they don't
+    own; only a generic "my phone" falls back to the most recent purchase.
+    """
     text = f"{device or ''} {issue or ''}".lower()
     for dev in DEVICES_ON_FILE:
         if any(k in text for k in dev.get("keywords", [])) or str(dev["model"]).lower() in text:
             return dev, True
-    return min(DEVICES_ON_FILE, key=lambda d: int(d["purchased_days_ago"])), False
+    newest = min(DEVICES_ON_FILE, key=lambda d: int(d["purchased_days_ago"]))
+    named = " ".join(str(device or "").split())[:60]
+    words = re.findall(r"[^\W_]+", named.lower())
+    if _sales_placeholder(named) or all(w in SALES_GENERIC_DEVICE_WORDS for w in words):
+        return newest, False
+    device_id = "DEV-" + normalize_code(tracking_id("caller_device", named.lower()))
+    return {"device_id": device_id, "model": named, "purchased_days_ago": newest["purchased_days_ago"]}, False
 
 def _sales_has(text: str, words: tuple[str, ...] | frozenset[str]) -> bool:  # pragma: no cover
     low = str(text or "").lower()
@@ -190,6 +239,14 @@ SALES_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
     "port_existing_line": {
         "en-US": "The transferred number replaces the current number on that line when the transfer completes.",
         "fr-CA": "Le numéro transféré remplacera le numéro actuel de cette ligne à la fin du transfert.",
+    },
+    "latency_fibre": {
+        "en-US": "Fibre has low latency, typically under 10 milliseconds on a wired connection, well suited to video calls.",
+        "fr-CA": "La fibre a une faible latence, habituellement moins de 10 millisecondes sur une connexion câblée, idéale pour les appels vidéo.",
+    },
+    "new_line_pricing": {
+        "en-US": "Added as an additional line, the plan adds its own price to the account and the current line keeps its plan; as a plan change, it replaces the current mobile plan.",
+        "fr-CA": "Ajouté comme ligne supplémentaire, le forfait ajoute son propre prix au compte et la ligne actuelle garde son forfait; comme changement de forfait, il remplace le forfait mobile actuel.",
     },
 }
 
@@ -472,16 +529,6 @@ class _StatusStr(str):  # pragma: no cover
         return super().__hash__()
 
 ERROR_STATUS = _StatusStr("error")  # pragma: no cover
-
-def tracking_id(tool: str, *inputs: object) -> str:  # pragma: no cover
-    """Return a reference number built from the tool name and its inputs.
-
-    The same inputs always give the same number, so a retried call can't
-    create a second record under a new number.
-    """
-    raw = "|".join([tool, *(str(value).strip().lower() for value in inputs)])
-    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
-    return "R" + str(int(digest[:8], 16) % 1_000_000).zfill(6)
 
 def error_reply(  # pragma: no cover
     code: str,

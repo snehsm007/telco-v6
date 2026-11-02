@@ -457,3 +457,24 @@ def test_helpers() -> None:
     assert tech._tech_parse_postal("k1a0b1") == ("postal", "K1A 0B1")
     assert tech._tech_find_slot("", "en-US") is None
     assert tech._tech_truthy("oui") is True
+
+
+def test_repair_returns_first_step_in_call_language() -> None:
+    for lang in ("en-US", "fr-CA"):
+        data = run_virtual_repair_impl("tv", "app keeps freezing", "streaming_only", state=_logged_in(), language=lang)["data"]
+        assert data["first_step"] == data["steps"][0]
+
+
+def test_repair_slow_mobile_data_carries_usage_and_throttling_facts() -> None:
+    data = run_virtual_repair_impl("mobility", "data is very slow", state=_logged_in())["data"]
+    assert data["symptom_category"] == "mobile_slow_data"
+    assert data["data_speed_reduced"] is False
+    assert data["data_usage_note"] and data["throttling_note"]
+    fr = run_virtual_repair_impl("mobility", "données lentes", state=_logged_in(), language="fr-CA")["data"]
+    assert "Go" in fr["data_usage_note"] and fr["throttling_note"] != data["throttling_note"]
+    assert "data_usage_note" not in run_virtual_repair_impl("internet", "slow", state=_logged_in())["data"]
+
+
+def test_data_usage_reports_reduced_speed_over_allowance(monkeypatch) -> None:
+    monkeypatch.setattr(tech, "CURRENT_DATA_USED_GB", tech.CURRENT_DATA_GB)
+    assert tech._tech_data_usage("en-US")["data_speed_reduced"] is True

@@ -84,6 +84,10 @@ _ACCT_LOB_NAMES: dict[str, dict[str, str]] = {  # pragma: no cover
     "homephone": {"en-US": "home phone service", "fr-CA": "service de téléphonie résidentielle"},
 }
 
+def _acct_text(lang: str, en: str, fr: str) -> str:  # pragma: no cover
+    """One string in the call language (never both; DESIGN_RULES rule 5)."""
+    return fr if lang == "fr-CA" else en
+
 _EN_DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")  # pragma: no cover
 
 _EN_MONTHS = (  # pragma: no cover
@@ -192,6 +196,17 @@ def _acct_cancel_quote(lob: str, mode: str, lang: str) -> dict[str, Any]:  # pra
         "final_bill_includes_fee": fee > 0,
         "effective_date": effective["date"],
         "effective_date_display": effective["date_display"],
+        # Turn N+1 facts (DESIGN_RULES rule 33): other services and what the final bill covers.
+        "other_services_note": _acct_text(
+            lang,
+            "Your other services on the account stay active, and their plans and prices don't change.",
+            "Vos autres services au compte restent actifs, et leurs forfaits et leurs prix ne changent pas.",
+        ),
+        "final_bill_note": _acct_text(
+            lang,
+            "The final bill covers this service up to the effective date, plus any early termination fee; nothing more is billed for it after that.",
+            "La facture finale couvre ce service jusqu'à la date d'effet, plus les frais de résiliation anticipée s'il y a lieu; rien d'autre n'est facturé pour ce service par la suite.",
+        ),
     }
 
 _ACCT_TRUE = ("true", "1", "yes", "y", "oui", "confirmed", "confirm")  # pragma: no cover
@@ -236,10 +251,6 @@ def _acct_lob(value: Any) -> str:  # pragma: no cover
         if re.search(pattern, spaced):
             return lob
     return ""
-
-def _acct_text(lang: str, en: str, fr: str) -> str:  # pragma: no cover
-    """One string in the call language (never both; DESIGN_RULES rule 5)."""
-    return fr if lang == "fr-CA" else en
 
 ACCOUNTS: tuple[dict[str, Any], ...] = (  # pragma: no cover
     {
