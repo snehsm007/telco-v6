@@ -5,8 +5,8 @@ import json
 import pytest
 
 import lib.services as services
-from lib.fakes import ACCOUNTS, SPOKEN_LINES, VALID_OTPS, VALID_PINS, read_count
-from lib.replies import ERROR_CODES
+from lib.fakes import ACCOUNTS, SELF_SERVE_ADJUSTMENT_LIMIT, SPOKEN_LINES, VALID_OTPS, VALID_PINS, read_count
+from lib.replies import ERROR_CODES, display_amount
 from lib.services import (
     ALL_TOOLS,
     HANDOVER_REASONS,
@@ -321,7 +321,7 @@ def test_handover_reason_normalization(raw: str, code: str) -> None:
 EXPECTED_LINES = {
     "fraud_escalation": ("empathy_protocol", "live_agent_handoff"),
     "business_handoff": ("business_handoff",),
-    "refund_threshold_exceeded": ("transfer_to_specialist",),
+    "refund_threshold_exceeded": ("refund_over_limit", "transfer_to_specialist"),
 }
 
 
@@ -331,7 +331,8 @@ def test_handover_speaks_the_verbatim_line_for_each_reason(reason: str, lang: st
     state: dict = {}
     reply = handover_to_person_impl(reason=reason, summary="s", state=state, language=lang)
     keys = EXPECTED_LINES.get(reason, ("live_agent_handoff",))
-    expected = " ".join(SPOKEN_LINES[k][lang] for k in keys)
+    limit = display_amount(SELF_SERVE_ADJUSTMENT_LIMIT)
+    expected = " ".join(SPOKEN_LINES[k][lang].replace("[limit]", limit) for k in keys)
     assert reply["status"] == "ok"
     assert reply["data"]["handoff_message"] == expected == reply["handoff_message"]
     assert state["handoff_message"] == expected
@@ -346,6 +347,15 @@ def test_fraud_is_empathy_then_live_agent_and_always_open() -> None:
     assert msg.endswith(SPOKEN_LINES["live_agent_handoff"]["en-US"])
     assert reply["data"]["queue"] == "fraud" and reply["data"]["queue_open"] is True
     assert reply["data"]["handoff_status"] == "completed_via_specialist_queue"
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_refund_threshold_handover_says_why_then_the_verbatim_transfer_line(lang: str) -> None:
+    msg = handover_to_person_impl(reason="refund_threshold_exceeded", state={}, language=lang)["handoff_message"]
+    reason_line = SPOKEN_LINES["refund_over_limit"][lang]
+    assert "[limit]" in reason_line
+    assert msg.startswith(reason_line.replace("[limit]", display_amount(SELF_SERVE_ADJUSTMENT_LIMIT)))
+    assert msg.endswith(SPOKEN_LINES["transfer_to_specialist"][lang]) and "[" not in msg
 
 
 def test_handover_writes_handoff_context_json() -> None:

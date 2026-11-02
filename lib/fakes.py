@@ -22,10 +22,10 @@ from typing import Any
 
 SUPPORTED_LOCALES: tuple[str, ...] = ("en-US", "fr-CA")
 
-# Verbatim copy library (prd.md §7) plus operational lines. French lines and the
+# Verbatim copy library (prd.md §7) plus operational lines. French lines, the
 # two Legal placeholders (payment_method_preamble,
-# contract_cancellation_fee_disclosure) are interim wording PENDING LEGAL APPROVAL
-# (docs/requirements.md decision A6).
+# contract_cancellation_fee_disclosure) and refund_over_limit are interim wording
+# PENDING LEGAL APPROVAL (docs/requirements.md decision A6).
 SPOKEN_LINES: dict[str, dict[str, str]] = {
     "greeting_main": {
         "en-US": "Welcome to Telco. I can help with billing, technical support, or managing your account. To get started, could you tell me the phone number or account number associated with your service?",
@@ -74,6 +74,10 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {
     "transfer_to_specialist": {
         "en-US": "I'll connect you to a billing specialist now — they'll have everything we've already discussed.",
         "fr-CA": "Je vais vous mettre en relation avec un spécialiste de la facturation — il aura tout ce dont nous avons déjà discuté.",
+    },
+    "refund_over_limit": {
+        "en-US": "That amount is above our $[limit] self-serve limit, so it needs a specialist's approval.",
+        "fr-CA": "Ce montant dépasse notre limite libre-service de [limit] $, il doit donc être approuvé par un spécialiste.",
     },
     "otp_callback_confirm": {
         "en-US": "I'll send a 6-digit code to the number ending in [last4]. Ready?",

@@ -1,6 +1,6 @@
 import pytest
 
-from lib.replies import ERROR_CODES, display_amount, error_reply, ok_reply, tracking_id
+from lib.replies import ERROR_CODE_DEFAULTS, ERROR_CODES, ERROR_MESSAGES_FR, display_amount, error_reply, ok_reply, tracking_id
 
 
 def test_display_amount_gives_two_decimals_for_speech() -> None:
@@ -62,3 +62,16 @@ def test_error_reply_shape_and_unknown_codes() -> None:
         assert defaulted["lockout_triggered"] is True
     with pytest.raises(ValueError):
         error_reply("MADE_UP", "x", "y", "R000003")
+
+
+@pytest.mark.parametrize("code", ERROR_CODES)
+def test_french_calls_get_french_error_messages_and_short_english_actions(code: str) -> None:
+    fr = ERROR_MESSAGES_FR[code]
+    assert fr.strip() and fr != ERROR_CODE_DEFAULTS[code][0]
+    assert error_reply(code, language="fr-CA")["error_message"] == fr
+    # An explicit English detail never reaches a French call; agent_action stays English.
+    explicit = error_reply(code, "The caller has not passed login.", "Ask again.", language="fr")
+    assert explicit["error_message"] == fr and explicit["agent_action"] == "Ask again."
+    assert explicit["tracking_id"] == error_reply(code, "The caller has not passed login.", "Ask again.")["tracking_id"]
+    assert len(ERROR_CODE_DEFAULTS[code][1]) <= 120
+    assert error_reply(code, "Detail.", language="en-US")["error_message"] == "Detail."

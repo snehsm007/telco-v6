@@ -172,8 +172,8 @@ MUTATIONS = [
         "id": "handover_refund_wrong_line",
         "description": "Refund-threshold handover speaks the generic line instead of transfer_to_specialist",
         "file": "lib/services.py",
-        "target": '"refund_threshold_exceeded": ("transfer_to_specialist",),',
-        "replacement": '"refund_threshold_exceeded": ("live_agent_handoff",),',
+        "target": '"refund_threshold_exceeded": ("refund_over_limit", "transfer_to_specialist"),',
+        "replacement": '"refund_threshold_exceeded": ("refund_over_limit", "live_agent_handoff"),',
         "required": True,
     },
     {

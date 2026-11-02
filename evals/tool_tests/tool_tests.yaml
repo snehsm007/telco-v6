@@ -420,7 +420,7 @@ tests:
   expected_status: ok
   expected_fields:
     queue: billing_specialist
-    handoff_message: I'll connect you to a billing specialist now — they'll have everything we've already discussed.
+    handoff_message: That amount is above our $25.00 self-serve limit, so it needs a specialist's approval. I'll connect you to a billing specialist now — they'll have everything we've already discussed.
   priority: P0
 - id: tt_handover_refund_threshold_french
   tool: handover_to_person
@@ -432,7 +432,7 @@ tests:
     language: fr-CA
   expected_status: ok
   expected_fields:
-    handoff_message: Je vais vous mettre en relation avec un spécialiste de la facturation — il aura tout ce dont nous avons déjà discuté.
+    handoff_message: Ce montant dépasse notre limite libre-service de 25.00 $, il doit donc être approuvé par un spécialiste. Je vais vous mettre en relation avec un spécialiste de la facturation — il aura tout ce dont nous avons déjà discuté.
   priority: P0
 - id: tt_handover_business_line
   tool: handover_to_person

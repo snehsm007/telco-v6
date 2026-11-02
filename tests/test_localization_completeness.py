@@ -78,6 +78,8 @@ def test_error_replies_contract(locale: str) -> None:
     assert err["status"] == "error" and err["active_language"] == locale
     assert 0 < len(err["agent_action"]) <= 120
     assert not _sibling_keys(err)
+    # The error text follows the call language too (VE-15: English error_message failed "strictly French").
+    assert (err["error_message"] == "Aucun dossier correspondant n'a été trouvé.") is (locale == "fr-CA")
 
 
 @pytest.mark.parametrize("locale", SUPPORTED_LOCALES)

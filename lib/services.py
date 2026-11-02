@@ -44,6 +44,7 @@ from lib.fakes import (
     BLOCKED_CALLER_NUMBERS,
     OTP_EXPIRES_IN_SEC,
     REGION_BY_POSTAL_LETTER,
+    SELF_SERVE_ADJUSTMENT_LIMIT,
     DEFAULT_REGION,
     OTP_RE,
     PIN_RE,
@@ -56,7 +57,7 @@ from lib.fakes import (
     resolve_copy_locale,
     spoken_line,
 )
-from lib.replies import ERROR_CODES, error_reply, ok_reply, tracking_id  # noqa: F401
+from lib.replies import ERROR_CODES, display_amount, error_reply, ok_reply, tracking_id  # noqa: F401
 from lib.sales import (  # noqa: F401
     browse_plans_impl,
     file_warranty_claim_impl,
@@ -103,10 +104,12 @@ MAX_LOGIN_ATTEMPTS = 3
 SMS_PURPOSES = ("outage_updates", "troubleshooting_guide", "slot_available_callback", "registration_link")
 
 # prd.md §7 / docs/tdd.md §7: which verbatim line(s) each handover reason speaks.
+# refund_threshold_exceeded first says why (over the self-serve limit, needs a
+# specialist's approval; prd.md §10), then the verbatim transfer line, last.
 HANDOVER_LINES: dict[str, tuple[str, ...]] = {
     "business_handoff": ("business_handoff",),
     "fraud_escalation": ("empathy_protocol", "live_agent_handoff"),
-    "refund_threshold_exceeded": ("transfer_to_specialist",),
+    "refund_threshold_exceeded": ("refund_over_limit", "transfer_to_specialist"),
 }
 HANDOVER_QUEUES: dict[str, str] = {
     "fraud_escalation": "fraud",
@@ -472,7 +475,8 @@ def handover_to_person_impl(
     if err and code != "system_unavailable":
         return err
     keys = HANDOVER_LINES.get(code, ("live_agent_handoff",))
-    message = " ".join(spoken_line(k, lang) for k in keys)
+    limit = display_amount(SELF_SERVE_ADJUSTMENT_LIMIT)
+    message = " ".join(spoken_line(k, lang, limit=limit) for k in keys)
     queue = HANDOVER_QUEUES.get(code, "general")
     open_now = queue_open(queue)
     context = {

@@ -129,7 +129,7 @@ Which evals carry overrides is listed in `docs/requirements.md` §Eval fixtures,
 | `user_requested_agent`, `auth_failure_handoff`, `no_input_escalation`, `disambig_max_attempts`, `system_unavailable`, `too_many_errors`, `secondary_language_live_agent`, `sms_delivery_failed` | `live_agent_handoff` |
 | `business_handoff` | `business_handoff` |
 | `fraud_escalation` | `empathy_protocol` then `live_agent_handoff` |
-| `refund_threshold_exceeded` | `transfer_to_specialist` |
+| `refund_threshold_exceeded` | `refund_over_limit` (slot `[limit]` = `display_amount(SELF_SERVE_ADJUSTMENT_LIMIT)`) then `transfer_to_specialist` |
 
 `malicious_input` is not a handover: polite closing + `end_session`.
 
