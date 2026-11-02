@@ -2,10 +2,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from cxas_app.agents.router.after_model_callbacks.speech_hygiene import python_code as router_callback
-from cxas_app.agents.specialist.after_model_callbacks.speech_hygiene import python_code as specialist_callback
+import importlib
 
-CALLBACKS = [router_callback, specialist_callback]
+AGENTS = ("router", "billing", "tech_support", "sales_equipment", "account")
+CALLBACKS = [
+    importlib.import_module(f"cxas_app.agents.{name}.after_model_callbacks.speech_hygiene.python_code")
+    for name in AGENTS
+]
 
 
 def make_response(*texts: str) -> SimpleNamespace:

@@ -35,6 +35,8 @@ _ALLOWED_PROMPT_PATTERNS = (
     re.compile(r"\b24\b"),
     re.compile(r"\b[1-4]\b"),
     re.compile(r"(?m)^\s*\d+\.\s"),
+    # Inline ordered lists ("...: 1. safety; 2. fraud; ... 10. closing") are ranks, not facts.
+    re.compile(r"(?:(?<=[:;])\s|(?<=:)\s?)\d+\.\s"),
 )
 
 
@@ -64,22 +66,41 @@ def test_prompts_contain_no_literals_or_defect_ids() -> None:
             assert acc_id not in text, f"{path} contains fake account ID {acc_id}"
 
 
-def test_router_and_specialist_subtask_structure_and_handover_pairing() -> None:
-    router_txt = (APP_DIR / "agents" / "router" / "instruction.txt").read_text(encoding="utf-8")
-    specialist_txt = (APP_DIR / "agents" / "specialist" / "instruction.txt").read_text(encoding="utf-8")
-    global_txt = (APP_DIR / "global_instruction.txt").read_text(encoding="utf-8")
+AGENTS = ("router", "billing", "tech_support", "sales_equipment", "account")
 
+
+def _is_placeholder(text: str) -> bool:
+    """Domain prompts start as a 3-line placeholder until their builder lands."""
+    return "Placeholder for the" in text and "<taskflow>" not in text
+
+
+def test_every_agent_has_a_prompt_and_router_is_m1_only() -> None:
+    for name in AGENTS:
+        assert (APP_DIR / "agents" / name / "instruction.txt").is_file(), f"missing prompt for {name}"
+    router_txt = (APP_DIR / "agents" / "router" / "instruction.txt").read_text(encoding="utf-8")
     router_subtasks = re.findall(r'<subtask name="([^"]+)">', router_txt)
     assert router_subtasks and all(name.startswith("M1 ") for name in router_subtasks)
     assert "first_name" not in router_txt
+    assert "{@TOOL: lookup_account}" in router_txt
+    assert "restricted_caller" in router_txt
 
-    specialist_subtasks = re.findall(r'<subtask name="([^"]+)">', specialist_txt)
-    assert specialist_subtasks and all(name.startswith("M2 ") for name in specialist_subtasks)
-    assert 'step name="Caller Offers Code First"' in specialist_txt
-    assert 'step name="Code Not Received"' in specialist_txt
-    assert "{@TOOL: check_secret_pin}" in specialist_txt
 
-    for txt in (global_txt, router_txt, specialist_txt):
-        assert "{@TOOL: handover_to_person}" in txt
-        assert "{@TOOL: end_session}" in txt
-        assert "handoff_message" in txt
+def test_handover_pairing_in_global_and_every_written_agent_prompt() -> None:
+    global_txt = (APP_DIR / "global_instruction.txt").read_text(encoding="utf-8")
+    texts = {"global_instruction": global_txt}
+    for name in AGENTS:
+        txt = (APP_DIR / "agents" / name / "instruction.txt").read_text(encoding="utf-8")
+        if not _is_placeholder(txt):
+            texts[name] = txt
+    assert "router" in texts
+    for label, txt in texts.items():
+        assert "{@TOOL: end_session}" in txt, f"{label} never ends the session"
+        if label in ("global_instruction", "router"):
+            assert "{@TOOL: handover_to_person}" in txt, f"{label} has no handover"
+            assert "handoff_message" in txt, f"{label} does not speak handoff_message"
+        if "{@TOOL: handover_to_person}" in txt:
+            assert "handoff_message" in txt, f"{label} hands over without speaking handoff_message"
+    # Removed scaffold names must not come back.
+    for label, txt in texts.items():
+        assert "submit_request" not in txt, label
+        assert "specialist}" not in txt and "@AGENT: specialist" not in txt, label
