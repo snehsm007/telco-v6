@@ -664,6 +664,60 @@
         "default": "",
         "required": []
       }
+    },
+    {
+      "name": "outage_active",
+      "description": "True when the last outage check found an active outage for the caller's service.",
+      "schema": {
+        "type": "BOOLEAN",
+        "default": false,
+        "required": []
+      }
+    },
+    {
+      "name": "vr_session_id",
+      "description": "Virtual-repair session reference opened on this call.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "appt_state",
+      "description": "Change made to the technician visit on this call: rescheduled or cancelled.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "appt_slot_id",
+      "description": "Slot the technician visit was moved to on this call.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "appt_note",
+      "description": "Note left for the technician on this call.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "booked_slot_id",
+      "description": "Slot of a technician visit booked on this call.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
     }
   ],
   "guardrails": [

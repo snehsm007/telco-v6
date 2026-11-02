@@ -1,0 +1,10 @@
+{
+  "name": "manage_appointment",
+  "displayName": "manage_appointment",
+  "executionType": "SYNCHRONOUS",
+  "pythonFunction": {
+    "name": "manage_appointment",
+    "description": "Changes a technician visit for a logged-in caller: reschedule or book into one of the open slots, cancel (same-day cancel needs a second call with confirmed=true), or add a note for the technician. Sends a text confirmation.",
+    "pythonCode": "tools/manage_appointment/python_function/python_code.py"
+  }
+}
