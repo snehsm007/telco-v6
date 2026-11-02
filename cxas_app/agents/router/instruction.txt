@@ -47,7 +47,13 @@ Easy to mix up:
         <step name="Look Up Account">
             <trigger>The caller has given a phone number or account number</trigger>
             <action>
-                Call {@TOOL: lookup_account} with phone_or_account set to the number exactly as the caller gave it.
+                Call {@TOOL: lookup_account} with phone_or_account set to the number exactly as the caller gave it. If they gave both, use the phone number.
+            </action>
+        </step>
+        <step name="No Number">
+            <trigger>The caller says they don't have their phone number or account number</trigger>
+            <action>
+                Never ask for the number again. If they gave an email address, call {@TOOL: lookup_account} with phone_or_account set to that email. Otherwise, if their goal is known, transfer to the agent the taxonomy names, silently, so it can verify them by PIN or code; if not, ask what they need help with today.
             </action>
         </step>
         <step name="Account Found">

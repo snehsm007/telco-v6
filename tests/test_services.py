@@ -464,3 +464,47 @@ def test_login_prompts_carry_their_verbatim_lines() -> None:
     fr: dict = {"language": "fr-CA"}
     lookup_account_impl("514-555-0199", state=fr)
     assert send_login_code_impl(state=fr)["data"]["spoken_message"] == SPOKEN_LINES["id_verification_otp"]["fr-CA"]
+# --- callers without a number, codes that can't arrive (C2, C3, C10) ------------------
+
+
+def test_lookup_by_email_identifies_the_default_account() -> None:
+    """A caller with no phone or account number gives their email (DESIGN_RULES rules 2, 21)."""
+    state: dict = {}
+    reply = lookup_account_impl("j.miller_personal@example.com", state=state)
+    assert reply["status"] == "ok"
+    assert state["account_id"] == ACCOUNTS[0]["account_id"] and state["identification_status"] == "Pass"
+    assert reply["data"]["phone_last4"] == ACCOUNTS[0]["phone"][-4:]
+    assert reply["data"]["caller_provided_phone_last4"] == ""
+    by_email = lookup_account_impl(ACCOUNTS[1]["email"].upper(), state={})
+    assert by_email["data"]["account_id_last4"] == ACCOUNTS[1]["account_id"][-4:]
+    assert lookup_account_impl("not-an-email@", state={})["error"] == "NOT_FOUND"
+
+
+def test_texted_code_goes_to_a_number_built_from_the_callers_account_digits() -> None:
+    state: dict = {}
+    assert lookup_account_impl("882940012", state=state)["data"]["phone_last4"] == "0012"
+    assert send_login_code_impl(state=state)["data"]["destination_last4"] == "0012"
+    assert lookup_account_impl("ACC-992834", state={})["data"]["phone_last4"] == "2834"
+
+
+def test_email_login_code_tells_the_agent_what_to_say() -> None:
+    """Code Can't Arrive: the login code goes to the email on file when a text can't."""
+    state: dict = {}
+    reply = send_login_code_impl(channel="email", state=state)
+    assert reply["data"]["purpose"] == "login" and reply["data"]["channel"] == "email"
+    assert "email" in reply["agent_action"] and "6-digit" in reply["agent_action"]
+    assert "agent_action" not in send_login_code_impl(channel="sms", state={})
+    assert check_login_code_impl("482913", state=state)["status"] == "ok" and state["auth_status"] == "pass"
+
+
+@pytest.mark.parametrize("tool", [check_login_code_impl, check_secret_pin_impl])
+def test_short_step_up_code_is_a_re_ask_with_a_resend_offer_not_a_strike(tool) -> None:
+    state = logged_in()
+    send_login_code_impl(channel="email", state=state)
+    before = read_count(state, "global_err_count")
+    reply = tool("7731", state=state)
+    assert reply["error"] == "INVALID_INPUT"
+    assert "email" in reply["agent_action"] and "resend" in reply["agent_action"]
+    assert read_count(state, "auth_failure_count") == 0 and state["auth_status"] == "pass"
+    assert read_count(state, "global_err_count") == before + 1
+    assert state["code_purpose"] == "step_up"

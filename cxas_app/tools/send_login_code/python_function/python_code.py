@@ -613,5 +613,9 @@ def send_login_code_impl(  # pragma: no cover
     else:
         data["destination_last4"] = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or record["phone"][-4:])
         data["spoken_message"] = spoken_line("id_verification_otp", lang)
-    return ok_reply(data, reference, language=lang)
+    reply = ok_reply(data, reference, language=lang)
+    if chan == "email" and purpose == "login":
+        # The login code went to the email on file (the caller can't get a text).
+        reply["agent_action"] = "Say a 6-digit code was sent to the email on file and ask the caller to read it back."
+    return reply
 # --- END GENERATED SHARED BUNDLE ---

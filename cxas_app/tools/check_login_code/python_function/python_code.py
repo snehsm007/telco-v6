@@ -668,6 +668,15 @@ def check_login_code_impl(  # pragma: no cover
         # The caller gave their 4-digit PIN instead of the texted code.
         return check_secret_pin_impl(digits, state=state, language=lang)
     if not OTP_RE.fullmatch(digits):
+        # A re-ask, never a strike (docs/tdd.md §6); it still counts toward global_err_count.
+        if step_up:
+            return validation_error(
+                state,
+                "The emailed code has 6 digits.",
+                "Say the code sent to their email has 6 digits, ask them to read all of them, and offer to resend it by email.",
+                reference,
+                lang,
+            )
         return validation_error(state, "A verification code has 6 digits.", "Ask the caller to say or key in the 6-digit code again.", reference, lang)
     if not _credential_ok(state, digits, "code"):
         return _record_failure(state, reference, lang, "code")
