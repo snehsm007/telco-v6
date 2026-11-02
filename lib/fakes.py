@@ -413,3 +413,22 @@ def login_code_accepted(code_digits: Any, attempts: int = 0, max_attempts: int =
 def secret_pin_accepted(pin_digits: Any, attempts: int = 0, max_attempts: int = 3) -> bool:
     """Whether the fake login service accepts a secret PIN (the same ladder as login codes)."""
     return login_code_accepted(pin_digits, attempts=attempts, max_attempts=max_attempts)
+
+
+# --- account fixtures ---
+# Account management (docs/tdd.md §4 Account). Relative dates only; amounts are
+# non-canonical fake values.
+ACCT_LINES_OF_BUSINESS: tuple[str, ...] = ("mobility", "internet", "tv", "homephone")
+ACCT_PORTABLE_LINES: tuple[str, ...] = ("mobility", "homephone")
+# Early termination fee and months left on the contract, per line of business.
+ACCT_CONTRACT_TERMS: dict[str, dict[str, Any]] = {
+    "mobility": {"early_termination_fee": "96.40", "months_remaining": 7},
+    "internet": {"early_termination_fee": "42.75", "months_remaining": 5},
+    "tv": {"early_termination_fee": "0.00", "months_remaining": 0},
+    "homephone": {"early_termination_fee": "0.00", "months_remaining": 0},
+}
+ACCT_BILLING_CYCLE_DAYS = 30
+ACCT_PORT_OUT_COMPLETION_DAYS = 1      # the new carrier completes the port the next day
+ACCT_EQUIPMENT_RETURN_DAYS = 30        # rented modem or TV receiver return window
+ACCT_MFA_METHOD = "sms"
+# --- end account fixtures ---

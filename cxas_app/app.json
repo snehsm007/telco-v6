@@ -513,6 +513,42 @@
       }
     },
     {
+      "name": "mfa_state",
+      "description": "Two-step verification state set by manage_mfa this call (enabled or disabled); empty = backend value.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "password_reset_count",
+      "description": "Password reset texts sent on this call.",
+      "schema": {
+        "type": "INTEGER",
+        "default": 0,
+        "required": []
+      }
+    },
+    {
+      "name": "cancelled_services",
+      "description": "Comma list of lob:mode cancellations or port-outs submitted this call.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "contact_updates",
+      "description": "Comma list of contact-detail updates applied this call.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
       "name": "fx_pin_on_file",
       "description": "Backend fixture: the 4-digit PIN on file (empty = login ladder).",
       "schema": {
