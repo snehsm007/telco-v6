@@ -543,6 +543,11 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "Or, if you prefer, you can use your 4-digit PIN instead.",
         "fr-CA": "Ou, si vous préférez, vous pouvez plutôt utiliser votre NIP à 4 chiffres.",
     },
+    # Operational line (no account number at hand); interim wording PENDING LEGAL APPROVAL.
+    "account_lookup_options": {
+        "en-US": "To find your account, I can use its phone number or account number, your email on file, or your 4-digit PIN.",
+        "fr-CA": "Pour trouver votre compte, je peux utiliser son numéro de téléphone ou son numéro de compte, votre courriel au dossier ou votre NIP à 4 chiffres.",
+    },
     "email_code_sent": {
         "en-US": "For your security, I just sent a 6-digit code to your email on file — please read it back to me.",
         "fr-CA": "Pour votre sécurité, je viens d'envoyer un code à 6 chiffres à votre adresse courriel au dossier — veuillez me le lire.",
@@ -964,18 +969,30 @@ def get_state(  # pragma: no cover
         return session_state
     return {}
 
+NO_ACCOUNT_ACTION = "If the caller already gave a 4-digit PIN, call check_secret_pin now; else say spoken_message."  # pragma: no cover
+
 def require_login(state: dict[str, Any], lang: str, tool_name: str) -> dict[str, Any] | None:  # pragma: no cover
     """BR-TV-008: account reads and changes need a verified caller. Returns an error reply or None."""
     if state.get("auth_status") == "pass" and state.get("logged_in") is not False:
         return None
     ref = tracking_id(tool_name, "not_logged_in", state.get("account_id", ""))
     data: dict[str, Any] = {"code_length": 6, "pin_length": 4}
-    if state.get("account_id"):
-        last4 = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or "")
-        data["spoken_message"] = (
-            spoken_line("otp_callback_confirm", lang, last4=last4) + " " + spoken_line("pin_alternative", lang)
+    if not state.get("account_id"):
+        # No number found yet: say what can find the account, never an improvised method.
+        data["spoken_message"] = spoken_line("account_lookup_options", lang)
+        return error_reply(
+            "NOT_LOGGED_IN",
+            "The caller has not passed login and no account is found yet.",
+            NO_ACCOUNT_ACTION,
+            ref,
+            language=lang,
+            data=data,
         )
-        data["pin_prompt_message"] = spoken_line("id_verification_pin", lang)
+    last4 = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or "")
+    data["spoken_message"] = (
+        spoken_line("otp_callback_confirm", lang, last4=last4) + " " + spoken_line("pin_alternative", lang)
+    )
+    data["pin_prompt_message"] = spoken_line("id_verification_pin", lang)
     return error_reply(
         "NOT_LOGGED_IN",
         "The caller has not passed login.",

@@ -44,6 +44,8 @@ import re
 
 BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199"})  # pragma: no cover
 
+NO_ACCOUNT_ACTION = "If the caller already gave a 4-digit PIN, call check_secret_pin now; else say spoken_message."  # pragma: no cover
+
 DEFAULT_REGION = "Region-C"  # pragma: no cover
 
 REGION_BY_POSTAL_LETTER: dict[str, str] = {  # pragma: no cover
@@ -566,6 +568,18 @@ def get_state(  # pragma: no cover
         return session_state
     return {}
 
+_LETTER_WORD_RE = re.compile(r"(?:^|[\s,.])[^\W\d_](?:[^\W\d_]|['\-](?=[^\W\d_]))+(?=$|[\s,.])")  # pragma: no cover
+
+def is_name_or_address(raw: Any) -> bool:  # pragma: no cover
+    """True when the caller gave words (a name or street address), not a number or email.
+
+    Malformed numbers ("ACC-12", "555-01") and emails stay validation errors.
+    """
+    text = str(raw or "").strip()
+    if not text or "@" in text or classify_identifier(text)[0]:
+        return False
+    return bool(_LETTER_WORD_RE.search(text))
+
 def normalize_identifier(raw: object) -> dict[str, str]:  # pragma: no cover
     """Postel normalizer for caller-provided identifiers (DESIGN_RULES rule 43).
 
@@ -681,6 +695,99 @@ def session_language(state: dict[str, Any] | None, language: Any = "") -> str:  
         return arg_lang
     return "en-US"
 
+SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
+    "greeting_main": {
+        "en-US": "Welcome to Telco. I can help with billing, technical support, or managing your account. To get started, could you tell me the phone number or account number associated with your service?",
+        "fr-CA": "Bienvenue chez Telco. Je peux vous aider avec la facturation, le soutien technique ou la gestion de votre compte. Pour commencer, pourriez-vous me donner le numéro de téléphone ou le numéro de compte associé à votre service?",
+    },
+    "recording_notice": {
+        "en-US": "This call may be recorded for quality and training purposes.",
+        "fr-CA": "Cet appel peut être enregistré à des fins de qualité et de formation.",
+    },
+    "id_verification_otp": {
+        "en-US": "For your security, I just sent a 6-digit code to that number — please read it back to me.",
+        "fr-CA": "Pour votre sécurité, je viens d'envoyer un code à 6 chiffres à ce numéro — veuillez me le lire.",
+    },
+    "id_verification_pin": {
+        "en-US": "For your security, I'll need to verify your identity. Please enter the 4-digit PIN you set up.",
+        "fr-CA": "Pour votre sécurité, je dois vérifier votre identité. Veuillez entrer le NIP à 4 chiffres que vous avez configuré.",
+    },
+    "live_agent_handoff": {
+        "en-US": "I'll connect you to a representative who can help. Please hold.",
+        "fr-CA": "Je vais vous mettre en relation avec un représentant qui pourra vous aider. Veuillez patienter.",
+    },
+    "business_handoff": {
+        "en-US": "To get you the best support for your business account, I'll transfer you to an agent. You'll need to use your phone keypad instead of talking to the virtual assistant. Just a moment while I connect you.",
+        "fr-CA": "Pour vous offrir le meilleur soutien pour votre compte d'affaires, je vais vous transférer à un agent. Vous devrez utiliser le clavier de votre téléphone au lieu de parler à l'assistant virtuel. Un instant pendant que je vous mets en relation.",
+    },
+    "payment_method_preamble": {
+        "en-US": "Before we continue, please note that your payment details are protected and processed securely, and I will only ever refer to the last four digits of your card or account.",
+        "fr-CA": "Avant de continuer, sachez que vos renseignements de paiement sont protégés et traités de façon sécurisée, et que je ne mentionnerai jamais que les quatre derniers chiffres de votre carte ou de votre compte.",
+    },
+    "contract_cancellation_fee_disclosure": {
+        "en-US": "Please note that cancelling before the end of your contract term may result in an early termination fee and a final bill, as set out in your service agreement.",
+        "fr-CA": "Veuillez noter qu'une résiliation avant la fin de la durée de votre contrat peut entraîner des frais de résiliation anticipée et une facture finale, comme le prévoit votre entente de service.",
+    },
+    "refund_confirmation_pattern": {
+        "en-US": "Your refund of $[amount] will appear on your next statement within [days] business days.",
+        "fr-CA": "Votre remboursement de [amount] $ apparaîtra sur votre prochain relevé d'ici [days] jours ouvrables.",
+    },
+    "empathy_protocol": {
+        "en-US": "I'm very sorry to hear that you are facing challenges. I will ensure we handle your request with the utmost care.",
+        "fr-CA": "Je suis vraiment désolé d'apprendre que vous éprouvez des difficultés. Je veillerai à ce que votre demande soit traitée avec le plus grand soin.",
+    },
+    "outage_active": {
+        "en-US": "I see there's an active outage in your area. We're working on it. Would you like me to text you when it's restored?",
+        "fr-CA": "Je constate qu'il y a une panne active dans votre secteur. Nous y travaillons. Voulez-vous que je vous envoie un texto lorsque le service sera rétabli?",
+    },
+    "transfer_to_specialist": {
+        "en-US": "I'll connect you to a billing specialist now — they'll have everything we've already discussed.",
+        "fr-CA": "Je vais vous mettre en relation avec un spécialiste de la facturation — il aura tout ce dont nous avons déjà discuté.",
+    },
+    "refund_over_limit": {
+        "en-US": "That amount is above our $[limit] self-serve limit, so it needs a specialist's approval.",
+        "fr-CA": "Ce montant dépasse notre limite libre-service de [limit] $, il doit donc être approuvé par un spécialiste.",
+    },
+    "otp_callback_confirm": {
+        "en-US": "I'll send a 6-digit code to the number ending in [last4]. Ready?",
+        "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro se terminant par [last4]. Êtes-vous prêt?",
+    },
+    "pin_alternative": {
+        "en-US": "Or, if you prefer, you can use your 4-digit PIN instead.",
+        "fr-CA": "Ou, si vous préférez, vous pouvez plutôt utiliser votre NIP à 4 chiffres.",
+    },
+    # Operational line (no account number at hand); interim wording PENDING LEGAL APPROVAL.
+    "account_lookup_options": {
+        "en-US": "To find your account, I can use its phone number or account number, your email on file, or your 4-digit PIN.",
+        "fr-CA": "Pour trouver votre compte, je peux utiliser son numéro de téléphone ou son numéro de compte, votre courriel au dossier ou votre NIP à 4 chiffres.",
+    },
+    "email_code_sent": {
+        "en-US": "For your security, I just sent a 6-digit code to your email on file — please read it back to me.",
+        "fr-CA": "Pour votre sécurité, je viens d'envoyer un code à 6 chiffres à votre adresse courriel au dossier — veuillez me le lire.",
+    },
+    "restricted_caller": {
+        "en-US": "We're unable to help with this call on this line. Please visit one of our stores for assistance. Goodbye.",
+        "fr-CA": "Nous ne pouvons pas traiter cet appel sur cette ligne. Veuillez vous rendre dans l'une de nos boutiques pour obtenir de l'aide. Au revoir.",
+    },
+    "ai_disclosure": {
+        "en-US": "I'm an artificial intelligence customer care assistant.",
+        "fr-CA": "Je suis un assistant de service à la clientèle basé sur l'intelligence artificielle.",
+    },
+    "malicious_closing": {
+        "en-US": "I am unable to continue this conversation. Thank you for calling and have a good day.",
+        "fr-CA": "Je ne peux pas poursuivre cette conversation. Merci de votre appel et bonne journée.",
+    },
+}
+
+def spoken_line(key: str, language: str | None = "en-US", **slots: object) -> str:  # pragma: no cover
+    """Return the fixed spoken line for `key` and `language`, filling any `[slot]` placeholders."""
+    locale = resolve_locale(language)
+    table = SPOKEN_LINES.get(key, {})
+    template = table.get(locale) or table.get("en-US") or ""
+    for slot_name, slot_val in slots.items():
+        template = template.replace(f"[{slot_name}]", str(slot_val))
+    return template
+
 MAX_VALIDATION_ERRORS = 3  # pragma: no cover
 
 def read_count(state: dict[str, Any] | None, key: str) -> int:  # pragma: no cover
@@ -755,6 +862,18 @@ def lookup_account_impl(  # pragma: no cover
             data={"blocked": True},
         )
     account = find_account(raw)
+    options = {"spoken_message": spoken_line("account_lookup_options", lang), "pin_length": 4}
+    if account is None and is_name_or_address(raw):
+        # A name or address is not a wrong entry: no strike (BR-TV-010 counts malformed numbers only).
+        state["last_tracking_id"] = reference
+        return error_reply(
+            "NOT_FOUND",
+            "Accounts are found by number, email or PIN, not by name or address.",
+            NO_ACCOUNT_ACTION,
+            reference,
+            language=lang,
+            data={**options, "counted": False},
+        )
     if account is None:
         return validation_error(
             state,
@@ -763,6 +882,7 @@ def lookup_account_impl(  # pragma: no cover
             reference,
             lang,
             code="NOT_FOUND",
+            data=options,
         )
     if state.get("account_id") and state.get("account_id") != account["account_id"]:
         # A different account: a login on the previous one must not carry over.

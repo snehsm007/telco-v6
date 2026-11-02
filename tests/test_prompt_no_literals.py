@@ -114,5 +114,6 @@ def test_login_recovery_steps_never_dead_end() -> None:
     assert cant_arrive and 'channel "email"' in cant_arrive.group(1) and "TOO_MANY_ATTEMPTS" in cant_arrive.group(1)
     need_account = re.search(r'<step name="Need Account">(.*?)</step>', global_txt, re.S)
     assert need_account and "no number" in need_account.group(1)
+    assert "check_secret_pin" in need_account.group(1) and "spoken_message" in need_account.group(1)
     no_number = re.search(r'<step name="No Number">(.*?)</step>', router_txt, re.S)
     assert no_number and "email" in no_number.group(1) and "silently" in no_number.group(1)

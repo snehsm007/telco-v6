@@ -28,6 +28,9 @@ from lib.replies import display_amount, error_reply, tracking_id
 
 MAX_VALIDATION_ERRORS = 3
 
+# No account found yet (require_login, lookup_account): a PIN already given beats asking again.
+NO_ACCOUNT_ACTION = "If the caller already gave a 4-digit PIN, call check_secret_pin now; else say spoken_message."
+
 SYSTEM_ERROR_CODES: frozenset[str] = frozenset(
     {"SYSTEM_UNAVAILABLE", "SYSTEM_DOWN", "INTERNAL_ERROR", "AUTH_SERVICE_UNAVAILABLE"}
 )
@@ -122,12 +125,22 @@ def require_login(state: dict[str, Any], lang: str, tool_name: str) -> dict[str,
         return None
     ref = tracking_id(tool_name, "not_logged_in", state.get("account_id", ""))
     data: dict[str, Any] = {"code_length": 6, "pin_length": 4}
-    if state.get("account_id"):
-        last4 = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or "")
-        data["spoken_message"] = (
-            spoken_line("otp_callback_confirm", lang, last4=last4) + " " + spoken_line("pin_alternative", lang)
+    if not state.get("account_id"):
+        # No number found yet: say what can find the account, never an improvised method.
+        data["spoken_message"] = spoken_line("account_lookup_options", lang)
+        return error_reply(
+            "NOT_LOGGED_IN",
+            "The caller has not passed login and no account is found yet.",
+            NO_ACCOUNT_ACTION,
+            ref,
+            language=lang,
+            data=data,
         )
-        data["pin_prompt_message"] = spoken_line("id_verification_pin", lang)
+    last4 = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or "")
+    data["spoken_message"] = (
+        spoken_line("otp_callback_confirm", lang, last4=last4) + " " + spoken_line("pin_alternative", lang)
+    )
+    data["pin_prompt_message"] = spoken_line("id_verification_pin", lang)
     return error_reply(
         "NOT_LOGGED_IN",
         "The caller has not passed login.",

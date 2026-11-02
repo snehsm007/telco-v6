@@ -37,6 +37,7 @@ from lib.core import (
     get_state,
     queue_open,
     service_status,
+    NO_ACCOUNT_ACTION,
     session_language,
     validation_error,
 )
@@ -49,6 +50,7 @@ from lib.fakes import (
     OTP_RE,
     PIN_RE,
     find_account,
+    is_name_or_address,
     login_code_accepted,
     normalize_code,
     normalize_identifier,
@@ -193,6 +195,18 @@ def lookup_account_impl(
             data={"blocked": True},
         )
     account = find_account(raw)
+    options = {"spoken_message": spoken_line("account_lookup_options", lang), "pin_length": 4}
+    if account is None and is_name_or_address(raw):
+        # A name or address is not a wrong entry: no strike (BR-TV-010 counts malformed numbers only).
+        state["last_tracking_id"] = reference
+        return error_reply(
+            "NOT_FOUND",
+            "Accounts are found by number, email or PIN, not by name or address.",
+            NO_ACCOUNT_ACTION,
+            reference,
+            language=lang,
+            data={**options, "counted": False},
+        )
     if account is None:
         return validation_error(
             state,
@@ -201,6 +215,7 @@ def lookup_account_impl(
             reference,
             lang,
             code="NOT_FOUND",
+            data=options,
         )
     if state.get("account_id") and state.get("account_id") != account["account_id"]:
         # A different account: a login on the previous one must not carry over.
