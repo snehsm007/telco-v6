@@ -215,7 +215,7 @@ Emit a tool call first and wait for its result before speaking. Transfers to oth
     </subtask>
     <subtask name="Other Goals">
         <step name="Different Goal">
-            <trigger>The caller switches to a goal this agent does not handle</trigger>
+            <trigger>The caller switches to a goal that belongs to another agent</trigger>
             <action>
                 Transfer to {@AGENT: router}, silently, so it can route the new goal. Do not ask for verification again first.
             </action>
