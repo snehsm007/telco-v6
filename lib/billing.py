@@ -37,7 +37,11 @@ from lib.fakes import (
     ARRANGEMENT_FIRST_DUE_DAYS,
     ARRANGEMENT_INSTALMENTS,
     ARRANGEMENT_SECOND_DUE_DAYS,
+    AUTOPAY_DISCOUNT,
+    AUTOPAY_DISCOUNT_NOTE,
+    AUTOPAY_WITHDRAWAL_NOTE,
     BANK_ON_FILE_ENDING,
+    BILL_DATE_CHANGE_NOTE,
     BILL_CYCLE_DAYS_AGO,
     BILL_DUE_IN_DAYS,
     BILL_EXTRA_LINE_FR,
@@ -265,6 +269,17 @@ def _bill_card_on_file(state: dict[str, Any]) -> dict[str, str]:
     return {"last4": original, "brand": str(record.get("card_brand") or ""), "status": fixture(state, "fx_card_on_file_status") or "valid"}
 
 
+def _bill_autopay_facts(lang: str) -> dict[str, str]:
+    """Turn N+1 autopay facts (DESIGN_RULES rule 33): withdrawal day, bill date change, discount."""
+    days = BILL_CYCLE_DAYS_AGO + BILL_DUE_IN_DAYS
+    return {
+        "autopay_withdrawal_note": _bill_text(lang, *AUTOPAY_WITHDRAWAL_NOTE).replace("[days]", str(days)),
+        "bill_date_change_note": _bill_text(lang, *BILL_DATE_CHANGE_NOTE),
+        "autopay_discount_display": display_amount(AUTOPAY_DISCOUNT),
+        "autopay_discount_note": _bill_text(lang, *AUTOPAY_DISCOUNT_NOTE),
+    }
+
+
 def _bill_brand(digits: str) -> str:
     return CARD_BRANDS_BY_PREFIX.get(digits[:1], "Card")
 
@@ -363,20 +378,25 @@ def _bill_resolve_method(
             return None, _bill_decline(state, card["last4"], "CARD_DECLINED" if card["status"] == "declined" else "CARD_EXPIRED", lang, reference, tool)
         return {"method": method, "last4": card["last4"], "brand": card["brand"]}, None
     if method == "new_card":
-        if len(digits) in (0, 4):
-            # Only a card ending (or nothing) so far: ask for the full number. Incomplete,
-            # not malformed, so it does not count towards too_many_errors.
+        if not digits:
+            # No card named yet. Incomplete, not malformed: not counted towards too_many_errors.
             return None, _bill_finish(
                 state,
                 error_reply(
                     "INVALID_INPUT",
-                    "The full card number is needed for a new card.",
-                    "Ask the caller to enter the full card number.",
+                    "No card was given.",
+                    "Ask which card to use by its last four digits, or to key the card number on the keypad.",
                     reference,
                     language=lang,
-                    data={"needs_full_card_number": True, "card_ending_given": digits},
+                    data={"needs_card": True},
                 ),
             )
+        if len(digits) == 4:
+            # A card the caller names by its ending is one they already hold on file or keyed
+            # upstream (prd.md §10: card digits are tokenized upstream, never spoken in full).
+            if digits in DECLINED_CARD_LAST4 or digits == str(state.get("declined_card_last4") or ""):
+                return None, _bill_decline(state, digits, "CARD_DECLINED", lang, reference, tool)
+            return {"method": method, "last4": digits, "brand": ""}, None
         if not 13 <= len(digits) <= 19:
             return None, validation_error(
                 state,
@@ -487,6 +507,7 @@ def get_billing_summary_impl(
         "bank_on_file_last4": BANK_ON_FILE_ENDING,
         "autopay_enrolled": autopay,
         "payment_arrangement_active": arrangement,
+        **_bill_autopay_facts(lang),
         "recent_bills": [
             {
                 "bill_date": lines[0]["date"] if lines else relative_date(-BILL_CYCLE_DAYS_AGO),
@@ -695,6 +716,7 @@ def setup_autopay_impl(
         "first_charge_date": first["iso"],
         "first_charge_date_display": first["display"],
         "charges": "full_statement_balance_on_due_date",
+        **_bill_autopay_facts(lang),
         "current_balance_included": live["balance"] > _BILL_ZERO,
         **money(live["balance"], "balance_due"),
         "confirmation_sms_sent": True,

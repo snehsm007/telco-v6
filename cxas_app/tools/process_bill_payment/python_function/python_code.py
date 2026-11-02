@@ -18,8 +18,8 @@ def process_bill_payment(
       amount: Amount to pay as a quoted string; empty or "full" = whole balance,
         "past_due" = the past-due amount.
       payment_method: card_on_file, new_card or bank_account.
-      card_number: Full card number for new_card (or bank account number), exactly as
-        given; empty for card_on_file.
+      card_number: The last 4 digits of the card the caller named, or a keyed card
+        number (or bank account number), exactly as given; empty for card_on_file.
       dtmf_digits: Card digits keyed on the phone keypad, when given that way.
       language: Active language code (en-US or fr-CA).
 
@@ -823,20 +823,25 @@ def _bill_resolve_method(  # pragma: no cover
             return None, _bill_decline(state, card["last4"], "CARD_DECLINED" if card["status"] == "declined" else "CARD_EXPIRED", lang, reference, tool)
         return {"method": method, "last4": card["last4"], "brand": card["brand"]}, None
     if method == "new_card":
-        if len(digits) in (0, 4):
-            # Only a card ending (or nothing) so far: ask for the full number. Incomplete,
-            # not malformed, so it does not count towards too_many_errors.
+        if not digits:
+            # No card named yet. Incomplete, not malformed: not counted towards too_many_errors.
             return None, _bill_finish(
                 state,
                 error_reply(
                     "INVALID_INPUT",
-                    "The full card number is needed for a new card.",
-                    "Ask the caller to enter the full card number.",
+                    "No card was given.",
+                    "Ask which card to use by its last four digits, or to key the card number on the keypad.",
                     reference,
                     language=lang,
-                    data={"needs_full_card_number": True, "card_ending_given": digits},
+                    data={"needs_card": True},
                 ),
             )
+        if len(digits) == 4:
+            # A card the caller names by its ending is one they already hold on file or keyed
+            # upstream (prd.md §10: card digits are tokenized upstream, never spoken in full).
+            if digits in DECLINED_CARD_LAST4 or digits == str(state.get("declined_card_last4") or ""):
+                return None, _bill_decline(state, digits, "CARD_DECLINED", lang, reference, tool)
+            return {"method": method, "last4": digits, "brand": ""}, None
         if not 13 <= len(digits) <= 19:
             return None, validation_error(
                 state,

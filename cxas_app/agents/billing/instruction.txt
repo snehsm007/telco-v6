@@ -84,7 +84,7 @@ EXCEPTION — a handover to a person is one turn: the transfer sentence, {@TOOL:
                 Say the payment_method_preamble line word for word:
                 - en-US: Before we continue, please note that your payment details are protected and processed securely, and I will only ever refer to the last four digits of your card or account.
                 - fr-CA: Avant de continuer, sachez que vos renseignements de paiement sont protégés et traités de façon sécurisée, et que je ne mentionnerai jamais que les quatre derniers chiffres de votre carte ou de votre compte.
-                Then confirm the method (the card ending in card_on_file_last4, or the card or bank account the caller named; for a new card ask for its full number) and, for a payment, the amount (balance_due_display, or past_due_amount_display).
+                Then confirm the method (the card ending in card_on_file_last4, or the card or bank account the caller named by its last four digits, used as named; never ask the caller to say a full card number) and, for a payment, the amount (balance_due_display, or past_due_amount_display).
             </action>
         </step>
         <step name="Take Payment">
@@ -93,7 +93,7 @@ EXCEPTION — a handover to a person is one turn: the transfer sentence, {@TOOL:
                 Call {@TOOL: process_bill_payment} with:
                 - amount: the confirmed amount, or "full"
                 - payment_method: card_on_file, new_card or bank_account
-                - card_number: a new card's full number, as given
+                - card_number: the card ending the caller named (or keyed card number), as given
             </action>
         </step>
         <step name="Enrol Autopay">
@@ -101,7 +101,7 @@ EXCEPTION — a handover to a person is one turn: the transfer sentence, {@TOOL:
             <action>
                 Call {@TOOL: setup_autopay} with:
                 - payment_method: card_on_file, new_card or bank_account
-                - card_number: a new card's full number, as given
+                - card_number: the card ending the caller named (or keyed card number), as given
             </action>
         </step>
         <step name="Billing Task Done">

@@ -169,6 +169,37 @@ def _bill_arrangement_offer(balance: Decimal, lang: str, first: Decimal | None =
         **money(balance, "total"),
     }
 
+AUTOPAY_DISCOUNT = "0.00"  # pragma: no cover
+
+AUTOPAY_DISCOUNT_NOTE = (  # pragma: no cover
+    "There's no discount or incentive for autopay; it makes sure each bill is paid on time, with no fee.",
+    "Le paiement préautorisé ne donne pas de rabais ni d'avantage; il assure que chaque facture est payée à temps, sans frais.",
+)
+
+AUTOPAY_WITHDRAWAL_NOTE = (  # pragma: no cover
+    "Autopay charges the full statement balance on each bill's due date, [days] days after the bill date.",
+    "Le paiement préautorisé prélève le solde total du relevé à la date d'échéance de chaque facture, [days] jours après la date de facturation.",
+)
+
+BILL_DATE_CHANGE_NOTE = (  # pragma: no cover
+    "The monthly bill date is set by the account's billing cycle and can't be changed; autopay always follows each bill's due date.",
+    "La date de facturation mensuelle est fixée par le cycle de facturation du compte et ne peut pas être modifiée; le paiement préautorisé suit toujours la date d'échéance de chaque facture.",
+)
+
+def _bill_text(lang: str, en: str, fr: str) -> str:  # pragma: no cover
+    """One localized string in the call language (DESIGN_RULES rule 5: no sibling keys)."""
+    return fr if lang == "fr-CA" else en
+
+def _bill_autopay_facts(lang: str) -> dict[str, str]:  # pragma: no cover
+    """Turn N+1 autopay facts (DESIGN_RULES rule 33): withdrawal day, bill date change, discount."""
+    days = BILL_CYCLE_DAYS_AGO + BILL_DUE_IN_DAYS
+    return {
+        "autopay_withdrawal_note": _bill_text(lang, *AUTOPAY_WITHDRAWAL_NOTE).replace("[days]", str(days)),
+        "bill_date_change_note": _bill_text(lang, *BILL_DATE_CHANGE_NOTE),
+        "autopay_discount_display": display_amount(AUTOPAY_DISCOUNT),
+        "autopay_discount_note": _bill_text(lang, *AUTOPAY_DISCOUNT_NOTE),
+    }
+
 DECLINED_CARD_LAST4: frozenset[str] = frozenset({"0000", "9999"})  # pragma: no cover
 
 def _bill_flag(state: dict[str, Any], key: str) -> bool:  # pragma: no cover
@@ -310,10 +341,6 @@ SERVICE_PRICES: dict[str, str] = {  # pragma: no cover
     "tv": "42.00",
     "homephone": "28.00",
 }
-
-def _bill_text(lang: str, en: str, fr: str) -> str:  # pragma: no cover
-    """One localized string in the call language (DESIGN_RULES rule 5: no sibling keys)."""
-    return fr if lang == "fr-CA" else en
 
 def _bill_lines(state: dict[str, Any], lang: str) -> list[dict[str, Any]]:  # pragma: no cover
     """Line items on the latest bill: monthly services, extra charges, and the fx_extra_bill_line fixture."""
@@ -944,6 +971,7 @@ def get_billing_summary_impl(  # pragma: no cover
         "bank_on_file_last4": BANK_ON_FILE_ENDING,
         "autopay_enrolled": autopay,
         "payment_arrangement_active": arrangement,
+        **_bill_autopay_facts(lang),
         "recent_bills": [
             {
                 "bill_date": lines[0]["date"] if lines else relative_date(-BILL_CYCLE_DAYS_AGO),

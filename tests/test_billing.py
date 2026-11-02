@@ -15,6 +15,12 @@ from lib.billing import (
 )
 from lib.fakes import (
     ACCOUNTS,
+    AUTOPAY_DISCOUNT,
+    AUTOPAY_DISCOUNT_NOTE,
+    AUTOPAY_WITHDRAWAL_NOTE,
+    BILL_CYCLE_DAYS_AGO,
+    BILL_DATE_CHANGE_NOTE,
+    BILL_DUE_IN_DAYS,
     BILL_EXTRA_LINES,
     DUPLICATE_PAYMENT,
     PAST_DUE_AMOUNT,
@@ -267,7 +273,7 @@ def test_new_card_from_dtmf_argument():
 def test_keypad_pin_is_not_taken_as_a_card():
     reply = process_bill_payment_impl("", "new_card", state=logged_in(dtmf_digits="5903"))
     assert reply["error"] == "INVALID_INPUT"
-    assert reply["data"]["needs_full_card_number"] is True
+    assert reply["data"]["needs_card"] is True
 
 
 def test_last4_of_card_on_file_means_card_on_file():
@@ -275,17 +281,29 @@ def test_last4_of_card_on_file_means_card_on_file():
     assert reply["data"]["payment_method"] == "card_on_file"
 
 
-def test_last4_of_another_card_needs_full_number():
-    reply = process_bill_payment_impl("", "card_on_file", "6150", state=logged_in())
-    assert reply["error"] == "INVALID_INPUT"
+def test_caller_named_card_ending_is_charged_and_read_back_as_last4():
+    state = logged_in()
+    reply = process_bill_payment_impl("", "card_on_file", "6150", state=state)
+    assert reply["status"] == "ok"
+    assert reply["data"]["card_last4"] == "6150"
+    assert "ending in 6150" in reply["data"]["spoken_summary"]
+    assert state["card_last4"] == "6150"
 
 
-def test_card_ending_only_does_not_count_as_a_hard_error():
+def test_declined_card_on_file_then_same_ending_declines_and_another_ending_pays():
+    state = logged_in(fx_card_on_file_status="declined")
+    assert process_bill_payment_impl("", "card_on_file", state=state)["error"] == "CARD_DECLINED"
+    assert process_bill_payment_impl("", "card_on_file", DEFAULT["card_last4"], state=state)["error"] == "CARD_DECLINED"
+    assert process_bill_payment_impl("", "new_card", "0000", state=state)["error"] == "CARD_DECLINED"
+    paid = process_bill_payment_impl("", "new_card", "6150", state=state)
+    assert paid["status"] == "ok"
+    assert paid["data"]["card_last4"] == "6150"
+
+
+def test_missing_card_does_not_count_as_a_hard_error():
     state = logged_in()
     for _ in range(3):
-        reply = process_bill_payment_impl("", "new_card", "6150", state=state)
-        assert reply["error"] == "INVALID_INPUT"
-        assert reply["data"]["card_ending_given"] == "6150"
+        assert process_bill_payment_impl("", "new_card", "", state=state)["error"] == "INVALID_INPUT"
     assert not state.get("global_err_count")
     short = process_bill_payment_impl("", "new_card", "51051051", state=state)
     assert short["error"] == "INVALID_INPUT"
@@ -367,10 +385,23 @@ def test_autopay_new_card_and_bank_in_french():
     assert "avec le compte bancaire" in bank["data"]["spoken_summary"]
 
 
-def test_autopay_needs_full_number_for_unknown_card_ending():
-    reply = setup_autopay_impl("new_card", "6150", state=logged_in())
-    assert reply["error"] == "INVALID_INPUT"
-    assert reply["data"]["needs_full_card_number"] is True
+def test_autopay_with_caller_named_card_ending():
+    state = logged_in()
+    reply = setup_autopay_impl("new_card", "6150", state=state)
+    assert reply["data"]["card_last4"] == "6150"
+    assert state["card_last4"] == "6150"
+
+
+def test_autopay_follow_up_facts_localized_in_summary_and_setup():
+    days = str(BILL_CYCLE_DAYS_AGO + BILL_DUE_IN_DAYS)
+    summary = get_billing_summary_impl(state=logged_in())["data"]
+    assert days in summary["autopay_withdrawal_note"]
+    assert summary["bill_date_change_note"] == BILL_DATE_CHANGE_NOTE[0]
+    assert summary["autopay_discount_display"] == AUTOPAY_DISCOUNT
+    fr = setup_autopay_impl("card_on_file", state=logged_in(), language="fr-CA")["data"]
+    assert fr["autopay_discount_note"] == AUTOPAY_DISCOUNT_NOTE[1]
+    assert fr["autopay_withdrawal_note"] == AUTOPAY_WITHDRAWAL_NOTE[1].replace("[days]", days)
+    assert not any(key.endswith(("_en", "_fr")) for key in fr)
 
 
 def test_autopay_with_declined_card_on_file():
