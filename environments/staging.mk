@@ -3,5 +3,5 @@ PROJECT_ID := sneh-antigravity-test
 LOCATION   := us
 # App id from the console URL (…/apps/<id>) or the name `cxas push --display-name` prints.
 # Create the app once with: cxas push --app-dir cxas_app --display-name telco-v6-staging --project-id sneh-antigravity-test --location us
-APP_ID     := <app id>
+APP_ID     := 0574c319-e25e-4120-86e9-9fd87dccb2f1
 AGENT_NAME := telco-v6
