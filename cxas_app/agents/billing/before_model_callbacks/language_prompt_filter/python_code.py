@@ -185,6 +185,14 @@ def build_language_sheet(locale: str, agent_name: str = "router") -> str:  # pra
     lines.append("</active_language_sheet>")
     return "\n".join(lines)
 
+KEYPAD_FRENCH_CHOICES: frozenset[str] = frozenset({"2", "deux"})  # pragma: no cover
+
+def _dp_is_keypad_french_choice(utterance: str) -> bool:  # pragma: no cover
+    """True when the caller's first input is the keypad language choice for French."""
+    cleaned = re.sub(r"[\s.!,#*]+", "", str(utterance or "").strip().lower())
+    cleaned = re.sub(r"^(?:pressed|keyed|appuie|touche)", "", cleaned)
+    return cleaned in KEYPAD_FRENCH_CHOICES
+
 _DP_EXPLICIT_SWITCH_TERMS: tuple[tuple[str, tuple[str, ...]], ...] = (  # pragma: no cover
     ("fr-CA", ("en français", "en francais", "parlez-vous français", "parlez vous francais", "in french", "speak french", "french please", "switch to french")),
     ("es-US", ("en español", "en espanol", "habla español", "habla espanol", "in spanish", "speak spanish", "spanish please", "switch to spanish")),
@@ -379,6 +387,11 @@ def detect_active_call_language(state_dict: Any, llm_request: Any) -> str:  # pr
         return current
 
     current = resolve_locale(locked) if locked else "en-US"
+    if not locked and user_utterances and _dp_is_keypad_french_choice(user_utterances[0]):
+        # "Press 2 for French": only the caller's very first input selects the
+        # language this way; a "2" later in the call (a menu or slot choice) never does.
+        current = "fr-CA"
+        user_utterances = user_utterances[1:]
     for utt in user_utterances:
         if current != "en-US":
             switch = _dp_match_explicit_switch(utt.lower())
