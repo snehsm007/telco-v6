@@ -56,11 +56,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 import re
 
-_LAST4_CONTEXT_RE = re.compile(  # pragma: no cover
-    r"((?:ending\s+in|terminant\s+par|termina\s+en|number\s+is|num[eé]ro\s+est|n[uú]mero\s+es)\s+)(\d{4})\b",
-    re.IGNORECASE,
-)
-
 _PAYMENT_OR_ACCOUNT_WORDS: tuple[str, ...] = (  # pragma: no cover
     "card", "carte", "visa", "mastercard", "amex", "crédit", "credit", "débit", "debit",
     "bank", "bancaire", "banque", "account", "compte", "chequing", "chèque", "cheque",
@@ -95,33 +90,41 @@ def clean_agent_speech(  # pragma: no cover
     text: str,
     session_params: dict[str, Any] | None = None,
 ) -> str:
-    """Clean markdown and long numbers, and prefer caller_provided_phone_last4 when present."""
+    """Clean markdown and long numbers, and say the caller's own phone ending.
+
+    The only digit rewrite: when the caller identified with a phone whose last
+    4 (caller_provided_phone_last4) differ from the default account phone
+    (phone_last4), a spoken phone_last4 becomes caller_provided_phone_last4.
+    Any other 4-digit ending (temporary number, ticket, card, bank, account,
+    claim, order, transfer) is a tool fact and is never touched, and a
+    phone_last4 said right after a card, bank or account word, or equal to
+    card_last4, is kept too. The callback never invents digits.
+    """
     cleaned = clean_speech(text)
     if not isinstance(session_params, dict):
         return cleaned
     caller_last4 = str(session_params.get("caller_provided_phone_last4") or "").strip()
     profile_last4 = str(session_params.get("phone_last4") or "").strip()
     card_last4 = str(session_params.get("card_last4") or "").strip()
-    if len(caller_last4) == 4 and caller_last4.isdigit():
-        if (
-            len(profile_last4) == 4
-            and profile_last4 != caller_last4
-            and profile_last4 != card_last4
-            and profile_last4 in cleaned
-        ):
-            cleaned = re.sub(rf"\b{re.escape(profile_last4)}\b", caller_last4, cleaned)
+    if not (
+        len(caller_last4) == 4
+        and caller_last4.isdigit()
+        and len(profile_last4) == 4
+        and profile_last4.isdigit()
+        and profile_last4 != caller_last4
+        and profile_last4 != card_last4
+    ):
+        return cleaned
+    source = cleaned
 
-        def _replace_non_card_last4(m: re.Match[str]) -> str:
-            prefix = cleaned[max(0, m.start() - 35) : m.start()].lower()
-            if any(w in prefix for w in _PAYMENT_OR_ACCOUNT_WORDS):
-                # Card, bank and account endings come from tool results; never swap them for phone digits.
-                return m.group(0)
-            if len(card_last4) == 4 and m.group(2) == card_last4:
-                return m.group(0)
-            return f"{m.group(1)}{caller_last4}"
+    def _swap_profile_last4(m: re.Match[str]) -> str:
+        prefix = source[max(0, m.start() - 35) : m.start()].lower()
+        if any(w in prefix for w in _PAYMENT_OR_ACCOUNT_WORDS):
+            # Card, bank and account endings come from tool results; never swap them for phone digits.
+            return m.group(0)
+        return caller_last4
 
-        cleaned = _LAST4_CONTEXT_RE.sub(_replace_non_card_last4, cleaned)
-    return cleaned
+    return re.sub(rf"\b{re.escape(profile_last4)}\b", _swap_profile_last4, cleaned)
 
 def enforce_handover_utterance(  # pragma: no cover
     text: str,

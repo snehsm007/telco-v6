@@ -53,3 +53,13 @@ def test_keeps_the_spoken_transfer_line_after_a_handover(callback) -> None:
 def test_returns_none_when_nothing_changes(callback) -> None:
     assert callback.after_model_callback(SimpleNamespace(state={}), make_response("All set.")) is None
     assert callback.after_model_callback(SimpleNamespace(state={}), SimpleNamespace(content=None)) is None
+
+
+@pytest.mark.parametrize("callback", CALLBACKS)
+def test_bundled_callback_keeps_tool_endings_and_fixes_profile_phone(callback) -> None:
+    state = {"phone_last4": "0186", "caller_provided_phone_last4": "0199"}
+    temp = "Your temporary number ending in 2538 is active."
+    assert callback.after_model_callback(SimpleNamespace(state=state), make_response(temp)) is None
+    response = make_response("I sent the code to the number ending in 0186.")
+    assert callback.after_model_callback(SimpleNamespace(state=state), response) is response
+    assert response.content.parts[0].text == "I sent the code to the number ending in 0199."
