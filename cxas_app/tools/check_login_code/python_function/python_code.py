@@ -728,6 +728,7 @@ def check_login_code_impl(  # pragma: no cover
     state["login_attempts"] = 0
     if step_up:
         state["step_up_verified"] = True
+        state["step_up_pending"] = False
         state["code_purpose"] = "login"
         return ok_reply({"verified": True, "step_up_verified": True, "logged_in": True}, reference, language=lang)
     state["auth_status"] = "pass"

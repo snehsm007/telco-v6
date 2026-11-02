@@ -637,7 +637,7 @@ def send_login_code_impl(  # pragma: no cover
     if state.get("auth_status") == "locked" or _failures(state) >= MAX_LOGIN_ATTEMPTS:
         return _locked_reply(state, reference, lang)
     logged_in = state.get("auth_status") == "pass"
-    purpose = "step_up" if logged_in and chan == "email" else "login"
+    purpose = "step_up" if logged_in and (chan == "email" or state.get("step_up_pending")) else "login"
     if logged_in and purpose == "login":
         return ok_reply({"sent": False, "already_verified": True}, reference, language=lang)
     if not logged_in:

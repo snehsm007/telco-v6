@@ -59,16 +59,13 @@ A turn is either spoken words or one tool call, except a handover reply (say the
         <step name="Step-Up Needed">
             <trigger>{@TOOL: manage_mfa} returned error="STEP_UP_REQUIRED"</trigger>
             <action>
-                Call {@TOOL: send_login_code} with channel "email".
+                Call {@TOOL: send_login_code} with channel "email". If the caller says they can't get email, call it with channel "sms" instead.
             </action>
         </step>
         <step name="Step-Up Code Sent">
             <trigger>{@TOOL: send_login_code} returned sent=true and purpose="step_up"</trigger>
             <action>
-                Say:
-                - en-US: For your security, I just sent a verification code to the email address on file. Please read it back to me.
-                - fr-CA: Pour votre sécurité, je viens d'envoyer un code de vérification à l'adresse courriel au dossier. Veuillez me le lire.
-                If it doesn't arrive, resend it by email once.
+                Say the spoken_message it returned word for word. If the caller can't get the email, send the code by text instead (channel "sms"); if it doesn't arrive, resend once.
             </action>
         </step>
         <step name="Step-Up Passed">

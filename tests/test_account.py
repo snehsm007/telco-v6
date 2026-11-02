@@ -499,3 +499,18 @@ def test_mfa_enable_says_what_to_do_if_the_phone_is_lost() -> None:
     assert "PIN" in on["data"]["lost_phone_note"]
     fr = manage_mfa_impl("enable", state=_logged_in(), language="fr-CA")
     assert "NIP" in fr["data"]["lost_phone_note"]
+
+
+def test_mfa_step_up_falls_back_to_a_text_when_email_is_unavailable() -> None:
+    """Step-up needs a second factor beyond the login; a text to the mobile on file counts."""
+    from lib.services import check_login_code_impl, check_secret_pin_impl, lookup_account_impl, send_login_code_impl
+
+    state: dict = {"fx_mfa_enabled": "true"}
+    lookup_account_impl("514-555-0199", state=state)
+    check_secret_pin_impl("2468", state=state)
+    first = manage_mfa_impl(action="disable", state=state)
+    assert first["error"] == "STEP_UP_REQUIRED" and first["data"]["step_up_fallback_channel"] == "sms"
+    sent = send_login_code_impl(channel="sms", state=state)
+    assert sent["data"]["sent"] is True and sent["data"]["purpose"] == "step_up"
+    assert check_login_code_impl("482913", state=state)["data"]["step_up_verified"] is True
+    assert manage_mfa_impl(action="disable", state=state)["status"] == "ok"

@@ -817,6 +817,15 @@
         "default": "",
         "required": []
       }
+    },
+    {
+      "name": "step_up_pending",
+      "description": "True while an MFA change waits for its step-up code (email, or text when email is unavailable).",
+      "schema": {
+        "type": "BOOLEAN",
+        "default": false,
+        "required": []
+      }
     }
   ],
   "guardrails": [

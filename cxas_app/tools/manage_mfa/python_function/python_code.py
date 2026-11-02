@@ -776,13 +776,16 @@ def manage_mfa_impl(  # pragma: no cover
             data={"mfa_enabled": currently_on, "already_in_state": True},
         )
     if act == "disable" and not _acct_flag(state.get("step_up_verified")):
+        # Step-up = a second factor beyond the login: the emailed code, or a text to
+        # the mobile on file when the caller can't get email.
+        state["step_up_pending"] = True
         return error_reply(
             "STEP_UP_REQUIRED",
-            "Turning off two-step verification needs an email code first.",
-            "Call send_login_code with channel email, check the code with check_login_code, then retry.",
+            "Turning off two-step verification needs a second verification code first.",
+            "Send a code by email (send_login_code channel email); if no email access, by text (channel sms).",
             reference,
             language=lang,
-            data={"step_up_channel": "email", "mfa_enabled": currently_on},
+            data={"step_up_channel": "email", "step_up_fallback_channel": "sms", "mfa_enabled": currently_on},
         )
     now_on = act == "enable"
     state["mfa_state"] = "enabled" if now_on else "disabled"
