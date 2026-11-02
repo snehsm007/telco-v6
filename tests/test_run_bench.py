@@ -87,3 +87,92 @@ def test_main_refuses_a_full_run_at_the_thresholds_cap(
         run_bench.main([
             "--app", APP, "--bench-dir", str(bench_dir), "--thresholds", str(thresholds), "--max-full-runs", "7",
         ])
+
+
+# ----------------------------------------------------------------------------- Gate 1 / Gate 3 exit codes
+
+
+def _smoke_rec(slot: int, passed: bool) -> dict:
+    exps = [{"prompt": "says the line", "outcome": 1}, {"prompt": "does the task", "outcome": 1 if passed else 2}]
+    return {
+        "round": 0, "evaluation_run": "r", "slot": slot, "evaluation": "ev/x",
+        "classification": "PASS" if passed else "FAIL", "tool_calls": [],
+        "raw": {"scenario_result": {"evaluation_expectation_results": exps}},
+    }
+
+
+def test_smoke_gate_needs_the_whole_eval_not_one_expectation() -> None:
+    recs = [_smoke_rec(1, True), _smoke_rec(2, False), _smoke_rec(3, False)]
+    gate = run_bench.compute_smoke_gate(recs, [{"ve_id": "VE-01", "evaluation_name": "ev/x", "total_runs": 3, "pass_runs": 1}])
+    assert gate["per_eval"]["VE-01"]["expectations"]["says the line"] == "3/3"
+    assert gate["per_eval"]["VE-01"]["eval_go"] is False
+    assert gate["gate_verdict"] == "stop"
+    assert run_bench.smoke_exit_code({"smoke_gate": gate}) == 4
+
+
+def test_run_evals_appends_records_and_returns_4_on_a_gate_1_stop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from scripts import run_evals
+
+    bench_dir = tmp_path / "bench"
+
+    def _fake_bench_main(argv: list[str]) -> int:
+        label = argv[argv.index("--report-name") + 1]
+        (bench_dir / "runs").mkdir(parents=True, exist_ok=True)
+        report = {"results": [{"display_name": "golden_x", "pass_runs": 1, "fail_runs": 2, "total_runs": 3}],
+                  "smoke_gate": {"gate_verdict": "stop"}}
+        (bench_dir / "runs" / f"{label}.json").write_text(json.dumps(report), encoding="utf-8")
+        return 4
+
+    monkeypatch.setattr(run_bench, "main", _fake_bench_main)
+    records = tmp_path / "runs.jsonl"
+    code = run_evals.main([
+        "--app", APP, "--smoke", "--targets", "golden_x", "--bench-dir", str(bench_dir),
+        "--eval-dir", str(REPO_ROOT / "evals"), "--records", str(records), "--label", "smoke-test",
+        "--thresholds", str(REPO_ROOT / "gate_thresholds.json"),
+    ])
+    assert code == 4
+    assert records.read_text(encoding="utf-8").strip(), "smoke records must still be appended on a stop"
+
+
+def _make(target: str, tmp_path: Path, **overrides: str) -> "subprocess.CompletedProcess[str]":
+    import shutil
+    import subprocess
+
+    if not shutil.which("make"):
+        pytest.skip("make is not installed")
+    args = ["make", "--no-print-directory", "-C", str(REPO_ROOT), target, "SKIP_PREFLIGHT=1",
+            "APP=projects/p/locations/l/apps/a", "SHA7=abc1234", f"BENCH_DIR={tmp_path / 'bench'}"]
+    args += [f"{k}={v}" for k, v in overrides.items()]
+    return subprocess.run(args, capture_output=True, text=True, timeout=120, check=False)
+
+
+def _stub(tmp_path: Path, name: str, body: str) -> str:
+    path = tmp_path / name
+    path.write_text("#!/bin/sh\n" + body + "\n", encoding="utf-8")
+    path.chmod(0o755)
+    return str(path)
+
+
+def test_make_bench_full_fails_when_gate_3_fails(tmp_path: Path) -> None:
+    # PYTHON stub: every helper succeeds except the Gate 3 verdict.
+    py = _stub(tmp_path, "py", 'case "$*" in *--gate3*) echo "Gate 3 FAIL"; exit 1;; esac; exit 0')
+    proc = _make("bench-full", tmp_path, PYTHON=py, RUN_EVALS="true", IMPACT="true")
+    assert proc.returncode != 0, proc.stdout + proc.stderr
+    assert "does not pass Gate 3" in proc.stderr
+    ok_py = _stub(tmp_path, "py_ok", "exit 0")
+    assert _make("bench-full", tmp_path, PYTHON=ok_py, RUN_EVALS="true", IMPACT="true").returncode == 0
+
+
+def test_make_smoke_targets_fail_on_a_gate_1_stop_but_still_record(tmp_path: Path) -> None:
+    marker = tmp_path / "recorded"
+    impact = _stub(tmp_path, "impact", f'case "$*" in *--smoke-plan*) echo VE-01;; *--record-smoke*) touch {marker};; esac; exit 0')
+    stop = _stub(tmp_path, "run_evals_stop", "exit 4")
+    proc = _make("smoke-impact", tmp_path, IMPACT=impact, RUN_EVALS=stop)
+    assert proc.returncode != 0 and marker.exists(), proc.stdout + proc.stderr
+    assert _make("bench-smoke", tmp_path, RUN_EVALS=stop, TARGETS="VE-01").returncode != 0
+    go = _stub(tmp_path, "run_evals_go", "exit 0")
+    marker.unlink()
+    assert _make("smoke-impact", tmp_path, IMPACT=impact, RUN_EVALS=go).returncode == 0 and marker.exists()
+    broken = _stub(tmp_path, "run_evals_err", "exit 1")
+    marker.unlink()
+    assert _make("smoke-impact", tmp_path, IMPACT=impact, RUN_EVALS=broken).returncode != 0 and not marker.exists()

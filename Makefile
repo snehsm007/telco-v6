@@ -250,8 +250,11 @@ impact: ## Map git diff since the last clean full run to impacted evaluation IDs
 smoke-impact: need-app preflight ## Gate 1 on the pushed commit: impacted evals x 3, verdict recorded for its source fingerprint (FULL verdict: stops, run bench-full)
 	@targets=$$($(IMPACT) --app "$(APP)" --smoke-plan $(if $(BASE),--base $(BASE),)) || exit $$?; \
 	if [ -z "$$targets" ]; then exit 0; fi; \
-	$(RUN_EVALS) --smoke $(EVAL_COMMON) --targets "$$targets" --label smoke-$(SHA7) && \
-	$(IMPACT) --record-smoke $(BENCH_DIR)/runs/smoke-$(SHA7).json
+	rc=0; $(RUN_EVALS) --smoke $(EVAL_COMMON) --targets "$$targets" --label smoke-$(SHA7) || rc=$$?; \
+	if [ $$rc -eq 0 ] || [ $$rc -eq 4 ]; then \
+	  $(IMPACT) --record-smoke $(BENCH_DIR)/runs/smoke-$(SHA7).json || [ $$rc -ne 0 ] || rc=1; \
+	fi; \
+	exit $$rc
 
 push: need-app need-cxas bundle-check preflight ## Push $(APP_DIR) to ENV's app as version git-<sha7> (commit cxas_app/, lib/, evals/ first) and record it in history/last_push.json
 	@$(IMPACT) --require-clean
@@ -392,7 +395,7 @@ bench-full: need-app preflight ## Gate 3: every eval x 3 on the pushed commit af
 	$(PYTHON) scripts/bench_summary.py "$(BENCH_DIR)/runs/full-$(SHA7).json" --bench-dir $(BENCH_DIR) --out-dir history/bench
 	@$(IMPACT) --build-map
 	@$(PYTHON) scripts/bench_summary.py --gate3 history/bench/full-$(SHA7).json --thresholds $(THRESHOLDS) --bench-dir $(BENCH_DIR) || \
-	  echo "bench-full finished, but this run does not pass Gate 3 (see above). Fix the failures one mechanism at a time: commit, make push, make smoke-impact, make bench-full."
+	  { echo "bench-full finished, but this run does not pass Gate 3 (see above). Fix the failures one mechanism at a time: commit, make push, make smoke-impact, make bench-full." >&2; exit 1; }
 
 bench: bench-full ## Alias for bench-full (Gate 3)
 
