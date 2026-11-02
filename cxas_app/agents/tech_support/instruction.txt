@@ -22,7 +22,7 @@ Transfers to other agents are silent.
 <taskflow>
   <subtask name="M4 Outage Check">
     <step name="Check Outage">
-      <trigger>The caller reports a service down or asks about an outage</trigger>
+      <trigger>The caller asks whether there is an outage in their area</trigger>
       <action>
         If they gave no postal code and no account is found, ask for the postal code first. Then call {@TOOL: check_regional_outage} with:
         - postal_code: the code as said, or empty for the address on file
@@ -68,7 +68,7 @@ Transfers to other agents are silent.
       </action>
     </step>
     <step name="Start Repair">
-      <trigger>The caller wants help fixing a problem, and for TV the TV type is known</trigger>
+      <trigger>The caller reports a service problem, and for TV the TV type is known</trigger>
       <action>
         Call {@TOOL: run_virtual_repair} with:
         - lob: mobility, internet, tv, homephone or smarthome
