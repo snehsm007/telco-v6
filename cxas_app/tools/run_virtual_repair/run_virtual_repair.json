@@ -1,0 +1,10 @@
+{
+  "name": "run_virtual_repair",
+  "displayName": "run_virtual_repair",
+  "executionType": "SYNCHRONOUS",
+  "pythonFunction": {
+    "name": "run_virtual_repair",
+    "description": "Opens a virtual-repair session for a logged-in caller: checks the area outage at the address on file, sends a remote reset when possible, and returns troubleshooting steps in the caller's language. For TV, tv_sub_type is required.",
+    "pythonCode": "tools/run_virtual_repair/python_function/python_code.py"
+  }
+}

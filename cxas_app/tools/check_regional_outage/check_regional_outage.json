@@ -1,0 +1,10 @@
+{
+  "name": "check_regional_outage",
+  "displayName": "check_regional_outage",
+  "executionType": "SYNCHRONOUS",
+  "pythonFunction": {
+    "name": "check_regional_outage",
+    "description": "Checks for an active service outage in an area by Canadian postal code or US ZIP code. Needs no login. Empty postal_code uses the service address of the account found on this call. Call it before any troubleshooting when the caller reports a service down or asks about an outage.",
+    "pythonCode": "tools/check_regional_outage/python_function/python_code.py"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "get_appointment_and_ticket_status",
+  "displayName": "get_appointment_and_ticket_status",
+  "executionType": "SYNCHRONOUS",
+  "pythonFunction": {
+    "name": "get_appointment_and_ticket_status",
+    "description": "Returns a logged-in caller's technician visits (date, window, status, technician ETA or delay), open repair tickets, and three open slots for a reschedule or a new visit.",
+    "pythonCode": "tools/get_appointment_and_ticket_status/python_function/python_code.py"
+  }
+}
