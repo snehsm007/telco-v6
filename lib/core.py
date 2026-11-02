@@ -98,7 +98,11 @@ def fixture_flag(state: dict[str, Any] | None, name: str) -> bool:
 
 
 def mock_mode_on(state: dict[str, Any] | None) -> bool:
-    """PRD §17: eval harness flag; tools mark their replies as synthetic when set."""
+    """PRD §17 eval-harness flag (scenario variableOverrides mock_mode="True").
+
+    Every tool here already runs on the fake backend in lib/fakes.py, so mock mode
+    changes no tool outcome; fixtures (fx_*) still apply and login is never mocked.
+    """
     return isinstance(state, dict) and str(state.get("mock_mode") or "").strip().lower() == "true"
 
 

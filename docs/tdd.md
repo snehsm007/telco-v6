@@ -110,7 +110,7 @@ Backend facts that differ per customer are session variables prefixed `fx_` (STR
 | `fx_mfa_enabled` | `false` / `true` | `manage_mfa` |
 | `fx_sms_delivery` | `delivered` / `failed` | password reset |
 
-Which evals carry overrides is listed in `docs/requirements.md` §Eval fixtures, each with its reason.
+Which evals carry overrides is listed in `docs/requirements.md` §Eval fixtures, each with its reason. Every scenario also sets `mock_mode="True"` (PRD §17 eval-harness flag). Tools already run on the fake backend, so mock mode changes no outcome: `fx_*` fixtures still apply, and `auth_status` / `identification_status` / `logged_in` are never mocked.
 
 ## 6. Login acceptance (DESIGN_RULES rule 21, extended)
 

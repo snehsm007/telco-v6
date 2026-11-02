@@ -12,7 +12,8 @@
     "scenarioExpectations": [],
     "userFacts": [],
     "variableOverrides": {
-      "fx_technician_status": "delayed"
+      "fx_technician_status": "delayed",
+      "mock_mode": "True"
     }
   },
   "tags": [

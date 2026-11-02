@@ -157,3 +157,18 @@ def test_queue_open_follows_queue_hours() -> None:
     for queue in ("fraud", "outage", "general"):
         assert core.queue_open(queue, sunday_12) is True
     assert isinstance(core.queue_open("sales"), bool)
+
+
+def test_mock_mode_changes_no_tool_outcome() -> None:
+    """PRD §17: the eval harness sets mock_mode; fixtures and login still decide outcomes."""
+    from lib import services
+    from lib.core import mock_mode_on
+
+    assert mock_mode_on({"mock_mode": "True"}) and not mock_mode_on({})
+    for extra in ({}, {"mock_mode": "True"}):
+        state: dict = {"fx_card_on_file_status": "declined", **extra}
+        services.lookup_account_impl("514-555-0199", state=state)
+        assert services.get_billing_summary_impl(state=state)["error"] == "NOT_LOGGED_IN"
+        services.check_secret_pin_impl("2468", state=state)
+        paid = services.process_bill_payment_impl(amount="", payment_method="card_on_file", state=state)
+        assert paid["error"] == "CARD_DECLINED"

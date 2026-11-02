@@ -11,7 +11,9 @@
     "rubrics": [],
     "scenarioExpectations": [],
     "userFacts": [],
-    "variableOverrides": {}
+    "variableOverrides": {
+      "mock_mode": "True"
+    }
   },
   "tags": [
     "public",

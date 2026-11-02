@@ -12,7 +12,8 @@
     "scenarioExpectations": [],
     "userFacts": [],
     "variableOverrides": {
-      "fx_mfa_enabled": "true"
+      "fx_mfa_enabled": "true",
+      "mock_mode": "True"
     }
   },
   "tags": [

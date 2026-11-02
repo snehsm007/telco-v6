@@ -11,7 +11,8 @@
     "scenarioExpectations": [],
     "userFacts": [],
     "variableOverrides": {
-      "fx_business_account": "true"
+      "fx_business_account": "true",
+      "mock_mode": "True"
     }
   },
   "tags": [

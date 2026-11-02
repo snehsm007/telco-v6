@@ -12,7 +12,8 @@
     "scenarioExpectations": [],
     "userFacts": [],
     "variableOverrides": {
-      "fx_technician_status": "en_route"
+      "fx_technician_status": "en_route",
+      "mock_mode": "True"
     }
   },
   "tags": [

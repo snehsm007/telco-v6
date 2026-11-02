@@ -12,7 +12,8 @@
     "userFacts": [],
     "variableOverrides": {
       "fx_service_status": "suspended_nonpayment",
-      "fx_business_account": "true"
+      "fx_business_account": "true",
+      "mock_mode": "True"
     }
   },
   "tags": [

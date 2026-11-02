@@ -203,7 +203,11 @@ def _bill_card_on_file(state: dict[str, Any]) -> dict[str, str]:  # pragma: no c
     return {"last4": original, "brand": str(record.get("card_brand") or ""), "status": fixture(state, "fx_card_on_file_status") or "valid"}
 
 def mock_mode_on(state: dict[str, Any] | None) -> bool:  # pragma: no cover
-    """PRD §17: eval harness flag; tools mark their replies as synthetic when set."""
+    """PRD §17 eval-harness flag (scenario variableOverrides mock_mode="True").
+
+    Every tool here already runs on the fake backend in lib/fakes.py, so mock mode
+    changes no tool outcome; fixtures (fx_*) still apply and login is never mocked.
+    """
     return isinstance(state, dict) and str(state.get("mock_mode") or "").strip().lower() == "true"
 
 def _bill_finish(state: dict[str, Any], reply: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover

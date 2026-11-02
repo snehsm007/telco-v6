@@ -13,7 +13,8 @@
     "variableOverrides": {
       "fx_pin_on_file": "7315",
       "fx_otp_on_file": "804627",
-      "fx_mfa_enabled": "true"
+      "fx_mfa_enabled": "true",
+      "mock_mode": "True"
     }
   },
   "tags": [

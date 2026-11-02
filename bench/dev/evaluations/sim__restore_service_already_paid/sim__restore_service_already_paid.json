@@ -13,7 +13,8 @@
     "userFacts": [],
     "variableOverrides": {
       "fx_service_status": "suspended_nonpayment",
-      "fx_recent_payment": "posted_yesterday"
+      "fx_recent_payment": "posted_yesterday",
+      "mock_mode": "True"
     }
   },
   "tags": [
