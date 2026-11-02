@@ -1,0 +1,10 @@
+{
+  "name": "setup_autopay",
+  "displayName": "setup_autopay",
+  "executionType": "SYNCHRONOUS",
+  "pythonFunction": {
+    "name": "setup_autopay",
+    "description": "Enrols the logged-in caller in automatic monthly payments with the card on file, a new card or a bank account. Call it once the caller has chosen the method. Returns the first automatic charge date.",
+    "pythonCode": "tools/setup_autopay/python_function/python_code.py"
+  }
+}

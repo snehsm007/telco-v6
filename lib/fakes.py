@@ -398,6 +398,40 @@ BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199"})
 ARRANGEMENT_INSTALMENTS = 2
 ARRANGEMENT_SECOND_DUE_DAYS = 30
 
+# --- billing fixtures ---
+# Labels of the monthly service lines on a bill (en-US, fr-CA) and the words a
+# caller uses for each service. Keyword matching is by service class, never by
+# a test sentence.
+SERVICE_LINE_LABELS: dict[str, tuple[str, str]] = {
+    "mobility": ("Mobility monthly service", "Service mobilité mensuel"),
+    "internet": ("Home internet monthly service", "Service Internet résidentiel mensuel"),
+    "tv": ("TV monthly service", "Service télé mensuel"),
+    "homephone": ("Home phone monthly service", "Service de téléphone résidentiel mensuel"),
+}
+SERVICE_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "mobility": ("mobil", "cell", "wireless", "smartphone", "data", "données", "sans fil"),
+    "internet": ("internet", "wi-fi", "wifi", "modem", "router", "routeur", "broadband", "fibre", "fiber"),
+    "tv": ("tv", "télé", "tele", "television", "télévision", "cable", "câble", "satellite", "channel", "chaîne"),
+    "homephone": ("home phone", "landline", "ligne fixe", "téléphone résidentiel", "telephone residentiel"),
+}
+# French labels and caller words for the extra lines in BILL_EXTRA_LINES.
+BILL_EXTRA_LINE_FR: dict[str, str] = {
+    "CH-STR-01": "Achat AppleStreaming",
+    "CH-LD-01": "Appels interurbains",
+}
+BILL_EXTRA_LINE_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "CH-STR-01": ("stream", "apple", "diffusion", "en continu", "purchase", "achat", "subscription", "abonnement"),
+    "CH-LD-01": ("long distance", "long-distance", "longue distance", "interurbain", "international", "calls", "appels"),
+}
+EXTRA_FIXTURE_LINE_DAYS_AGO = 4      # fx_extra_bill_line posts on the latest bill
+BANK_ON_FILE_ENDING = "6083"
+ARRANGEMENT_FIRST_DUE_DAYS = 7       # first instalment within 7 days
+NEXT_BILL_CYCLE_DAYS = 30
+DISPUTE_ETA_BUSINESS_DAYS = 10
+RECENT_PAYMENT_DAYS_AGO = 1          # fx_recent_payment=posted_yesterday
+CARD_BRANDS_BY_PREFIX: dict[str, str] = {"4": "Visa", "5": "Mastercard", "2": "Mastercard", "3": "American Express"}
+# --- end billing fixtures ---
+
 
 def resolve_locale(language: str | None) -> str:
     """Normalize a language tag or prefix to a supported locale (en-US or fr-CA)."""

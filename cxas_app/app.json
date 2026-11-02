@@ -745,6 +745,78 @@
         "default": "",
         "required": []
       }
+    },
+    {
+      "name": "balance_due",
+      "description": "Live account balance on this call after billing tools changed it (2 decimals); empty = backend value.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "past_due_amount",
+      "description": "Live past-due amount on this call after billing tools changed it (2 decimals); empty = backend value.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "autopay_enrolled",
+      "description": "True once setup_autopay enrolled the account on this call.",
+      "schema": {
+        "type": "BOOLEAN",
+        "default": false,
+        "required": []
+      }
+    },
+    {
+      "name": "autopay_method",
+      "description": "Autopay method set on this call: card_on_file, new_card or bank_account.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "arrangement_active",
+      "description": "True once setup_payment_arrangement created an arrangement on this call.",
+      "schema": {
+        "type": "BOOLEAN",
+        "default": false,
+        "required": []
+      }
+    },
+    {
+      "name": "bill_payment_count",
+      "description": "Bill payments made on this call (keeps payment references unique).",
+      "schema": {
+        "type": "INTEGER",
+        "default": 0,
+        "required": []
+      }
+    },
+    {
+      "name": "recent_payment_applied",
+      "description": "True once verify_payment_and_restore applied a posted payment on this call.",
+      "schema": {
+        "type": "BOOLEAN",
+        "default": false,
+        "required": []
+      }
+    },
+    {
+      "name": "card_brand",
+      "description": "Brand of the active payment card on this call (Visa, Mastercard...).",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
     }
   ],
   "guardrails": [
