@@ -47,6 +47,7 @@ from lib.fakes import (
     SALES_COVERAGE_MAX_MBPS,
     SALES_EQUIPMENT_DELIVERY_DAYS,
     SALES_FEATURES_FR,
+    SALES_GENERIC_DEVICE_WORDS,
     SALES_LANDLINE_WORDS,
     SALES_NEW_LINE_WORDS,
     SALES_OUT_OF_WARRANTY_AGE_DAYS,
@@ -233,6 +234,13 @@ def _sales_plan_view(state: dict[str, Any], plan: dict[str, Any], current: dict[
         view["data_display"] = _sales_data_display(int(plan["data_gb"]), lang)
     if plan.get("speed_mbps"):
         view["speed_display"] = _sales_speed_display(int(plan["speed_mbps"]), lang)
+    if plan.get("upload_mbps"):  # follow-up facts: upload, symmetry, latency (DESIGN_RULES rule 33)
+        view["upload_speed_display"] = _sales_speed_display(int(plan["upload_mbps"]), lang)
+        view["symmetric"] = bool(plan.get("symmetric"))
+        view["latency_note"] = _sales_text(str(plan.get("latency_key") or ""), lang)
+    if plan.get("channel_examples"):
+        view["channel_examples"] = [_sales_feature(c, lang) for c in plan["channel_examples"]]
+        view["hd_included"] = bool(plan.get("hd_included"))
     view.update(_sales_pricing(state, plan, current))
     return view
 
@@ -264,12 +272,23 @@ def _sales_rank(plans: list[dict[str, Any]], need: str) -> list[dict[str, Any]]:
 
 
 def _sales_device(device: Any, issue: Any) -> tuple[dict[str, Any], bool]:
-    """Match the caller's words to a device on file; fall back to the most recent purchase."""
+    """Match the caller's words to a device on file.
+
+    A model the caller names that isn't on file gets a record of its own (same default
+    purchase age as the newest device), so a claim is never filed for a phone they don't
+    own; only a generic "my phone" falls back to the most recent purchase.
+    """
     text = f"{device or ''} {issue or ''}".lower()
     for dev in DEVICES_ON_FILE:
         if any(k in text for k in dev.get("keywords", [])) or str(dev["model"]).lower() in text:
             return dev, True
-    return min(DEVICES_ON_FILE, key=lambda d: int(d["purchased_days_ago"])), False
+    newest = min(DEVICES_ON_FILE, key=lambda d: int(d["purchased_days_ago"]))
+    named = " ".join(str(device or "").split())[:60]
+    words = re.findall(r"[^\W_]+", named.lower())
+    if _sales_placeholder(named) or all(w in SALES_GENERIC_DEVICE_WORDS for w in words):
+        return newest, False
+    device_id = "DEV-" + normalize_code(tracking_id("caller_device", named.lower()))
+    return {"device_id": device_id, "model": named, "purchased_days_ago": newest["purchased_days_ago"]}, False
 
 
 # ----------------------------------------------------------------------------- browse_plans
@@ -427,6 +446,10 @@ def place_order_impl(
         quote["delivery_eta_display"] = display_date(delivery, lang)
     if lob == "mobility":
         quote["after_data_cap"] = _sales_text("after_data_cap", lang)
+        if current is not None:  # an extra line adds the plan price; new_monthly_total is the plan-change view
+            quote.update(money(plan["price"], "new_line_monthly_price"))
+            quote.update(money(_sales_account_total(state) + (to_decimal(plan["price"]) or Decimal("0")), "new_line_account_monthly_total"))
+            quote["new_line_pricing_note"] = _sales_text("new_line_pricing", lang)
 
     order_id = "ORD-" + tracking_id("place_order", account_id, plan["plan_id"])[1:]
     pending_key = f"place_order:{plan['plan_id']}"

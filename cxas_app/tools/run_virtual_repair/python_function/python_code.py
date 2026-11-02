@@ -174,6 +174,23 @@ def _tech_category(lob: str, symptom: str) -> tuple[str, bool]:  # pragma: no co
         return default, True
     return default, False
 
+CURRENT_DATA_GB = 15  # pragma: no cover
+
+CURRENT_DATA_USED_GB = 9  # pragma: no cover
+
+_TECH_DATA_NOTES: dict[str, dict[str, str]] = {  # pragma: no cover
+    "usage": {
+        "en-US": "This cycle you've used {used} GB of your {total} GB of high-speed data, so your speed is {state}.",
+        "fr-CA": "Pendant ce cycle, vous avez utilisé {used} Go de vos {total} Go de données haute vitesse; votre vitesse {state}.",
+    },
+    "not_slowed": {"en-US": "not being reduced", "fr-CA": "n'est donc pas réduite"},
+    "slowed": {"en-US": "reduced until the next cycle", "fr-CA": "est donc réduite jusqu'au prochain cycle"},
+    "throttling": {
+        "en-US": "After the high-speed data is used, data continues at a reduced speed with no overage fees; a plan with more data restores full speed.",
+        "fr-CA": "Une fois les données haute vitesse utilisées, les données continuent à vitesse réduite, sans frais d'excédent; un forfait avec plus de données rétablit la pleine vitesse.",
+    },
+}
+
 def resolve_locale(language: str | None) -> str:  # pragma: no cover
     """Normalize a language tag or prefix to a supported locale (en-US or fr-CA)."""
     low = str(language or "").strip().lower().replace("_", "-")
@@ -182,6 +199,20 @@ def resolve_locale(language: str | None) -> str:  # pragma: no cover
     return "en-US"
 
 resolve_copy_locale = resolve_locale  # pragma: no cover
+
+def _tech_text(table: dict[str, str], lang: str) -> str:  # pragma: no cover
+    """Pick the caller's language from a {locale: text} table."""
+    return table.get(resolve_copy_locale(lang)) or table.get("en-US", "")
+
+def _tech_data_usage(lang: str) -> dict[str, Any]:  # pragma: no cover
+    """Mobile data usage facts for a slow-data repair, so a usage question stays in tech support."""
+    slowed = CURRENT_DATA_USED_GB >= CURRENT_DATA_GB
+    usage = _tech_text(_TECH_DATA_NOTES["usage"], lang).format(
+        used=CURRENT_DATA_USED_GB,
+        total=CURRENT_DATA_GB,
+        state=_tech_text(_TECH_DATA_NOTES["slowed" if slowed else "not_slowed"], lang),
+    )
+    return {"data_speed_reduced": slowed, "data_usage_note": usage, "throttling_note": _tech_text(_TECH_DATA_NOTES["throttling"], lang)}
 
 def _tech_hours(hours: int, lang: str) -> str:  # pragma: no cover
     if resolve_copy_locale(lang) == "fr-CA":
@@ -476,10 +507,6 @@ def _tech_sub_type(raw: Any, symptom: str) -> str:  # pragma: no cover
     if _tech_has(symptom, ("satellite", "parabol", "dish")):
         return "satellite"
     return ""
-
-def _tech_text(table: dict[str, str], lang: str) -> str:  # pragma: no cover
-    """Pick the caller's language from a {locale: text} table."""
-    return table.get(resolve_copy_locale(lang)) or table.get("en-US", "")
 
 ACCOUNTS: tuple[dict[str, Any], ...] = (  # pragma: no cover
     {
@@ -1110,11 +1137,14 @@ def run_virtual_repair_impl(  # pragma: no cover
         "remote_reset_sent": remote_reset,
         "remote_reset_target": _TECH_REMOTE_RESET_TARGET[service] if remote_reset else "",
         "steps": steps,
+        "first_step": steps[0] if steps else "",
         "step_count": len(steps),
         "sms_recommended": len(steps) > 2,
         "known_issue": known_issue,
         "if_unresolved": ["technician_visit", "live_agent"],
     }
+    if category == "mobile_slow_data":
+        data.update(_tech_data_usage(lang))
     reply = ok_reply(data, reference, language=lang)
     if not matched and resolve_copy_locale(lang) == "fr-CA":
         reply["agent_action"] = "Not in the French repair catalogue: hand over with reason secondary_language_live_agent."

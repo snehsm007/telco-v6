@@ -59,12 +59,12 @@ PLANS: tuple[dict[str, Any], ...] = (  # pragma: no cover
     {"plan_id": "MOB-50", "lob": "mobility", "name": "Plus 50", "price": "58.00", "data_gb": 50, "features": ["50 GB high-speed data", "Unlimited Canada-wide calling", "5G access"]},
     {"plan_id": "MOB-100", "lob": "mobility", "name": "Max 100", "price": "72.00", "data_gb": 100, "features": ["100 GB high-speed data", "Canada-US calling", "5G+ access"]},
     {"plan_id": "MOB-UNL", "lob": "mobility", "name": "Unlimited Premium", "price": "89.00", "data_gb": 175, "features": ["175 GB high-speed data", "Canada-US-Mexico calling", "5G+ access"]},
-    {"plan_id": "INT-1G", "lob": "internet", "name": "Fibre 1 Gigabit", "price": "97.00", "speed_mbps": 1000, "features": ["Up to 1 Gbps download", "Unlimited usage", "Wi-Fi 6 gateway"]},
-    {"plan_id": "INT-3G", "lob": "internet", "name": "Fibre 3 Gigabit", "price": "118.00", "speed_mbps": 3000, "features": ["Up to 3 Gbps download", "Unlimited usage", "Wi-Fi 6E gateway", "Whole-home Wi-Fi pod"]},
-    {"plan_id": "INT-8G", "lob": "internet", "name": "Fibre 8 Gigabit", "price": "143.00", "speed_mbps": 8000, "features": ["Up to 8 Gbps download", "Unlimited usage", "Wi-Fi 7 gateway", "Two Wi-Fi pods"]},
-    {"plan_id": "TV-SPORTS", "lob": "tv", "name": "Sports Pack", "price": "16.00", "addon": True, "keywords": ["sport", "hockey", "football", "soccer", "basketball", "baseball"], "features": ["National sports networks", "Regional game coverage", "Sports on demand"]},
-    {"plan_id": "TV-MOVIES", "lob": "tv", "name": "Movies Pack", "price": "13.00", "addon": True, "keywords": ["movie", "film", "cinema", "cinéma"], "features": ["Premium movie channels", "Movies on demand"]},
-    {"plan_id": "TV-PLUS", "lob": "tv", "name": "TV Plus Package", "price": "61.00", "addon": False, "keywords": ["package", "channels", "upgrade"], "features": ["Over 150 channels", "Cloud PVR"]},
+    {"plan_id": "INT-1G", "lob": "internet", "upload_mbps": 1000, "symmetric": True, "latency_key": "latency_fibre", "name": "Fibre 1 Gigabit", "price": "97.00", "speed_mbps": 1000, "features": ["Up to 1 Gbps download", "Unlimited usage", "Wi-Fi 6 gateway"]},
+    {"plan_id": "INT-3G", "lob": "internet", "upload_mbps": 3000, "symmetric": True, "latency_key": "latency_fibre", "name": "Fibre 3 Gigabit", "price": "118.00", "speed_mbps": 3000, "features": ["Up to 3 Gbps download", "Unlimited usage", "Wi-Fi 6E gateway", "Whole-home Wi-Fi pod"]},
+    {"plan_id": "INT-8G", "lob": "internet", "upload_mbps": 8000, "symmetric": True, "latency_key": "latency_fibre", "name": "Fibre 8 Gigabit", "price": "143.00", "speed_mbps": 8000, "features": ["Up to 8 Gbps download", "Unlimited usage", "Wi-Fi 7 gateway", "Two Wi-Fi pods"]},
+    {"plan_id": "TV-SPORTS", "lob": "tv", "name": "Sports Pack", "price": "16.00", "addon": True, "keywords": ["sport", "hockey", "football", "soccer", "basketball", "baseball"], "features": ["National sports networks", "Regional game coverage", "Sports on demand"], "hd_included": True, "channel_examples": ["National hockey, football and basketball broadcasts", "Regional and local team games", "International soccer", "Sports news and highlights"]},
+    {"plan_id": "TV-MOVIES", "lob": "tv", "name": "Movies Pack", "price": "13.00", "addon": True, "keywords": ["movie", "film", "cinema", "cinéma"], "features": ["Premium movie channels", "Movies on demand"], "hd_included": True, "channel_examples": ["Premium movie channels", "Recent releases on demand", "Classic film channels"]},
+    {"plan_id": "TV-PLUS", "lob": "tv", "name": "TV Plus Package", "price": "61.00", "addon": False, "keywords": ["package", "channels", "upgrade"], "features": ["Over 150 channels", "Cloud PVR"], "hd_included": True, "channel_examples": ["National news and lifestyle channels", "Kids and family channels", "Specialty entertainment channels"]},
 )
 
 SALES_COVERAGE_MAX_MBPS: dict[str, int] = {"Region-A": 3000, "Region-B": 8000, "Region-C": 1000}  # pragma: no cover
@@ -165,6 +165,14 @@ SALES_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
     "port_existing_line": {
         "en-US": "The transferred number replaces the current number on that line when the transfer completes.",
         "fr-CA": "Le numéro transféré remplacera le numéro actuel de cette ligne à la fin du transfert.",
+    },
+    "latency_fibre": {
+        "en-US": "Fibre has low latency, typically under 10 milliseconds on a wired connection, well suited to video calls.",
+        "fr-CA": "La fibre a une faible latence, habituellement moins de 10 millisecondes sur une connexion câblée, idéale pour les appels vidéo.",
+    },
+    "new_line_pricing": {
+        "en-US": "Added as an additional line, the plan adds its own price to the account and the current line keeps its plan; as a plan change, it replaces the current mobile plan.",
+        "fr-CA": "Ajouté comme ligne supplémentaire, le forfait ajoute son propre prix au compte et la ligne actuelle garde son forfait; comme changement de forfait, il remplace le forfait mobile actuel.",
     },
 }
 
@@ -400,6 +408,15 @@ SALES_FEATURES_FR: dict[str, str] = {  # pragma: no cover
     "Movies on demand": "Films sur demande",
     "Over 150 channels": "Plus de 150 chaînes",
     "Cloud PVR": "Enregistreur numérique infonuagique",
+    "National hockey, football and basketball broadcasts": "Matchs nationaux de hockey, de football et de basketball",
+    "Regional and local team games": "Matchs des équipes régionales et locales",
+    "International soccer": "Soccer international",
+    "Sports news and highlights": "Nouvelles et faits saillants sportifs",
+    "Recent releases on demand": "Films récents sur demande",
+    "Classic film channels": "Chaînes de films classiques",
+    "National news and lifestyle channels": "Chaînes nationales de nouvelles et de style de vie",
+    "Kids and family channels": "Chaînes pour enfants et la famille",
+    "Specialty entertainment channels": "Chaînes spécialisées de divertissement",
 }
 
 def _sales_feature(text: str, lang: str) -> str:  # pragma: no cover
@@ -447,6 +464,13 @@ def _sales_plan_view(state: dict[str, Any], plan: dict[str, Any], current: dict[
         view["data_display"] = _sales_data_display(int(plan["data_gb"]), lang)
     if plan.get("speed_mbps"):
         view["speed_display"] = _sales_speed_display(int(plan["speed_mbps"]), lang)
+    if plan.get("upload_mbps"):  # follow-up facts: upload, symmetry, latency (DESIGN_RULES rule 33)
+        view["upload_speed_display"] = _sales_speed_display(int(plan["upload_mbps"]), lang)
+        view["symmetric"] = bool(plan.get("symmetric"))
+        view["latency_note"] = _sales_text(str(plan.get("latency_key") or ""), lang)
+    if plan.get("channel_examples"):
+        view["channel_examples"] = [_sales_feature(c, lang) for c in plan["channel_examples"]]
+        view["hd_included"] = bool(plan.get("hd_included"))
     view.update(_sales_pricing(state, plan, current))
     return view
 

@@ -761,6 +761,11 @@ def manage_mfa_impl(  # pragma: no cover
             "effective_display": _acct_text(lang, "effective immediately", "en vigueur immédiatement"),
             "confirmation_sms_sent": dispatch_sms(state, "mfa_" + act)["sms_sent"],
             "spoken_summary": summary,
+            "lost_phone_note": _acct_text(
+                lang,
+                "If this phone is lost or stolen, call us and verify with your secret PIN instead of a text code; we can then suspend the line and update the mobile number that sign-in codes go to.",
+                "Si ce téléphone est perdu ou volé, appelez-nous et vérifiez votre identité avec votre NIP secret plutôt qu'avec un code par texto; nous pourrons ensuite suspendre la ligne et mettre à jour le numéro de cellulaire qui reçoit les codes de connexion.",
+            ) if now_on else "",
         },
         reference,
         language=lang,

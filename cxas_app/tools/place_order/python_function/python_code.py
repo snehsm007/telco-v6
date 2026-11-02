@@ -53,17 +53,95 @@ PLANS: tuple[dict[str, Any], ...] = (  # pragma: no cover
     {"plan_id": "MOB-50", "lob": "mobility", "name": "Plus 50", "price": "58.00", "data_gb": 50, "features": ["50 GB high-speed data", "Unlimited Canada-wide calling", "5G access"]},
     {"plan_id": "MOB-100", "lob": "mobility", "name": "Max 100", "price": "72.00", "data_gb": 100, "features": ["100 GB high-speed data", "Canada-US calling", "5G+ access"]},
     {"plan_id": "MOB-UNL", "lob": "mobility", "name": "Unlimited Premium", "price": "89.00", "data_gb": 175, "features": ["175 GB high-speed data", "Canada-US-Mexico calling", "5G+ access"]},
-    {"plan_id": "INT-1G", "lob": "internet", "name": "Fibre 1 Gigabit", "price": "97.00", "speed_mbps": 1000, "features": ["Up to 1 Gbps download", "Unlimited usage", "Wi-Fi 6 gateway"]},
-    {"plan_id": "INT-3G", "lob": "internet", "name": "Fibre 3 Gigabit", "price": "118.00", "speed_mbps": 3000, "features": ["Up to 3 Gbps download", "Unlimited usage", "Wi-Fi 6E gateway", "Whole-home Wi-Fi pod"]},
-    {"plan_id": "INT-8G", "lob": "internet", "name": "Fibre 8 Gigabit", "price": "143.00", "speed_mbps": 8000, "features": ["Up to 8 Gbps download", "Unlimited usage", "Wi-Fi 7 gateway", "Two Wi-Fi pods"]},
-    {"plan_id": "TV-SPORTS", "lob": "tv", "name": "Sports Pack", "price": "16.00", "addon": True, "keywords": ["sport", "hockey", "football", "soccer", "basketball", "baseball"], "features": ["National sports networks", "Regional game coverage", "Sports on demand"]},
-    {"plan_id": "TV-MOVIES", "lob": "tv", "name": "Movies Pack", "price": "13.00", "addon": True, "keywords": ["movie", "film", "cinema", "cinéma"], "features": ["Premium movie channels", "Movies on demand"]},
-    {"plan_id": "TV-PLUS", "lob": "tv", "name": "TV Plus Package", "price": "61.00", "addon": False, "keywords": ["package", "channels", "upgrade"], "features": ["Over 150 channels", "Cloud PVR"]},
+    {"plan_id": "INT-1G", "lob": "internet", "upload_mbps": 1000, "symmetric": True, "latency_key": "latency_fibre", "name": "Fibre 1 Gigabit", "price": "97.00", "speed_mbps": 1000, "features": ["Up to 1 Gbps download", "Unlimited usage", "Wi-Fi 6 gateway"]},
+    {"plan_id": "INT-3G", "lob": "internet", "upload_mbps": 3000, "symmetric": True, "latency_key": "latency_fibre", "name": "Fibre 3 Gigabit", "price": "118.00", "speed_mbps": 3000, "features": ["Up to 3 Gbps download", "Unlimited usage", "Wi-Fi 6E gateway", "Whole-home Wi-Fi pod"]},
+    {"plan_id": "INT-8G", "lob": "internet", "upload_mbps": 8000, "symmetric": True, "latency_key": "latency_fibre", "name": "Fibre 8 Gigabit", "price": "143.00", "speed_mbps": 8000, "features": ["Up to 8 Gbps download", "Unlimited usage", "Wi-Fi 7 gateway", "Two Wi-Fi pods"]},
+    {"plan_id": "TV-SPORTS", "lob": "tv", "name": "Sports Pack", "price": "16.00", "addon": True, "keywords": ["sport", "hockey", "football", "soccer", "basketball", "baseball"], "features": ["National sports networks", "Regional game coverage", "Sports on demand"], "hd_included": True, "channel_examples": ["National hockey, football and basketball broadcasts", "Regional and local team games", "International soccer", "Sports news and highlights"]},
+    {"plan_id": "TV-MOVIES", "lob": "tv", "name": "Movies Pack", "price": "13.00", "addon": True, "keywords": ["movie", "film", "cinema", "cinéma"], "features": ["Premium movie channels", "Movies on demand"], "hd_included": True, "channel_examples": ["Premium movie channels", "Recent releases on demand", "Classic film channels"]},
+    {"plan_id": "TV-PLUS", "lob": "tv", "name": "TV Plus Package", "price": "61.00", "addon": False, "keywords": ["package", "channels", "upgrade"], "features": ["Over 150 channels", "Cloud PVR"], "hd_included": True, "channel_examples": ["National news and lifestyle channels", "Kids and family channels", "Specialty entertainment channels"]},
 )
 
 SALES_COVERAGE_MAX_MBPS: dict[str, int] = {"Region-A": 3000, "Region-B": 8000, "Region-C": 1000}  # pragma: no cover
 
 SALES_EQUIPMENT_DELIVERY_DAYS = 3  # pragma: no cover
+
+SERVICE_PRICES: dict[str, str] = {  # pragma: no cover
+    "mobility": "65.00",
+    "internet": "85.50",
+    "tv": "42.00",
+    "homephone": "28.00",
+}
+
+ACCOUNTS: tuple[dict[str, Any], ...] = (  # pragma: no cover
+    {
+        "account_id": "A1001",
+        "phone": "2025550186",
+        "first_name": "Morgan",
+        "email": "m.okafor@mailprovider.example",
+        "status": "active",
+        "preferred_language": "en-US",
+        "card_last4": "7742",
+        "card_brand": "Visa",
+        "customer_type": "Existing",
+        "postal_code": "K2P 1L4",
+        "service_address_last_line": "Ottawa, ON K2P 1L4",
+        "lines_of_business": ["mobility", "internet", "tv", "homephone"],
+        "business_flag": False,
+    },
+    {
+        "account_id": "A1002",
+        "phone": "2025550198",
+        "first_name": "Taylor",
+        "email": "taylor.r@mailprovider.example",
+        "status": "active",
+        "preferred_language": "fr-CA",
+        "card_last4": "8853",
+        "card_brand": "Mastercard",
+        "customer_type": "Existing",
+        "postal_code": "K1A 0B1",
+        "service_address_last_line": "Ottawa, ON K1A 0B1",
+        "lines_of_business": ["mobility", "internet"],
+        "business_flag": False,
+    },
+)
+
+def account_record(state: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover
+    """The active account record, falling back to the default account."""
+    account_id = str(state.get("account_id") or "")
+    for record in ACCOUNTS:
+        if record["account_id"] == account_id:
+            return dict(record)
+    base = dict(ACCOUNTS[0])
+    if account_id:
+        base["account_id"] = account_id
+    return base
+
+def _sales_account_lobs(state: dict[str, Any]) -> list[str]:  # pragma: no cover
+    return list(account_record(state).get("lines_of_business") or [])
+
+def to_decimal(value: Any) -> Decimal | None:  # pragma: no cover
+    """Parse a caller or model amount ("$85.50", 85.5, "85,50") into Decimal; None when not a number."""
+    if value is None or isinstance(value, bool):
+        return None
+    text = str(value).strip().replace("$", "").replace("CAD", "").replace(" ", "")
+    if not text:
+        return None
+    if text.count(",") == 1 and "." not in text:
+        text = text.replace(",", ".")
+    text = text.replace(",", "")
+    try:
+        amount = Decimal(text)
+    except (InvalidOperation, ValueError):
+        return None
+    if not amount.is_finite():
+        return None
+    return amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+def _sales_account_total(state: dict[str, Any]) -> Decimal:  # pragma: no cover
+    return sum(
+        (to_decimal(SERVICE_PRICES.get(lob, "0")) or Decimal("0") for lob in _sales_account_lobs(state)),
+        Decimal("0.00"),
+    )
 
 SALES_ACTIVATION_DAYS: dict[str, int] = {"mobility": 0, "internet": 1, "tv": 0, "homephone": 1}  # pragma: no cover
 
@@ -158,6 +236,14 @@ SALES_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "The transferred number replaces the current number on that line when the transfer completes.",
         "fr-CA": "Le numéro transféré remplacera le numéro actuel de cette ligne à la fin du transfert.",
     },
+    "latency_fibre": {
+        "en-US": "Fibre has low latency, typically under 10 milliseconds on a wired connection, well suited to video calls.",
+        "fr-CA": "La fibre a une faible latence, habituellement moins de 10 millisecondes sur une connexion câblée, idéale pour les appels vidéo.",
+    },
+    "new_line_pricing": {
+        "en-US": "Added as an additional line, the plan adds its own price to the account and the current line keeps its plan; as a plan change, it replaces the current mobile plan.",
+        "fr-CA": "Ajouté comme ligne supplémentaire, le forfait ajoute son propre prix au compte et la ligne actuelle garde son forfait; comme changement de forfait, il remplace le forfait mobile actuel.",
+    },
 }
 
 def resolve_locale(language: str | None) -> str:  # pragma: no cover
@@ -224,60 +310,6 @@ CURRENT_PLANS: dict[str, str] = {"mobility": "Plus 50 Legacy", "internet": "Fibr
 
 CURRENT_SPEED_MBPS = 500  # pragma: no cover
 
-SERVICE_PRICES: dict[str, str] = {  # pragma: no cover
-    "mobility": "65.00",
-    "internet": "85.50",
-    "tv": "42.00",
-    "homephone": "28.00",
-}
-
-ACCOUNTS: tuple[dict[str, Any], ...] = (  # pragma: no cover
-    {
-        "account_id": "A1001",
-        "phone": "2025550186",
-        "first_name": "Morgan",
-        "email": "m.okafor@mailprovider.example",
-        "status": "active",
-        "preferred_language": "en-US",
-        "card_last4": "7742",
-        "card_brand": "Visa",
-        "customer_type": "Existing",
-        "postal_code": "K2P 1L4",
-        "service_address_last_line": "Ottawa, ON K2P 1L4",
-        "lines_of_business": ["mobility", "internet", "tv", "homephone"],
-        "business_flag": False,
-    },
-    {
-        "account_id": "A1002",
-        "phone": "2025550198",
-        "first_name": "Taylor",
-        "email": "taylor.r@mailprovider.example",
-        "status": "active",
-        "preferred_language": "fr-CA",
-        "card_last4": "8853",
-        "card_brand": "Mastercard",
-        "customer_type": "Existing",
-        "postal_code": "K1A 0B1",
-        "service_address_last_line": "Ottawa, ON K1A 0B1",
-        "lines_of_business": ["mobility", "internet"],
-        "business_flag": False,
-    },
-)
-
-def account_record(state: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover
-    """The active account record, falling back to the default account."""
-    account_id = str(state.get("account_id") or "")
-    for record in ACCOUNTS:
-        if record["account_id"] == account_id:
-            return dict(record)
-    base = dict(ACCOUNTS[0])
-    if account_id:
-        base["account_id"] = account_id
-    return base
-
-def _sales_account_lobs(state: dict[str, Any]) -> list[str]:  # pragma: no cover
-    return list(account_record(state).get("lines_of_business") or [])
-
 def _sales_data_display(gb: int, lang: str) -> str:  # pragma: no cover
     return f"{gb} Go" if resolve_copy_locale(lang) == "fr-CA" else f"{gb} GB"
 
@@ -304,24 +336,6 @@ def display_amount(value: Any) -> str:  # pragma: no cover
     if not amount.is_finite():
         raise ValueError(f"not an amount: {value!r}")
     return str(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
-
-def to_decimal(value: Any) -> Decimal | None:  # pragma: no cover
-    """Parse a caller or model amount ("$85.50", 85.5, "85,50") into Decimal; None when not a number."""
-    if value is None or isinstance(value, bool):
-        return None
-    text = str(value).strip().replace("$", "").replace("CAD", "").replace(" ", "")
-    if not text:
-        return None
-    if text.count(",") == 1 and "." not in text:
-        text = text.replace(",", ".")
-    text = text.replace(",", "")
-    try:
-        amount = Decimal(text)
-    except (InvalidOperation, ValueError):
-        return None
-    if not amount.is_finite():
-        return None
-    return amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 def money(value: Any, prefix: str = "amount") -> dict[str, Any]:  # pragma: no cover
     """Money as a number plus a 2-decimal display string (DESIGN_RULES rule 27)."""
@@ -378,16 +392,19 @@ SALES_FEATURES_FR: dict[str, str] = {  # pragma: no cover
     "Movies on demand": "Films sur demande",
     "Over 150 channels": "Plus de 150 chaînes",
     "Cloud PVR": "Enregistreur numérique infonuagique",
+    "National hockey, football and basketball broadcasts": "Matchs nationaux de hockey, de football et de basketball",
+    "Regional and local team games": "Matchs des équipes régionales et locales",
+    "International soccer": "Soccer international",
+    "Sports news and highlights": "Nouvelles et faits saillants sportifs",
+    "Recent releases on demand": "Films récents sur demande",
+    "Classic film channels": "Chaînes de films classiques",
+    "National news and lifestyle channels": "Chaînes nationales de nouvelles et de style de vie",
+    "Kids and family channels": "Chaînes pour enfants et la famille",
+    "Specialty entertainment channels": "Chaînes spécialisées de divertissement",
 }
 
 def _sales_feature(text: str, lang: str) -> str:  # pragma: no cover
     return SALES_FEATURES_FR.get(text, text) if resolve_copy_locale(lang) == "fr-CA" else text
-
-def _sales_account_total(state: dict[str, Any]) -> Decimal:  # pragma: no cover
-    return sum(
-        (to_decimal(SERVICE_PRICES.get(lob, "0")) or Decimal("0") for lob in _sales_account_lobs(state)),
-        Decimal("0.00"),
-    )
 
 def _sales_pricing(state: dict[str, Any], plan: dict[str, Any], current: dict[str, Any] | None) -> dict[str, Any]:  # pragma: no cover
     """Price difference against today's plan and the new monthly totals (service and account).
@@ -425,6 +442,13 @@ def _sales_plan_view(state: dict[str, Any], plan: dict[str, Any], current: dict[
         view["data_display"] = _sales_data_display(int(plan["data_gb"]), lang)
     if plan.get("speed_mbps"):
         view["speed_display"] = _sales_speed_display(int(plan["speed_mbps"]), lang)
+    if plan.get("upload_mbps"):  # follow-up facts: upload, symmetry, latency (DESIGN_RULES rule 33)
+        view["upload_speed_display"] = _sales_speed_display(int(plan["upload_mbps"]), lang)
+        view["symmetric"] = bool(plan.get("symmetric"))
+        view["latency_note"] = _sales_text(str(plan.get("latency_key") or ""), lang)
+    if plan.get("channel_examples"):
+        view["channel_examples"] = [_sales_feature(c, lang) for c in plan["channel_examples"]]
+        view["hd_included"] = bool(plan.get("hd_included"))
     view.update(_sales_pricing(state, plan, current))
     return view
 
@@ -1020,6 +1044,10 @@ def place_order_impl(  # pragma: no cover
         quote["delivery_eta_display"] = display_date(delivery, lang)
     if lob == "mobility":
         quote["after_data_cap"] = _sales_text("after_data_cap", lang)
+        if current is not None:  # an extra line adds the plan price; new_monthly_total is the plan-change view
+            quote.update(money(plan["price"], "new_line_monthly_price"))
+            quote.update(money(_sales_account_total(state) + (to_decimal(plan["price"]) or Decimal("0")), "new_line_account_monthly_total"))
+            quote["new_line_pricing_note"] = _sales_text("new_line_pricing", lang)
 
     order_id = "ORD-" + tracking_id("place_order", account_id, plan["plan_id"])[1:]
     pending_key = f"place_order:{plan['plan_id']}"

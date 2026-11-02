@@ -260,6 +260,11 @@ def manage_mfa_impl(
             "effective_display": _acct_text(lang, "effective immediately", "en vigueur immédiatement"),
             "confirmation_sms_sent": dispatch_sms(state, "mfa_" + act)["sms_sent"],
             "spoken_summary": summary,
+            "lost_phone_note": _acct_text(
+                lang,
+                "If this phone is lost or stolen, call us and verify with your secret PIN instead of a text code; we can then suspend the line and update the mobile number that sign-in codes go to.",
+                "Si ce téléphone est perdu ou volé, appelez-nous et vérifiez votre identité avec votre NIP secret plutôt qu'avec un code par texto; nous pourrons ensuite suspendre la ligne et mettre à jour le numéro de cellulaire qui reçoit les codes de connexion.",
+            ) if now_on else "",
         },
         reference,
         language=lang,
@@ -426,6 +431,17 @@ def _acct_cancel_quote(lob: str, mode: str, lang: str) -> dict[str, Any]:
         "final_bill_includes_fee": fee > 0,
         "effective_date": effective["date"],
         "effective_date_display": effective["date_display"],
+        # Turn N+1 facts (DESIGN_RULES rule 33): other services and what the final bill covers.
+        "other_services_note": _acct_text(
+            lang,
+            "Your other services on the account stay active, and their plans and prices don't change.",
+            "Vos autres services au compte restent actifs, et leurs forfaits et leurs prix ne changent pas.",
+        ),
+        "final_bill_note": _acct_text(
+            lang,
+            "The final bill covers this service up to the effective date, plus any early termination fee; nothing more is billed for it after that.",
+            "La facture finale couvre ce service jusqu'à la date d'effet, plus les frais de résiliation anticipée s'il y a lieu; rien d'autre n'est facturé pour ce service par la suite.",
+        ),
     }
 
 
