@@ -267,7 +267,7 @@ BILL_EXTRA_LINE_KEYWORDS: dict[str, tuple[str, ...]] = {
     "CH-LD-01": ("long distance", "long-distance", "longue distance", "interurbain", "international", "calls", "appels"),
 }
 EXTRA_FIXTURE_LINE_DAYS_AGO = 4      # fx_extra_bill_line posts on the latest bill
-BANK_ACCOUNT_ON_FILE = {"last4": "6083", "type": "chequing"}
+BANK_ON_FILE_ENDING = "6083"
 ARRANGEMENT_FIRST_DUE_DAYS = 7       # first instalment within 7 days
 NEXT_BILL_CYCLE_DAYS = 30
 DISPUTE_ETA_BUSINESS_DAYS = 10

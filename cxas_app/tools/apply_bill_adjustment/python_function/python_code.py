@@ -1164,8 +1164,8 @@ def apply_bill_adjustment_impl(  # pragma: no cover
         "sms_destination_last4": sms["destination_last4"],
         "spoken_summary": _bill_text(
             lang,
-            f"I couldn't match that charge on your latest bill, so I opened dispute case {ticket}. The billing team will reply within {DISPUTE_ETA_BUSINESS_DAYS} business days.",
-            f"Je n'ai pas trouvé ces frais sur votre dernière facture, j'ai donc ouvert le dossier de contestation {ticket}. L'équipe de facturation répondra d'ici {DISPUTE_ETA_BUSINESS_DAYS} jours ouvrables.",
+            f"I couldn't match that charge on your latest bill, so I opened dispute case {ticket}. The billing team will reply within {DISPUTE_ETA_BUSINESS_DAYS} business days. A confirmation is on its way by text.",
+            f"Je n'ai pas trouvé ces frais sur votre dernière facture, j'ai donc ouvert le dossier de contestation {ticket}. L'équipe de facturation répondra d'ici {DISPUTE_ETA_BUSINESS_DAYS} jours ouvrables. Une confirmation vous est envoyée par texto.",
         ),
     }
     if asked is not None:

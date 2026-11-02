@@ -879,7 +879,7 @@ def setup_payment_arrangement_impl(  # pragma: no cover
     if status_before == "suspended_nonpayment":
         data.update(_bill_restore(st))
         data["service_status"] = "active"
-        summary += _bill_text(lang, " Your service is restored.", " Votre service est rétabli.")
+        summary += _bill_text(lang, " Your service is restored and a confirmation text is on its way.", " Votre service est rétabli et une confirmation vous est envoyée par texto.")
     data["spoken_summary"] = summary
     return _bill_finish(st, ok_reply(data, arrangement_id, language=lang))
 # --- END GENERATED SHARED BUNDLE ---

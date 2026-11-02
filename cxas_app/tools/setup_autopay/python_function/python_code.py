@@ -341,7 +341,7 @@ def _bill_method_text(lang: str, method: dict[str, str]) -> str:  # pragma: no c
         return _bill_text(lang, f"bank account ending in {method['last4']}", f"compte bancaire se terminant par {method['last4']}")
     return _bill_text(lang, f"card ending in {method['last4']}", f"carte se terminant par {method['last4']}")
 
-BANK_ACCOUNT_ON_FILE = {"last4": "6083", "type": "chequing"}  # pragma: no cover
+BANK_ON_FILE_ENDING = "6083"  # pragma: no cover
 
 DECLINED_CARD_LAST4: frozenset[str] = frozenset({"0000", "9999"})  # pragma: no cover
 
@@ -806,7 +806,7 @@ def _bill_resolve_method(  # pragma: no cover
             reference,
             lang,
         )
-    return {"method": method, "last4": digits[-4:] if digits else str(BANK_ACCOUNT_ON_FILE["last4"]), "brand": ""}, None
+    return {"method": method, "last4": digits[-4:] if digits else BANK_ON_FILE_ENDING, "brand": ""}, None
 
 def check_mock_error(state: dict[str, Any], lang: str = "en-US", tool_name: str = "tool") -> dict[str, Any] | None:  # pragma: no cover
     """Fault injection: `mock_error` set in session state makes every tool return a system error."""
@@ -995,8 +995,8 @@ def setup_autopay_impl(  # pragma: no cover
         "sms_destination_last4": sms["destination_last4"],
         "spoken_summary": _bill_text(
             lang,
-            f"Autopay is set up with the {_bill_method_text(lang, method)}. The first automatic payment is on {first['display']}.",
-            f"Les paiements préautorisés sont configurés avec la {_bill_method_text(lang, method)}. Le premier paiement automatique aura lieu le {first['display']}.",
+            f"Autopay is set up with the {_bill_method_text(lang, method)}. The first automatic payment is on {first['display']}. A confirmation is on its way by text.",
+            f"Les paiements préautorisés sont configurés avec la {_bill_method_text(lang, method)}. Le premier paiement automatique aura lieu le {first['display']}. Une confirmation vous est envoyée par texto.",
         ).replace("avec la compte", "avec le compte"),
     }
     return _bill_finish(st, ok_reply(data, autopay_id, language=lang))

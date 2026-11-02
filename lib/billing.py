@@ -37,7 +37,7 @@ from lib.fakes import (
     ARRANGEMENT_FIRST_DUE_DAYS,
     ARRANGEMENT_INSTALMENTS,
     ARRANGEMENT_SECOND_DUE_DAYS,
-    BANK_ACCOUNT_ON_FILE,
+    BANK_ON_FILE_ENDING,
     BILL_CYCLE_DAYS_AGO,
     BILL_DUE_IN_DAYS,
     BILL_EXTRA_LINE_FR,
@@ -373,7 +373,7 @@ def _bill_resolve_method(
             reference,
             lang,
         )
-    return {"method": method, "last4": digits[-4:] if digits else str(BANK_ACCOUNT_ON_FILE["last4"]), "brand": ""}, None
+    return {"method": method, "last4": digits[-4:] if digits else BANK_ON_FILE_ENDING, "brand": ""}, None
 
 
 def _bill_method_text(lang: str, method: dict[str, str]) -> str:
@@ -459,7 +459,7 @@ def get_billing_summary_impl(
         "suspension_reason": _BILL_SUSPENSION_REASONS.get(status, ""),
         "card_on_file_last4": card["last4"],
         "card_on_file_brand": card["brand"],
-        "bank_on_file_last4": BANK_ACCOUNT_ON_FILE["last4"],
+        "bank_on_file_last4": BANK_ON_FILE_ENDING,
         "autopay_enrolled": autopay,
         "payment_arrangement_active": arrangement,
         "recent_bills": [
@@ -610,6 +610,7 @@ def process_bill_payment_impl(
     elif live["past_due"] > _BILL_ZERO and new_past_due == _BILL_ZERO:
         data["suspension_risk_cleared"] = True
         summary += _bill_text(lang, " Your account is no longer past due.", " Votre compte n'est plus en souffrance.")
+    summary += _bill_text(lang, " A receipt is on its way by text.", " Un reçu vous est envoyé par texto.")
     data["spoken_summary"] = summary
     return _bill_finish(st, ok_reply(data, payment_id, language=lang))
 
@@ -675,8 +676,8 @@ def setup_autopay_impl(
         "sms_destination_last4": sms["destination_last4"],
         "spoken_summary": _bill_text(
             lang,
-            f"Autopay is set up with the {_bill_method_text(lang, method)}. The first automatic payment is on {first['display']}.",
-            f"Les paiements préautorisés sont configurés avec la {_bill_method_text(lang, method)}. Le premier paiement automatique aura lieu le {first['display']}.",
+            f"Autopay is set up with the {_bill_method_text(lang, method)}. The first automatic payment is on {first['display']}. A confirmation is on its way by text.",
+            f"Les paiements préautorisés sont configurés avec la {_bill_method_text(lang, method)}. Le premier paiement automatique aura lieu le {first['display']}. Une confirmation vous est envoyée par texto.",
         ).replace("avec la compte", "avec le compte"),
     }
     return _bill_finish(st, ok_reply(data, autopay_id, language=lang))
@@ -933,8 +934,8 @@ def apply_bill_adjustment_impl(
         "sms_destination_last4": sms["destination_last4"],
         "spoken_summary": _bill_text(
             lang,
-            f"I couldn't match that charge on your latest bill, so I opened dispute case {ticket}. The billing team will reply within {DISPUTE_ETA_BUSINESS_DAYS} business days.",
-            f"Je n'ai pas trouvé ces frais sur votre dernière facture, j'ai donc ouvert le dossier de contestation {ticket}. L'équipe de facturation répondra d'ici {DISPUTE_ETA_BUSINESS_DAYS} jours ouvrables.",
+            f"I couldn't match that charge on your latest bill, so I opened dispute case {ticket}. The billing team will reply within {DISPUTE_ETA_BUSINESS_DAYS} business days. A confirmation is on its way by text.",
+            f"Je n'ai pas trouvé ces frais sur votre dernière facture, j'ai donc ouvert le dossier de contestation {ticket}. L'équipe de facturation répondra d'ici {DISPUTE_ETA_BUSINESS_DAYS} jours ouvrables. Une confirmation vous est envoyée par texto.",
         ),
     }
     if asked is not None:
@@ -1023,7 +1024,7 @@ def setup_payment_arrangement_impl(
     if status_before == "suspended_nonpayment":
         data.update(_bill_restore(st))
         data["service_status"] = "active"
-        summary += _bill_text(lang, " Your service is restored.", " Votre service est rétabli.")
+        summary += _bill_text(lang, " Your service is restored and a confirmation text is on its way.", " Votre service est rétabli et une confirmation vous est envoyée par texto.")
     data["spoken_summary"] = summary
     return _bill_finish(st, ok_reply(data, arrangement_id, language=lang))
 
@@ -1103,8 +1104,8 @@ def verify_payment_and_restore_impl(
         **restored,
         "spoken_summary": _bill_text(
             lang,
-            f"I found your payment of {_bill_amount_text(lang, posted)} from {when['display']}. Your service is restored.",
-            f"J'ai trouvé votre paiement de {_bill_amount_text(lang, posted)} du {when['display']}. Votre service est rétabli.",
+            f"I found your payment of {_bill_amount_text(lang, posted)} from {when['display']}. Your service is restored and a confirmation text is on its way.",
+            f"J'ai trouvé votre paiement de {_bill_amount_text(lang, posted)} du {when['display']}. Votre service est rétabli et une confirmation vous est envoyée par texto.",
         ),
     }
     return _bill_finish(st, ok_reply(data, tracking_id("RESTORE", account_id, when["iso"]), language=lang))

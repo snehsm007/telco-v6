@@ -40,7 +40,7 @@ from typing import Any
 import hashlib
 import re
 
-BANK_ACCOUNT_ON_FILE = {"last4": "6083", "type": "chequing"}  # pragma: no cover
+BANK_ON_FILE_ENDING = "6083"  # pragma: no cover
 
 BILL_CYCLE_DAYS_AGO = 3  # pragma: no cover
 
@@ -849,7 +849,7 @@ def get_billing_summary_impl(  # pragma: no cover
         "suspension_reason": _BILL_SUSPENSION_REASONS.get(status, ""),
         "card_on_file_last4": card["last4"],
         "card_on_file_brand": card["brand"],
-        "bank_on_file_last4": BANK_ACCOUNT_ON_FILE["last4"],
+        "bank_on_file_last4": BANK_ON_FILE_ENDING,
         "autopay_enrolled": autopay,
         "payment_arrangement_active": arrangement,
         "recent_bills": [

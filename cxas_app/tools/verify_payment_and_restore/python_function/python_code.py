@@ -826,8 +826,8 @@ def verify_payment_and_restore_impl(  # pragma: no cover
         **restored,
         "spoken_summary": _bill_text(
             lang,
-            f"I found your payment of {_bill_amount_text(lang, posted)} from {when['display']}. Your service is restored.",
-            f"J'ai trouvé votre paiement de {_bill_amount_text(lang, posted)} du {when['display']}. Votre service est rétabli.",
+            f"I found your payment of {_bill_amount_text(lang, posted)} from {when['display']}. Your service is restored and a confirmation text is on its way.",
+            f"J'ai trouvé votre paiement de {_bill_amount_text(lang, posted)} du {when['display']}. Votre service est rétabli et une confirmation vous est envoyée par texto.",
         ),
     }
     return _bill_finish(st, ok_reply(data, tracking_id("RESTORE", account_id, when["iso"]), language=lang))

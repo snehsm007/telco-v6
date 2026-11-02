@@ -369,7 +369,7 @@ def _bill_payment_amount(amount: Any, live: dict[str, Decimal]) -> Decimal | Non
         return live["past_due"]
     return to_decimal(amount)
 
-BANK_ACCOUNT_ON_FILE = {"last4": "6083", "type": "chequing"}  # pragma: no cover
+BANK_ON_FILE_ENDING = "6083"  # pragma: no cover
 
 DECLINED_CARD_LAST4: frozenset[str] = frozenset({"0000", "9999"})  # pragma: no cover
 
@@ -834,7 +834,7 @@ def _bill_resolve_method(  # pragma: no cover
             reference,
             lang,
         )
-    return {"method": method, "last4": digits[-4:] if digits else str(BANK_ACCOUNT_ON_FILE["last4"]), "brand": ""}, None
+    return {"method": method, "last4": digits[-4:] if digits else BANK_ON_FILE_ENDING, "brand": ""}, None
 
 def dispatch_sms(state: dict[str, Any], purpose: str) -> dict[str, Any]:  # pragma: no cover
     """Record a text message to the mobile number on file; returns its delivery facts."""
@@ -1079,6 +1079,7 @@ def process_bill_payment_impl(  # pragma: no cover
     elif live["past_due"] > _BILL_ZERO and new_past_due == _BILL_ZERO:
         data["suspension_risk_cleared"] = True
         summary += _bill_text(lang, " Your account is no longer past due.", " Votre compte n'est plus en souffrance.")
+    summary += _bill_text(lang, " A receipt is on its way by text.", " Un reçu vous est envoyé par texto.")
     data["spoken_summary"] = summary
     return _bill_finish(st, ok_reply(data, payment_id, language=lang))
 # --- END GENERATED SHARED BUNDLE ---
