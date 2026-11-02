@@ -54,8 +54,6 @@ import re
 
 DEFAULT_REGION = "Region-C"  # pragma: no cover
 
-MAX_PLAN_OPTIONS = 3  # pragma: no cover
-
 PLANS: tuple[dict[str, Any], ...] = (  # pragma: no cover
     {"plan_id": "MOB-20", "lob": "mobility", "name": "Essential 20", "price": "47.00", "data_gb": 20, "features": ["20 GB high-speed data", "Unlimited Canada-wide calling"]},
     {"plan_id": "MOB-50", "lob": "mobility", "name": "Plus 50", "price": "58.00", "data_gb": 50, "features": ["50 GB high-speed data", "Unlimited Canada-wide calling", "5G access"]},
@@ -72,6 +70,8 @@ PLANS: tuple[dict[str, Any], ...] = (  # pragma: no cover
 SALES_COVERAGE_MAX_MBPS: dict[str, int] = {"Region-A": 3000, "Region-B": 8000, "Region-C": 1000}  # pragma: no cover
 
 SALES_EQUIPMENT_DELIVERY_DAYS = 3  # pragma: no cover
+
+_SALES_MAX_OPTIONS = 3  # pragma: no cover
 
 SALES_ACTIVATION_DAYS: dict[str, int] = {"mobility": 0, "internet": 1, "tv": 0, "homephone": 1}  # pragma: no cover
 
@@ -465,9 +465,9 @@ def _sales_rank(plans: list[dict[str, Any]], need: str) -> list[dict[str, Any]]:
     """Pick at most 3: capacity needs keep the biggest tiers, otherwise the lowest prices; shown by price."""
     by_price = sorted(plans, key=lambda p: to_decimal(p["price"]) or Decimal("0"))
     if _sales_has(need, SALES_CAPACITY_WORDS) and not _sales_has(need, SALES_PRICE_WORDS):
-        top = sorted(plans, key=_sales_capacity, reverse=True)[:MAX_PLAN_OPTIONS]
+        top = sorted(plans, key=_sales_capacity, reverse=True)[:_SALES_MAX_OPTIONS]
         return [p for p in by_price if p in top]
-    return by_price[:MAX_PLAN_OPTIONS]
+    return by_price[:_SALES_MAX_OPTIONS]
 
 REGION_BY_POSTAL_LETTER: dict[str, str] = {  # pragma: no cover
     **{letter: "Region-A" for letter in "GHJ"},
@@ -925,7 +925,7 @@ def browse_plans_impl(  # pragma: no cover
         over_budget = [p for p in candidates if (to_decimal(p["price"]) or Decimal("0")) > budget_amt]
         candidates = [p for p in candidates if p not in over_budget]
 
-    chosen = candidates[:MAX_PLAN_OPTIONS] if lob_key == "tv" else _sales_rank(candidates, need_text)
+    chosen = candidates[:_SALES_MAX_OPTIONS] if lob_key == "tv" else _sales_rank(candidates, need_text)
     data: dict[str, Any] = {
         "lob": lob_key,
         "plans": [_sales_plan_view(state, p, current, lang) for p in chosen],

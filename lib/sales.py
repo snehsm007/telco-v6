@@ -68,7 +68,7 @@ from lib.fakes import (
 )
 from lib.replies import display_amount, error_reply, ok_reply, tracking_id
 
-MAX_PLAN_OPTIONS = 3  # prd.md §12: never more than 3 options
+_SALES_MAX_OPTIONS = 3  # prd.md §12: never more than 3 options
 
 _SALES_LOB_WORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("tv", ("tv", "télé", "tele", "television", "channel", "chaîne", "sport", "movie", "film")),
@@ -258,9 +258,9 @@ def _sales_rank(plans: list[dict[str, Any]], need: str) -> list[dict[str, Any]]:
     """Pick at most 3: capacity needs keep the biggest tiers, otherwise the lowest prices; shown by price."""
     by_price = sorted(plans, key=lambda p: to_decimal(p["price"]) or Decimal("0"))
     if _sales_has(need, SALES_CAPACITY_WORDS) and not _sales_has(need, SALES_PRICE_WORDS):
-        top = sorted(plans, key=_sales_capacity, reverse=True)[:MAX_PLAN_OPTIONS]
+        top = sorted(plans, key=_sales_capacity, reverse=True)[:_SALES_MAX_OPTIONS]
         return [p for p in by_price if p in top]
-    return by_price[:MAX_PLAN_OPTIONS]
+    return by_price[:_SALES_MAX_OPTIONS]
 
 
 def _sales_device(device: Any, issue: Any) -> tuple[dict[str, Any], bool]:
@@ -325,7 +325,7 @@ def browse_plans_impl(
         over_budget = [p for p in candidates if (to_decimal(p["price"]) or Decimal("0")) > budget_amt]
         candidates = [p for p in candidates if p not in over_budget]
 
-    chosen = candidates[:MAX_PLAN_OPTIONS] if lob_key == "tv" else _sales_rank(candidates, need_text)
+    chosen = candidates[:_SALES_MAX_OPTIONS] if lob_key == "tv" else _sales_rank(candidates, need_text)
     data: dict[str, Any] = {
         "lob": lob_key,
         "plans": [_sales_plan_view(state, p, current, lang) for p in chosen],
