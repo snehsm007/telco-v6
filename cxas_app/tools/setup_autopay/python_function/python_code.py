@@ -13,8 +13,8 @@ def setup_autopay(
 
     Args:
       payment_method: card_on_file, new_card or bank_account.
-      card_number: The last 4 digits of the card the caller named, or a keyed card
-        number (or bank account number), exactly as given; empty for card_on_file.
+      card_number: The last 4 digits of the card or bank account the caller named, or a
+        keyed card or bank account number, exactly as given; empty for card_on_file.
       language: Active language code (en-US or fr-CA).
 
     Returns:
@@ -367,6 +367,17 @@ def _bill_method_text(lang: str, method: dict[str, str]) -> str:  # pragma: no c
     if method["method"] == "bank_account":
         return _bill_text(lang, f"bank account ending in {method['last4']}", f"compte bancaire se terminant par {method['last4']}")
     return _bill_text(lang, f"card ending in {method['last4']}", f"carte se terminant par {method['last4']}")
+
+_BILL_REFERENCE_NAMES: dict[str, tuple[str, str]] = {  # pragma: no cover
+    "payment": ("payment", "de paiement"),
+    "autopay": ("autopay", "de paiement préautorisé"),
+    "arrangement": ("arrangement", "d'entente"),
+}
+
+def _bill_reference_text(lang: str, kind: str, reference: str) -> str:  # pragma: no cover
+    """Trailing sentence with the record's reference number, so the summary carries what the agent reads."""
+    en, fr = _BILL_REFERENCE_NAMES[kind]
+    return _bill_text(lang, f" Your {en} reference number is {reference}.", f" Votre numéro de référence {fr} est le {reference}.")
 
 BANK_ON_FILE_ENDING = "6083"  # pragma: no cover
 
@@ -788,7 +799,11 @@ def _bill_method(payment_method: Any, digits: str, state: dict[str, Any]) -> str
     if method == "card_on_file" and len(digits) >= 13:
         method = "new_card"
     if len(digits) == 4 and method in ("card_on_file", "new_card"):
-        method = "card_on_file" if digits == _bill_card_on_file(state)["last4"] else "new_card"
+        card_last4 = _bill_card_on_file(state)["last4"]
+        if digits == BANK_ON_FILE_ENDING and digits != card_last4:
+            # The caller named the bank account on file by its ending (get_billing_summary bank_on_file_last4).
+            return "bank_account"
+        method = "card_on_file" if digits == card_last4 else "new_card"
     return method
 
 MAX_VALIDATION_ERRORS = 3  # pragma: no cover
@@ -888,13 +903,18 @@ def _bill_resolve_method(  # pragma: no cover
         if last4 in DECLINED_CARD_LAST4:
             return None, _bill_decline(state, last4, "CARD_DECLINED", lang, reference, tool)
         return {"method": method, "last4": last4, "brand": _bill_brand(digits)}, None
+    if len(digits) == 4:
+        # A bank account named by its ending: the one on file (bank_on_file_last4), or one the caller
+        # holds and keyed upstream (tokenized, like a card ending; prd.md §10 never full numbers aloud).
+        return {"method": method, "last4": digits, "brand": ""}, None
     if digits and not 5 <= len(digits) <= 17:
         return None, validation_error(
             state,
-            "A bank account number has 5 to 17 digits.",
-            "Ask the caller to repeat the bank account number.",
+            "A bank account is named by its last 4 digits or keyed in full (5 to 17 digits).",
+            "Ask the caller for the bank account's last four digits again; never switch payment method without asking.",
             reference,
             lang,
+            data={"payment_method": method, "bank_on_file_last4": BANK_ON_FILE_ENDING},
         )
     return {"method": method, "last4": digits[-4:] if digits else BANK_ON_FILE_ENDING, "brand": ""}, None
 
@@ -1178,13 +1198,15 @@ def setup_autopay_impl(  # pragma: no cover
         **_bill_autopay_facts(lang),
         "current_balance_included": live["balance"] > _BILL_ZERO,
         **money(live["balance"], "balance_due"),
-        "confirmation_sms_sent": True,
+        "confirmation_sms_sent": sms["sms_sent"],
         "sms_destination_last4": sms["destination_last4"],
         "spoken_summary": _bill_text(
             lang,
-            f"Autopay is set up with the {_bill_method_text(lang, method)}. The first automatic payment is on {first['display']}. A confirmation is on its way by text.",
-            f"Les paiements préautorisés sont configurés avec la {_bill_method_text(lang, method)}. Le premier paiement automatique aura lieu le {first['display']}. Une confirmation vous est envoyée par texto.",
-        ).replace("avec la compte", "avec le compte"),
+            f"Autopay is set up with the {_bill_method_text(lang, method)}. The first automatic payment is on {first['display']}."
+            + (" A confirmation is on its way by text." if sms["sms_sent"] else ""),
+            f"Les paiements préautorisés sont configurés avec la {_bill_method_text(lang, method)}. Le premier paiement automatique aura lieu le {first['display']}."
+            + (" Une confirmation vous est envoyée par texto." if sms["sms_sent"] else ""),
+        ).replace("avec la compte", "avec le compte") + _bill_reference_text(lang, "autopay", autopay_id),
     }
     return _bill_finish(st, ok_reply(data, autopay_id, language=lang))
 # --- END GENERATED SHARED BUNDLE ---

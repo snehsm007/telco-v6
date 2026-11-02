@@ -514,3 +514,37 @@ def test_mfa_step_up_falls_back_to_a_text_when_email_is_unavailable() -> None:
     assert sent["data"]["sent"] is True and sent["data"]["purpose"] == "step_up"
     assert check_login_code_impl("482913", state=state)["data"]["step_up_verified"] is True
     assert manage_mfa_impl(action="disable", state=state)["status"] == "ok"
+
+
+# --- spoken facts carried in the reply (cluster D: VE-01 r1/r2) ------------------
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+@pytest.mark.parametrize(("lob", "mode"), [("homephone", "cancel"), ("mobility", "port_out")])
+def test_quote_spoken_message_has_verbatim_disclosure_and_terms(lang: str, lob: str, mode: str) -> None:
+    quote = cancel_or_port_out_service_impl(lob, mode, "", False, state=_logged_in(), language=lang)
+    assert quote["error"] == "CONFIRMATION_REQUIRED"
+    data = quote["data"]
+    message = data["spoken_message"]
+    assert quote["spoken_message"] == message  # lifted to the top level of the reply
+    assert message.startswith(SPOKEN_LINES["contract_cancellation_fee_disclosure"][lang] + " ")
+    for key in ("early_termination_fee_display", "final_bill_estimate_display", "effective_date_display"):
+        assert data[key] in message
+    other = "fr-CA" if lang == "en-US" else "en-US"
+    assert SPOKEN_LINES["contract_cancellation_fee_disclosure"][other] not in message
+    assert not any(k.endswith(("_en", "_fr")) for k in data)
+    assert len(quote["agent_action"]) <= 120
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+@pytest.mark.parametrize(("lob", "mode"), [("homephone", "cancel"), ("mobility", "port_out")])
+def test_submitted_summary_carries_the_confirmation_number(lang: str, lob: str, mode: str) -> None:
+    state = _logged_in()
+    cancel_or_port_out_service_impl(lob, mode, "", False, state=state, language=lang)
+    done = cancel_or_port_out_service_impl(lob, mode, "", True, state=state, language=lang)
+    cid = done["data"]["cancellation_id"]
+    assert cid in done["data"]["spoken_summary"]
+    assert ("numéro de confirmation" in done["spoken_summary"]) is (lang == "fr-CA")
+    again = cancel_or_port_out_service_impl(lob, mode, "", True, state=state, language=lang)
+    assert again["data"]["already_submitted"] is True
+    assert cid in again["spoken_summary"]

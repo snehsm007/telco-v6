@@ -300,7 +300,11 @@ def _bill_method(payment_method: Any, digits: str, state: dict[str, Any]) -> str
     if method == "card_on_file" and len(digits) >= 13:
         method = "new_card"
     if len(digits) == 4 and method in ("card_on_file", "new_card"):
-        method = "card_on_file" if digits == _bill_card_on_file(state)["last4"] else "new_card"
+        card_last4 = _bill_card_on_file(state)["last4"]
+        if digits == BANK_ON_FILE_ENDING and digits != card_last4:
+            # The caller named the bank account on file by its ending (get_billing_summary bank_on_file_last4).
+            return "bank_account"
+        method = "card_on_file" if digits == card_last4 else "new_card"
     return method
 
 
@@ -410,15 +414,33 @@ def _bill_resolve_method(
         if last4 in DECLINED_CARD_LAST4:
             return None, _bill_decline(state, last4, "CARD_DECLINED", lang, reference, tool)
         return {"method": method, "last4": last4, "brand": _bill_brand(digits)}, None
+    if len(digits) == 4:
+        # A bank account named by its ending: the one on file (bank_on_file_last4), or one the caller
+        # holds and keyed upstream (tokenized, like a card ending; prd.md §10 never full numbers aloud).
+        return {"method": method, "last4": digits, "brand": ""}, None
     if digits and not 5 <= len(digits) <= 17:
         return None, validation_error(
             state,
-            "A bank account number has 5 to 17 digits.",
-            "Ask the caller to repeat the bank account number.",
+            "A bank account is named by its last 4 digits or keyed in full (5 to 17 digits).",
+            "Ask the caller for the bank account's last four digits again; never switch payment method without asking.",
             reference,
             lang,
+            data={"payment_method": method, "bank_on_file_last4": BANK_ON_FILE_ENDING},
         )
     return {"method": method, "last4": digits[-4:] if digits else BANK_ON_FILE_ENDING, "brand": ""}, None
+
+
+_BILL_REFERENCE_NAMES: dict[str, tuple[str, str]] = {
+    "payment": ("payment", "de paiement"),
+    "autopay": ("autopay", "de paiement préautorisé"),
+    "arrangement": ("arrangement", "d'entente"),
+}
+
+
+def _bill_reference_text(lang: str, kind: str, reference: str) -> str:
+    """Trailing sentence with the record's reference number, so the summary carries what the agent reads."""
+    en, fr = _BILL_REFERENCE_NAMES[kind]
+    return _bill_text(lang, f" Your {en} reference number is {reference}.", f" Votre numéro de référence {fr} est le {reference}.")
 
 
 def _bill_method_text(lang: str, method: dict[str, str]) -> str:
@@ -629,7 +651,7 @@ def process_bill_payment_impl(
         "paid_in_full": new_balance == _BILL_ZERO,
         "next_due_date": due["iso"],
         "next_due_date_display": due["display"],
-        "receipt_sms_sent": True,
+        "receipt_sms_sent": receipt["sms_sent"],
         "sms_destination_last4": receipt["destination_last4"],
         "autopay_enrolled": _bill_flag(st, "autopay_enrolled"),
         "service_restored": False,
@@ -656,7 +678,9 @@ def process_bill_payment_impl(
     elif live["past_due"] > _BILL_ZERO and new_past_due == _BILL_ZERO:
         data["suspension_risk_cleared"] = True
         summary += _bill_text(lang, " Your account is no longer past due.", " Votre compte n'est plus en souffrance.")
-    summary += _bill_text(lang, " A receipt is on its way by text.", " Un reçu vous est envoyé par texto.")
+    if receipt["sms_sent"]:
+        summary += _bill_text(lang, " A receipt is on its way by text.", " Un reçu vous est envoyé par texto.")
+    summary += _bill_reference_text(lang, "payment", payment_id)
     data["spoken_summary"] = summary
     return _bill_finish(st, ok_reply(data, payment_id, language=lang))
 
@@ -719,13 +743,15 @@ def setup_autopay_impl(
         **_bill_autopay_facts(lang),
         "current_balance_included": live["balance"] > _BILL_ZERO,
         **money(live["balance"], "balance_due"),
-        "confirmation_sms_sent": True,
+        "confirmation_sms_sent": sms["sms_sent"],
         "sms_destination_last4": sms["destination_last4"],
         "spoken_summary": _bill_text(
             lang,
-            f"Autopay is set up with the {_bill_method_text(lang, method)}. The first automatic payment is on {first['display']}. A confirmation is on its way by text.",
-            f"Les paiements préautorisés sont configurés avec la {_bill_method_text(lang, method)}. Le premier paiement automatique aura lieu le {first['display']}. Une confirmation vous est envoyée par texto.",
-        ).replace("avec la compte", "avec le compte"),
+            f"Autopay is set up with the {_bill_method_text(lang, method)}. The first automatic payment is on {first['display']}."
+            + (" A confirmation is on its way by text." if sms["sms_sent"] else ""),
+            f"Les paiements préautorisés sont configurés avec la {_bill_method_text(lang, method)}. Le premier paiement automatique aura lieu le {first['display']}."
+            + (" Une confirmation vous est envoyée par texto." if sms["sms_sent"] else ""),
+        ).replace("avec la compte", "avec le compte") + _bill_reference_text(lang, "autopay", autopay_id),
     }
     return _bill_finish(st, ok_reply(data, autopay_id, language=lang))
 
@@ -1054,7 +1080,7 @@ def setup_payment_arrangement_impl(
         "arrangement_id": arrangement_id,
         **plan,
         "balance_unchanged": True,
-        "confirmation_sms_sent": True,
+        "confirmation_sms_sent": sms["sms_sent"],
         "sms_destination_last4": sms["destination_last4"],
         "service_restored": False,
         "service_status": status_before,
@@ -1071,7 +1097,10 @@ def setup_payment_arrangement_impl(
     if status_before == "suspended_nonpayment":
         data.update(_bill_restore(st))
         data["service_status"] = "active"
-        summary += _bill_text(lang, " Your service is restored and a confirmation text is on its way.", " Votre service est rétabli et une confirmation vous est envoyée par texto.")
+        summary += _bill_text(lang, " Your service is restored.", " Votre service est rétabli.")
+    if sms["sms_sent"]:
+        summary += _bill_text(lang, " A confirmation text is on its way.", " Une confirmation vous est envoyée par texto.")
+    summary += _bill_reference_text(lang, "arrangement", arrangement_id)
     data["spoken_summary"] = summary
     return _bill_finish(st, ok_reply(data, arrangement_id, language=lang))
 

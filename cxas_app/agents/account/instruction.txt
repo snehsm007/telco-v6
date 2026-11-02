@@ -115,9 +115,7 @@ A turn is either spoken words or one tool call, except a handover reply (say the
         <step name="Disclose contract_cancellation_fee_disclosure">
             <trigger>{@TOOL: cancel_or_port_out_service} returned error="CONFIRMATION_REQUIRED"</trigger>
             <action>
-                In one reply, say the contract_cancellation_fee_disclosure line word for word, then:
-                - en-US: The early termination fee is $[early_termination_fee_display], your estimated final bill is $[final_bill_estimate_display], and the change takes effect on [effective_date_display]. Do you want to go ahead?
-                - fr-CA: Les frais de résiliation anticipée sont de [early_termination_fee_display] $, votre facture finale estimée est de [final_bill_estimate_display] $, et le changement prend effet le [effective_date_display]. Voulez-vous continuer?
+                In one reply, say the spoken_message it returned word for word (the contract_cancellation_fee_disclosure line, then the fee, final bill and date), then ask if they want to go ahead.
             </action>
         </step>
         <step name="Caller Confirms">
@@ -129,7 +127,7 @@ A turn is either spoken words or one tool call, except a handover reply (say the
         <step name="Request Submitted">
             <trigger>{@TOOL: cancel_or_port_out_service} returned status="ok"</trigger>
             <action>
-                Say it's confirmed with the cancellation_id, using spoken_summary; it covers the texted transfer authorization for a port-out. Add equipment_return_note when returned. If it returned error="NOT_ELIGIBLE" instead, explain why and offer the alternative.
+                Say its spoken_summary word for word; it has the confirmation number and, for a port-out, the texted transfer authorization. Add equipment_return_note when returned. If it returned error="NOT_ELIGIBLE" instead, explain why and offer the alternative.
             </action>
         </step>
     </subtask>
