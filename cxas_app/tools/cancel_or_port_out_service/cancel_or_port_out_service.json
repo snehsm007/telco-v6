@@ -1,0 +1,10 @@
+{
+  "name": "cancel_or_port_out_service",
+  "displayName": "cancel_or_port_out_service",
+  "executionType": "SYNCHRONOUS",
+  "pythonFunction": {
+    "name": "cancel_or_port_out_service",
+    "description": "Cancels a service or ports its number out to another provider. Use only after the caller has passed login. First call with confirmed false to get the terms (CONFIRMATION_REQUIRED with fee, final bill and effective date); after the caller confirms, call again with confirmed true.",
+    "pythonCode": "tools/cancel_or_port_out_service/python_function/python_code.py"
+  }
+}

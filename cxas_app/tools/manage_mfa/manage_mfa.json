@@ -1,0 +1,10 @@
+{
+  "name": "manage_mfa",
+  "displayName": "manage_mfa",
+  "executionType": "SYNCHRONOUS",
+  "pythonFunction": {
+    "name": "manage_mfa",
+    "description": "Turns two-step verification (MFA) on or off. Use only after the caller has passed login. Turning it off first returns STEP_UP_REQUIRED: send an email code with send_login_code channel email, check it, then call again.",
+    "pythonCode": "tools/manage_mfa/python_function/python_code.py"
+  }
+}
