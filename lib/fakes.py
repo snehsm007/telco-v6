@@ -218,6 +218,12 @@ TICKETS: tuple[dict[str, Any], ...] = (
 )
 SLOT_OFFSETS_DAYS: tuple[int, ...] = (1, 2, 4)
 SLOT_WINDOWS: tuple[tuple[str, str], ...] = (("08:00", "12:00"), ("12:00", "16:00"), ("16:00", "20:00"))
+# --- tech fixtures ---
+# Minutes until an en-route technician arrives (fx_technician_status=en_route).
+TECH_EN_ROUTE_ETA_MINUTES = 25
+# Service type of a visit booked on this call when the repair line is unknown.
+TECH_DEFAULT_BOOKING_SERVICE = "repair"
+# --- end tech fixtures ---
 
 # Outage regions (BR-TV-003, DESIGN_RULES rule 40: classes, not literals).
 # Canadian postal codes start with a province letter; Region-A is Quebec.
