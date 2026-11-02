@@ -1,0 +1,10 @@
+{
+  "name": "apply_bill_adjustment",
+  "displayName": "apply_bill_adjustment",
+  "executionType": "SYNCHRONOUS",
+  "pythonFunction": {
+    "name": "apply_bill_adjustment",
+    "description": "Credits a wrong or unrecognized charge on the latest bill, refunds a duplicate payment found in the ledger, credits days of service outage, or opens a dispute case when nothing matches. Call it once the caller has said which charge or how many outage days. Amounts above the self-serve limit return REFUND_THRESHOLD_EXCEEDED.",
+    "pythonCode": "tools/apply_bill_adjustment/python_function/python_code.py"
+  }
+}

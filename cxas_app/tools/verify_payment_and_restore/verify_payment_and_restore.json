@@ -1,0 +1,10 @@
+{
+  "name": "verify_payment_and_restore",
+  "displayName": "verify_payment_and_restore",
+  "executionType": "SYNCHRONOUS",
+  "pythonFunction": {
+    "name": "verify_payment_and_restore",
+    "description": "For a caller who says they already paid while their service is suspended for non-payment: checks the ledger for a posted payment covering the past-due amount and restores service when found. Call it instead of taking the caller's word for the payment.",
+    "pythonCode": "tools/verify_payment_and_restore/python_function/python_code.py"
+  }
+}

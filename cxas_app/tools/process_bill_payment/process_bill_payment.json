@@ -1,0 +1,10 @@
+{
+  "name": "process_bill_payment",
+  "displayName": "process_bill_payment",
+  "executionType": "SYNCHRONOUS",
+  "pythonFunction": {
+    "name": "process_bill_payment",
+    "description": "Charges a bill payment to the card on file, a new card or a bank account. Call it once the caller has confirmed the amount and the method. Paying the past-due amount on a service suspended for non-payment restores it in the same call; a partial payment never restores service.",
+    "pythonCode": "tools/process_bill_payment/python_function/python_code.py"
+  }
+}

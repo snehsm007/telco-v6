@@ -1,0 +1,10 @@
+{
+  "name": "get_billing_summary",
+  "displayName": "get_billing_summary",
+  "executionType": "SYNCHRONOUS",
+  "pythonFunction": {
+    "name": "get_billing_summary",
+    "description": "Gets the logged-in caller's balance, past-due amount, due date, service status and suspension reason, cards and bank on file, autopay status, latest bill line items and recent payments. Call it before talking about any amount or charge, and when a caller asks about their bill or a suspended service.",
+    "pythonCode": "tools/get_billing_summary/python_function/python_code.py"
+  }
+}

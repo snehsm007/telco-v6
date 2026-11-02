@@ -1,0 +1,10 @@
+{
+  "name": "setup_payment_arrangement",
+  "displayName": "setup_payment_arrangement",
+  "executionType": "SYNCHRONOUS",
+  "pythonFunction": {
+    "name": "setup_payment_arrangement",
+    "description": "Splits the balance into two instalments and restores a service suspended for non-payment. Call it after the caller has heard the arrangement terms from get_billing_summary and agreed to them. One arrangement per 12 months.",
+    "pythonCode": "tools/setup_payment_arrangement/python_function/python_code.py"
+  }
+}
