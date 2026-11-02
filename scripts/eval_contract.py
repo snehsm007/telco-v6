@@ -221,6 +221,40 @@ def _only_digits(text: str) -> str:
     return "".join(ch for ch in str(text or "") if ch.isdigit())
 
 
+# Session variables an eval can seed (scenario `variableOverrides`) that name the
+# exact credential on file. When one is set, the agent's login tools accept only
+# that value on any attempt (docs/tdd.md §6), so the ladder rules do not apply.
+CREDENTIAL_OVERRIDE_KEYS = ("fx_pin_on_file", "fx_otp_on_file")
+
+
+def extract_variable_overrides(eval_data: dict[str, Any]) -> dict[str, str]:
+    """The eval's seeded session variables (scenario.variableOverrides and friends)."""
+    merged: dict[str, str] = {}
+    scenario = eval_data.get("scenario") or eval_data.get("simulation") or {}
+    for source in (eval_data, scenario if isinstance(scenario, dict) else {}):
+        for key in ("variableOverrides", "variable_overrides", "sessionParameters", "session_variables"):
+            val = source.get(key)
+            if isinstance(val, dict):
+                merged.update({str(k): str(v) for k, v in val.items() if v is not None})
+    golden = eval_data.get("golden") or {}
+    for turn in golden.get("turns") or [] if isinstance(golden, dict) else []:
+        for step in (turn or {}).get("steps") or []:
+            uv = (step or {}).get("userInput", {}) if isinstance(step, dict) else {}
+            variables = uv.get("variables") if isinstance(uv, dict) else None
+            if isinstance(variables, dict):
+                merged.update({str(k): str(v) for k, v in variables.items() if v is not None})
+    return merged
+
+
+def credentials_on_file(overrides: dict[str, str], norm_fn: Any = _only_digits) -> dict[str, str]:
+    """fx_pin_on_file / fx_otp_on_file overrides that are set, as normalized digits."""
+    return {
+        key: norm_fn(overrides[key])
+        for key in CREDENTIAL_OVERRIDE_KEYS
+        if str(overrides.get(key) or "").strip()
+    }
+
+
 def _call_login_code_accepted(
     fakes_mod: Any,
     code: str,
@@ -316,6 +350,45 @@ def _is_uncustomized_starter_fakes(
     return True
 
 
+def _check_codes_against_credentials_on_file(
+    eval_id: str,
+    eval_file: Path,
+    facts: dict[str, set[str]],
+    on_file: dict[str, str],
+    norm_fn: Any,
+) -> list[dict[str, str]]:
+    """Exact-credential rule for an eval that seeds fx_pin_on_file / fx_otp_on_file.
+
+    Only the seeded value(s) pass, on any attempt: a first-try or retry code must
+    equal one of them, and an explicit wrong code must not.
+    """
+    found: list[dict[str, str]] = []
+    valid = set(on_file.values())
+
+    def _row(kind: str, value: str, reason: str) -> dict[str, str]:
+        return {"eval_id": eval_id, "file": str(eval_file), "kind": kind, "value": value, "reason": reason}
+
+    for key, digits in sorted(on_file.items()):
+        want_len = (4, 4) if key == "fx_pin_on_file" else (4, 8)
+        if not (want_len[0] <= len(digits) <= want_len[1]) or len(set(digits)) == 1:
+            found.append(
+                _row("BAD_CREDENTIAL_ON_FILE", digits, f"{key}={digits!r} in {eval_id} is malformed or a weak code")
+            )
+    seeded = ", ".join(f"{k}={v}" for k, v in sorted(on_file.items()))
+    for kind, codes in (("FIRST_TRY_CODE_REJECTED", facts["first_try_codes"]), ("RETRY_CODE_REJECTED", facts["retry_codes"])):
+        for code in sorted(codes):
+            if norm_fn(code) not in valid:
+                found.append(
+                    _row(kind, code, f"Code {code!r} in {eval_id} is not the credential on file ({seeded}); it would be rejected")
+                )
+    for code in sorted(facts["wrong_codes"]):
+        if norm_fn(code) in valid:
+            found.append(
+                _row("WRONG_CODE_ACCEPTED", code, f"Explicit wrong code {code!r} in {eval_id} equals the credential on file ({seeded})")
+            )
+    return found
+
+
 def check_eval_contract(
     evals_dir: Path,
     fakes_path: Path,
@@ -378,8 +451,13 @@ def check_eval_contract(
 
         eval_id = str(data.get("displayName") or data.get("id") or eval_file.stem)
         facts = extract_eval_facts(data)
+        on_file = credentials_on_file(extract_variable_overrides(data), norm_fn)
 
-        for code in sorted(facts["first_try_codes"]):
+        if on_file:
+            violations.extend(
+                _check_codes_against_credentials_on_file(eval_id, eval_file, facts, on_file, norm_fn)
+            )
+        for code in sorted(facts["first_try_codes"] if not on_file else ()):
             digits = norm_fn(code)
             in_wrong = code in always_wrong or digits in always_wrong
             accepted = _call_login_code_accepted(
@@ -403,7 +481,7 @@ def check_eval_contract(
                     }
                 )
 
-        for code in sorted(facts["retry_codes"]):
+        for code in sorted(facts["retry_codes"] if not on_file else ()):
             digits = norm_fn(code)
             in_wrong = code in always_wrong or digits in always_wrong
             accepted_attempt0 = _call_login_code_accepted(
@@ -443,7 +521,7 @@ def check_eval_contract(
                     }
                 )
 
-        for code in sorted(facts["wrong_codes"]):
+        for code in sorted(facts["wrong_codes"] if not on_file else ()):
             digits = norm_fn(code)
             in_wrong = code in always_wrong or digits in always_wrong
             accepted = _call_login_code_accepted(
@@ -559,7 +637,36 @@ def _run_self_test() -> int:
         assert "WRONG_CODE_ACCEPTED" in kinds, f"Expected WRONG_CODE_ACCEPTED in {kinds}"
         assert "UNKNOWN_IDENTIFIER" in kinds, f"Expected UNKNOWN_IDENTIFIER in {kinds}"
 
-        # 3. Holdout guard
+        # 3. Credential on file (scenario variableOverrides): the seeded PIN is valid on
+        #    retry even though it is not in VALID_PINS; any other code is rejected.
+        fx_dir = root / "bench" / "fx" / "evaluations"
+        fx_dir.mkdir(parents=True)
+
+        def _fx_eval(name: str, task: str, overrides: dict[str, str]) -> None:
+            path = fx_dir / name / f"{name}.json"
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                json.dumps({"displayName": name, "scenario": {"task": task, "variableOverrides": overrides}}),
+                encoding="utf-8",
+            )
+
+        _fx_eval(
+            "sim_fx_ok",
+            "When prompted for the PIN, enter '9999' (incorrect). When prompted to retry, enter the PIN '4321'.",
+            {"fx_pin_on_file": "4321"},
+        )
+        assert check_eval_contract(fx_dir, fakes_file, strict_retry=True) == []
+        _fx_eval(
+            "sim_fx_bad",
+            "When prompted for the PIN, enter '9999' (incorrect). When prompted to retry, enter the PIN '5678'.",
+            {"fx_pin_on_file": "4321", "fx_otp_on_file": "111111"},
+        )
+        fx_kinds = {(v["eval_id"], v["kind"]) for v in check_eval_contract(fx_dir, fakes_file, strict_retry=True)}
+        assert ("sim_fx_bad", "RETRY_CODE_REJECTED") in fx_kinds, fx_kinds
+        assert ("sim_fx_bad", "BAD_CREDENTIAL_ON_FILE") in fx_kinds, fx_kinds
+        assert not any(eid == "sim_fx_ok" for eid, _ in fx_kinds), fx_kinds
+
+        # 4. Holdout guard
         try:
             check_eval_contract(root / "bench-holdout" / "evaluations", fakes_file)
         except ValueError:

@@ -26,7 +26,8 @@ Usage:
   python3 scripts/run_evals.py --self-test
 
 Exit codes (cloud): 0 run completed (read the verdicts in the report), 1 error,
-2 the app changed mid-run (numbers not trustworthy), 3 credentials need `gcloud auth login`.
+2 the app changed mid-run (numbers not trustworthy), 3 credentials need `gcloud auth login`,
+4 a --smoke run completed with GATE 1: stop (records are still appended).
 """
 
 from __future__ import annotations
@@ -763,7 +764,9 @@ def run_cloud(args: argparse.Namespace) -> int:
     code = run_bench.main(bench_argv)
     if args.dry_run or args.no_records:
         return code
-    if code not in (0, 2):
+    # 4 = the smoke run completed with GATE 1: stop. Its records are still appended,
+    # and the non-zero code reaches `make bench-smoke` / `make smoke-impact`.
+    if code not in (0, 2, 4):
         return code
 
     report_path = Path(args.bench_dir) / "runs" / f"{label}.json"

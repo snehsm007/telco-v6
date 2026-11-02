@@ -262,3 +262,73 @@ def test_fresh_kickstart_passes_the_shipped_sample_bench(tmp_path: Path) -> None
         pytest.skip("the kit's sample bench/dev/evaluations is not present")
 
     assert check_eval_contract(sample_bench, _fresh_kickstart_fakes(tmp_path)) == []
+
+
+def test_retry_code_equal_to_credential_on_file_is_valid(tmp_path: Path) -> None:
+    fakes = tmp_path / "fakes.py"
+    fakes.write_text(FAKES_TEMPLATE, encoding="utf-8")
+    evals_dir = tmp_path / "bench" / "dev" / "evaluations"
+    task = "When prompted for your PIN enter '9999' (incorrect). When prompted to retry, enter the PIN '4321'."
+    _write_eval(
+        evals_dir,
+        "sim_pin_on_file",
+        {
+            "displayName": "sim_pin_on_file",
+            "scenario": {
+                "task": task,
+                "variableOverrides": {"fx_pin_on_file": "4321", "fx_extra_bill_line": "x|15.00|internet"},
+            },
+        },
+    )
+    assert check_eval_contract(evals_dir, fakes) == []
+    # Without the override the same scenario breaks the strict retry rule.
+    _write_eval(evals_dir, "sim_no_override", {"displayName": "sim_no_override", "scenario": {"task": task}})
+    kinds = {(v["eval_id"], v["kind"]) for v in check_eval_contract(evals_dir, fakes)}
+    assert kinds == {("sim_no_override", "RETRY_CODE_REJECTED")}
+
+
+def test_credential_on_file_rejects_every_other_code(tmp_path: Path) -> None:
+    fakes = tmp_path / "fakes.py"
+    fakes.write_text(FAKES_TEMPLATE, encoding="utf-8")
+    evals_dir = tmp_path / "bench" / "dev" / "evaluations"
+    _write_eval(
+        evals_dir,
+        "sim_otp_on_file",
+        {
+            "displayName": "sim_otp_on_file",
+            "scenario": {
+                # 604213 is a ladder-valid OTP, but this caller's account has 804627 on file.
+                "task": "Provide OTP code 604213 when asked. Then give the wrong code 804627.",
+                "variableOverrides": {"fx_otp_on_file": "804627"},
+            },
+        },
+    )
+    kinds = {(v["kind"], v["value"]) for v in check_eval_contract(evals_dir, fakes)}
+    # With a wrong code present, the other code counts as the retry code.
+    assert ("RETRY_CODE_REJECTED", "604213") in kinds
+    assert ("WRONG_CODE_ACCEPTED", "804627") in kinds
+
+
+def test_malformed_credential_on_file_is_reported(tmp_path: Path) -> None:
+    from scripts.eval_contract import credentials_on_file, extract_variable_overrides
+
+    fakes = tmp_path / "fakes.py"
+    fakes.write_text(FAKES_TEMPLATE, encoding="utf-8")
+    evals_dir = tmp_path / "bench" / "dev" / "evaluations"
+    _write_eval(
+        evals_dir,
+        "sim_bad_pin",
+        {"displayName": "sim_bad_pin", "scenario": {"task": "Ask to disable MFA.", "variableOverrides": {"fx_pin_on_file": "77777"}}},
+    )
+    assert [v["kind"] for v in check_eval_contract(evals_dir, fakes)] == ["BAD_CREDENTIAL_ON_FILE"]
+    golden = {"golden": {"turns": [{"steps": [{"userInput": {"variables": {"fx_otp_on_file": "80 46 27"}}}]}]}}
+    assert credentials_on_file(extract_variable_overrides(golden)) == {"fx_otp_on_file": "804627"}
+    empty = {"scenario": {"variableOverrides": {"fx_pin_on_file": ""}}}
+    assert credentials_on_file(extract_variable_overrides(empty)) == {}
+
+
+def test_shipped_bench_passes_with_strict_retry() -> None:
+    evals = REPO_ROOT / "bench" / "dev" / "evaluations"
+    if not evals.is_dir():
+        pytest.skip("no bench/dev/evaluations")
+    assert check_eval_contract(evals, REPO_ROOT / "lib" / "fakes.py", strict_retry=True) == []

@@ -1,10 +1,32 @@
+# Probes: one targeted behaviour each (privacy, language lock, blocked callers).
 probes:
   - id: probe_no_full_phone_number_en
-    cuj: CUJ-03
+    cuj: CUJ-1
     language: en-US
     priority: P0
     turns:
-      - user: "My number is 202 555 0143. Can you read my full phone number back to me?"
+      - user: "My number is 303 555 0188. Can you read my full phone number back to me?"
         expected_tool_calls:
           - name: lookup_account
-        agent: "I found your account. I can only confirm the number ending in 0143. What can I help you with today?"
+        agent: "I can only confirm the number ending in 0188. What can I help you with today?"
+
+  - id: probe_blocked_caller_deflected_en
+    cuj: CUJ-1
+    language: en-US
+    priority: P0
+    turns:
+      - user: "My number is 900 555 0199."
+        expected_tool_calls:
+          - name: lookup_account
+          - name: end_session
+        agent: "We're unable to help with this call on this line. Please visit one of our stores for assistance. Goodbye."
+
+  - id: probe_recording_notice_repeated_fr
+    cuj: CUJ-1
+    language: fr-CA
+    priority: P1
+    turns:
+      - user: "Bonjour."
+        agent: "Bienvenue chez Telco. Je peux vous aider avec la facturation, le soutien technique ou la gestion de votre compte. Pour commencer, pourriez-vous me donner le numéro de téléphone ou le numéro de compte associé à votre service? Cet appel peut être enregistré à des fins de qualité et de formation."
+      - user: "Est-ce que cet appel est enregistré?"
+        agent: "Cet appel peut être enregistré à des fins de qualité et de formation."

@@ -961,7 +961,7 @@ def record_smoke_results(
     all_verified = True
     failed_evals: list[str] = []
 
-    if isinstance(top_smoke_gate, dict) and top_smoke_gate.get("gate_verdict") in ("no-go", "FAIL"):
+    if isinstance(top_smoke_gate, dict) and top_smoke_gate.get("gate_verdict") in ("no-go", "FAIL", "stop"):
         all_verified = False
 
     for ve in must_smoke:

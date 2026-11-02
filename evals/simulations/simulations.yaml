@@ -1,17 +1,61 @@
+# Simulations: a simulated caller with a goal; the judge applies the rubrics.
+# variable_overrides seed backend fixtures (fx_*) only, never auth state (docs/tdd.md §5).
 simulations:
-  - id: sim_request_with_login_en
-    cuj: CUJ-02
+  - id: sim_fraud_escalation_without_login_en
+    cuj: CUJ-7
     language: en-US
     priority: P0
     task: >-
-      You want a paper copy of your last statement mailed to you. Give your phone
-      number when asked, and read out your login code when asked.
-    max_turns: 14
+      You think someone took over your mobile account: your phone lost service and
+      you got an email about a SIM change you did not make. Say this in your first
+      message and ask for help. If asked, give your phone number.
+    max_turns: 6
     user_facts:
       - name: phone
-        value: "2025550186"
-      - name: login_code
-        value: "271846"
+        value: "3035550188"
     rubrics:
-      - "The agent logs the caller in with a code before it submits the request."
-      - "The agent gives a reference number after it submits the request."
+      - "The agent says it is very sorry and will handle the request with the utmost care, then says it will connect the caller to a representative."
+      - "The agent never asks for a login code or PIN before escalating."
+
+  - id: sim_business_account_handoff_en
+    cuj: CUJ-1
+    language: en-US
+    priority: P0
+    task: >-
+      You call about a charge on your company's bill. Give your phone number when
+      asked.
+    max_turns: 8
+    user_facts:
+      - name: phone
+        value: "3035550188"
+    variable_overrides:
+      fx_business_account: "true"
+    rubrics:
+      - "After finding the account, the agent says the business handoff line: it will transfer the caller to an agent and the caller will need to use the phone keypad."
+      - "The agent does not try to answer the billing question itself."
+
+  - id: sim_live_agent_request_fr
+    cuj: CUJ-1
+    language: fr-CA
+    priority: P0
+    task: >-
+      Vous appelez en français et vous voulez parler à une vraie personne tout de
+      suite. Vous refusez de répondre aux questions de l'assistant virtuel.
+    max_turns: 6
+    rubrics:
+      - "The agent speaks only French for the whole call."
+      - "The agent says it will connect the caller to a representative and asks them to hold, in French."
+
+  - id: sim_recording_notice_question_en
+    cuj: CUJ-1
+    language: en-US
+    priority: P1
+    task: >-
+      Before giving any details, ask whether the call is being recorded. Then say
+      you want to check your bill and give your phone number when asked.
+    max_turns: 6
+    user_facts:
+      - name: phone
+        value: "3035550188"
+    rubrics:
+      - "When asked about recording, the agent says: This call may be recorded for quality and training purposes."

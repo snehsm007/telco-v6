@@ -2,12 +2,11 @@ from types import SimpleNamespace
 from typing import Any
 import pytest
 
-from cxas_app.agents.router.before_model_callbacks.language_prompt_filter import python_code as router_lpf
-from cxas_app.agents.specialist.before_model_callbacks.language_prompt_filter import python_code as specialist_lpf
+import importlib
 
 AGENT_CALLBACKS = [
-    ("router", router_lpf),
-    ("specialist", specialist_lpf),
+    (name, importlib.import_module(f"cxas_app.agents.{name}.before_model_callbacks.language_prompt_filter.python_code"))
+    for name in ("router", "billing", "tech_support", "sales_equipment", "account")
 ]
 
 
