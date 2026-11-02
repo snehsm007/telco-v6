@@ -1,6 +1,6 @@
 {
   "name": "20090eab-e39c-417d-a181-142052ce81d5",
-  "displayName": "telco-v6",
+  "displayName": "snehsm-FDEbootcampCHI-cand1-greenfield",
   "description": "Telco Voice Central: voice and chat agent for billing, technical support, sales and equipment, appointments and account management.",
   "rootAgent": "router",
   "globalInstruction": "global_instruction.txt",
