@@ -99,6 +99,22 @@ def test_plausible_unknown_numbers_get_a_synthetic_record() -> None:
     assert by_ref is not None and by_ref["account_id"] == "A123456"
 
 
+def test_synthetic_account_number_records_get_a_phone_from_the_callers_digits() -> None:
+    """The texted-code destination must not contradict the caller (never the default 0186)."""
+    for raw, last4 in (("882940012", "0012"), ("ACC-992834", "2834"), ("8827-4091-332", "1332")):
+        record = find_account(raw)
+        assert record is not None and len(record["phone"]) == 10, raw
+        assert record["phone"].endswith(last4) and record["phone"] != ACCOUNTS[0]["phone"], raw
+        assert find_account(raw) == record  # deterministic
+
+
+def test_email_identifies_the_matching_or_default_account() -> None:
+    assert find_account("j.miller_personal@example.com") == dict(ACCOUNTS[0])
+    assert find_account(ACCOUNTS[1]["email"]) == dict(ACCOUNTS[1])
+    for bad in ("j.miller@", "@example.com", "jmiller example.com", "a@b"):
+        assert find_account(bad) is None, bad
+
+
 def test_implausible_numbers_are_not_found() -> None:
     assert find_account("12345") is None
     assert find_account("ACC-12") is None

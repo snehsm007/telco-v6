@@ -6,14 +6,14 @@ def lookup_account(
     phone_or_account: str | int | float,
     language: str = "",
 ) -> dict[str, Any]:
-    """Finds the caller's account from the phone number or account number they gave and
-      remembers it for the call. Call it as soon as the caller gives a number. Returns
-      business_flag and service_status; a blocked number returns error
-      PERMISSION_DENIED.
+    """Finds the caller's account from the phone number or account number they gave (or
+      their email address when they have no number) and remembers it for the call. Call
+      it as soon as the caller gives a number. Returns business_flag and service_status;
+      a blocked number returns error PERMISSION_DENIED.
 
     Args:
       phone_or_account: The phone number or account number exactly as the caller said or
-        keyed it, as a quoted string.
+        keyed it, as a quoted string, or the email address they gave.
       language: Active language code (en-US or fr-CA).
 
     Returns:
@@ -374,6 +374,19 @@ ACCOUNTS: tuple[dict[str, Any], ...] = (  # pragma: no cover
 
 DUMMY_NUMBERS: frozenset[str] = frozenset({"1234567890", "0123456789", "9876543210"})  # pragma: no cover
 
+EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}$")  # pragma: no cover
+
+def _phone_from_digits(digits: str) -> str:  # pragma: no cover
+    """A deterministic 10-digit phone ending in the caller's own digits.
+
+    Synthetic records from an account number or reference get this phone, so the
+    texted-code destination ("ending in ...") echoes digits the caller gave instead
+    of the default account's phone.
+    """
+    if len(digits) >= 10:
+        return digits[-10:]
+    return ACCOUNTS[0]["phone"][: 10 - len(digits)] + digits
+
 def _synthetic_account(account_number: str, phone: str) -> dict[str, Any]:  # pragma: no cover
     """A record for a well-formed number this world doesn't know (fact-less simulated callers)."""
     base = dict(ACCOUNTS[0])
@@ -440,9 +453,11 @@ def is_plausible_phone(digits: str) -> bool:  # pragma: no cover
     return not is_weak_code(digits) and digits not in DUMMY_NUMBERS
 
 def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
-    """Find an account by phone number, account number or account reference.
+    """Find an account by phone number, account number, account reference or email.
 
-    The identifier must match one of the format patterns above. Within those
+    The identifier must match one of the format patterns above. An email address
+    (EMAIL_RE) finds the account with that email, else the default account
+    (fact-less callers without a number give their email instead). Within those
     formats this accepts generously (DESIGN_RULES rule 43): fact-less callers
     invent numbers, so a well-formed unknown identifier resolves to a synthetic
     record. One repeated digit and dummy runs are never accounts.
@@ -455,6 +470,9 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
     for record in ACCOUNTS:
         if raw == record["account_id"] or (digits and digits == record["phone"] and not any(c.isalpha() for c in raw_str)):
             return dict(record)
+    if EMAIL_RE.fullmatch(raw_str):
+        by_email = [r for r in ACCOUNTS if str(r.get("email", "")).lower() == raw_str.lower()]
+        return dict(by_email[0] if by_email else ACCOUNTS[0])
     kind, digits = classify_identifier(raw_str)
     if not kind or is_weak_code(digits) or digits in DUMMY_NUMBERS:
         return None
@@ -462,7 +480,7 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
         return _synthetic_account(digits, digits) if is_plausible_phone(digits) else None
     if kind == "intl_phone":
         return _synthetic_account(digits, digits[-10:])
-    return _synthetic_account(digits, ACCOUNTS[0]["phone"])
+    return _synthetic_account(digits, _phone_from_digits(digits))
 
 FIXTURE_DEFAULTS: dict[str, str] = {  # pragma: no cover
     "fx_pin_on_file": "",

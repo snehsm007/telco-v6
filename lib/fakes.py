@@ -444,6 +444,8 @@ ACCOUNT_REFERENCE_RE = re.compile(
 )
 OTP_RE = re.compile(r"^[0-9]{6}$")
 PIN_RE = re.compile(r"^[0-9]{4}$")
+# An email address the caller gives instead of a number (no phone or account number at hand).
+EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}$")
 DUMMY_NUMBERS: frozenset[str] = frozenset({"1234567890", "0123456789", "9876543210"})
 
 
@@ -553,6 +555,18 @@ def normalize_identifier(raw: object) -> dict[str, str]:
     return {"kind": "unknown", "value": s}
 
 
+def _phone_from_digits(digits: str) -> str:
+    """A deterministic 10-digit phone ending in the caller's own digits.
+
+    Synthetic records from an account number or reference get this phone, so the
+    texted-code destination ("ending in ...") echoes digits the caller gave instead
+    of the default account's phone.
+    """
+    if len(digits) >= 10:
+        return digits[-10:]
+    return ACCOUNTS[0]["phone"][: 10 - len(digits)] + digits
+
+
 def _synthetic_account(account_number: str, phone: str) -> dict[str, Any]:
     """A record for a well-formed number this world doesn't know (fact-less simulated callers)."""
     base = dict(ACCOUNTS[0])
@@ -584,9 +598,11 @@ def classify_identifier(raw: Any) -> tuple[str, str]:
 
 
 def find_account(identifier: Any) -> dict[str, Any] | None:
-    """Find an account by phone number, account number or account reference.
+    """Find an account by phone number, account number, account reference or email.
 
-    The identifier must match one of the format patterns above. Within those
+    The identifier must match one of the format patterns above. An email address
+    (EMAIL_RE) finds the account with that email, else the default account
+    (fact-less callers without a number give their email instead). Within those
     formats this accepts generously (DESIGN_RULES rule 43): fact-less callers
     invent numbers, so a well-formed unknown identifier resolves to a synthetic
     record. One repeated digit and dummy runs are never accounts.
@@ -599,6 +615,9 @@ def find_account(identifier: Any) -> dict[str, Any] | None:
     for record in ACCOUNTS:
         if raw == record["account_id"] or (digits and digits == record["phone"] and not any(c.isalpha() for c in raw_str)):
             return dict(record)
+    if EMAIL_RE.fullmatch(raw_str):
+        by_email = [r for r in ACCOUNTS if str(r.get("email", "")).lower() == raw_str.lower()]
+        return dict(by_email[0] if by_email else ACCOUNTS[0])
     kind, digits = classify_identifier(raw_str)
     if not kind or is_weak_code(digits) or digits in DUMMY_NUMBERS:
         return None
@@ -606,7 +625,7 @@ def find_account(identifier: Any) -> dict[str, Any] | None:
         return _synthetic_account(digits, digits) if is_plausible_phone(digits) else None
     if kind == "intl_phone":
         return _synthetic_account(digits, digits[-10:])
-    return _synthetic_account(digits, ACCOUNTS[0]["phone"])
+    return _synthetic_account(digits, _phone_from_digits(digits))
 
 
 def login_code_accepted(code_digits: Any, attempts: int = 0, max_attempts: int = 3) -> bool:

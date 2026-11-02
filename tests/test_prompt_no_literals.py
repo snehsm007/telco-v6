@@ -104,3 +104,15 @@ def test_handover_pairing_in_global_and_every_written_agent_prompt() -> None:
     for label, txt in texts.items():
         assert "submit_request" not in txt, label
         assert "specialist}" not in txt and "@AGENT: specialist" not in txt, label
+
+
+def test_login_recovery_steps_never_dead_end() -> None:
+    """Callers without a number or a reachable phone get a way to verify (DESIGN_RULES rules 2, 21)."""
+    global_txt = (APP_DIR / "global_instruction.txt").read_text(encoding="utf-8")
+    router_txt = (APP_DIR / "agents" / "router" / "instruction.txt").read_text(encoding="utf-8")
+    cant_arrive = re.search(r'<step name="Code Can\'t Arrive">(.*?)</step>', global_txt, re.S)
+    assert cant_arrive and 'channel "email"' in cant_arrive.group(1) and "TOO_MANY_ATTEMPTS" in cant_arrive.group(1)
+    need_account = re.search(r'<step name="Need Account">(.*?)</step>', global_txt, re.S)
+    assert need_account and "no number" in need_account.group(1)
+    no_number = re.search(r'<step name="No Number">(.*?)</step>', router_txt, re.S)
+    assert no_number and "email" in no_number.group(1) and "silently" in no_number.group(1)

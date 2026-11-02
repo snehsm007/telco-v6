@@ -527,5 +527,9 @@ def send_login_code_impl(  # pragma: no cover
         data["email_masked"] = (user[:1] + "***@" + domain) if domain else "on file"
     else:
         data["destination_last4"] = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or record["phone"][-4:])
-    return ok_reply(data, reference, language=lang)
+    reply = ok_reply(data, reference, language=lang)
+    if chan == "email" and purpose == "login":
+        # The login code went to the email on file (the caller can't get a text).
+        reply["agent_action"] = "Say a 6-digit code was sent to the email on file and ask the caller to read it back."
+    return reply
 # --- END GENERATED SHARED BUNDLE ---
