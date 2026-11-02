@@ -385,6 +385,9 @@ def check_secret_pin_impl(
     account_id = ensure_account(state)
     reference = tracking_id("check_secret_pin", account_id, normalize_code(pin))
     state["last_tracking_id"] = reference
+    if state.get("code_purpose") == "step_up" and state.get("auth_status") == "pass":
+        # A step-up code is pending: digits given here are the emailed code.
+        return check_login_code_impl(pin, state=state, language=lang)
     if state.get("auth_status") == "pass":
         state["logged_in"] = True
         return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)

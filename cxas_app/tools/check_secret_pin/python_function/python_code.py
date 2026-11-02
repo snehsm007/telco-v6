@@ -597,6 +597,43 @@ def validation_error(  # pragma: no cover
     payload["global_err_count"] = count
     return error_reply(code, message, agent_action, reference, language=lang, data=payload)
 
+def check_login_code_impl(  # pragma: no cover
+    code: str | int | float = "",
+    state: dict[str, Any] | None = None,
+    session_state: dict[str, Any] | None = None,
+    language: str = "",
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Check the code the caller read back or keyed in (login or step-up)."""
+    state = get_state(state, session_state)
+    lang = session_language(state, language)
+    err = check_mock_error(state, lang, "check_login_code")
+    if err:
+        return err
+    account_id = ensure_account(state)
+    reference = tracking_id("check_login_code", account_id, normalize_code(code))
+    state["last_tracking_id"] = reference
+    step_up = state.get("code_purpose") == "step_up" and state.get("auth_status") == "pass"
+    if state.get("auth_status") == "pass" and not step_up:
+        state["logged_in"] = True
+        return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
+    if state.get("auth_status") == "locked" or _failures(state) >= MAX_LOGIN_ATTEMPTS:
+        return _locked_reply(state, reference, lang)
+    digits = normalize_code(code) or normalize_code(state.get("dtmf_digits"))
+    if not (4 <= len(digits) <= 8):
+        return validation_error(state, "A code has 4 to 8 digits.", "Ask the caller to say or key in the code again.", reference, lang)
+    if not _credential_ok(state, digits, "code"):
+        return _record_failure(state, reference, lang, "code")
+    state["auth_failure_count"] = 0
+    state["login_attempts"] = 0
+    if step_up:
+        state["step_up_verified"] = True
+        state["code_purpose"] = "login"
+        return ok_reply({"verified": True, "step_up_verified": True, "logged_in": True}, reference, language=lang)
+    state["auth_status"] = "pass"
+    state["logged_in"] = True
+    return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
+
 def check_secret_pin_impl(  # pragma: no cover
     pin: str | int | float = "",
     state: dict[str, Any] | None = None,
@@ -613,6 +650,9 @@ def check_secret_pin_impl(  # pragma: no cover
     account_id = ensure_account(state)
     reference = tracking_id("check_secret_pin", account_id, normalize_code(pin))
     state["last_tracking_id"] = reference
+    if state.get("code_purpose") == "step_up" and state.get("auth_status") == "pass":
+        # A step-up code is pending: digits given here are the emailed code.
+        return check_login_code_impl(pin, state=state, language=lang)
     if state.get("auth_status") == "pass":
         state["logged_in"] = True
         return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
