@@ -12,7 +12,7 @@ Source of truth for scope: `prd.md` (the Day 1 brief). Decisions on the brief's 
 | `sales_equipment` | M5 | auth tools, `lookup_account`, `browse_plans`, `place_order`, `file_warranty_claim`, `start_number_transfer`, `handover_to_person` | router |
 | `account` | M7 (except restore-from-non-payment) | auth tools, `lookup_account`, `send_password_reset_link`, `manage_mfa`, `execute_suspend_restore`, `cancel_or_port_out_service`, `update_contact_profile`, `handover_to_person` | router |
 
-"Auth tools" = `send_login_code`, `check_login_code`, `check_secret_pin`.
+"Auth tools" = `send_login_code`, `check_login_code`, `check_secret_pin`. The login conversation (offer code or PIN, send, check, wrong code, lockout) and the hand-back to the router are written once, in `cxas_app/global_instruction.txt` subtasks "Verify Caller (specialists)" and "Other Goals (specialists)"; specialist prompts refer to them and never copy them.
 
 Why restore-from-non-payment lives in `billing`: the brief's CUJ-6 path is M7 → M1 → M3 → M7. Clearing the balance and restoring are one atomic operation in `process_bill_payment` / `verify_payment_and_restore` / `setup_payment_arrangement` (DESIGN_RULES rule 34), so the router sends "restore my suspended service" straight to billing. A non-payment restore never transfers M7 → M3 directly, which is the brief's actual constraint. Lost/stolen and travel suspensions belong to `account`.
 
