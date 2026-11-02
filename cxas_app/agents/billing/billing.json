@@ -17,9 +17,7 @@
     "handover_to_person",
     "end_session"
   ],
-  "childAgents": [
-    "router"
-  ],
+  "childAgents": [],
   "beforeModelCallbacks": [
     {
       "pythonCode": "agents/billing/before_model_callbacks/language_prompt_filter/python_code.py",
