@@ -726,6 +726,16 @@ def _bill_start(  # pragma: no cover
         return st, lang, login_err
     return st, lang, None
 
+def _bill_to_amount(value: Any) -> Decimal | None:  # pragma: no cover
+    """A caller amount with words around it ("85.50 dollars", "85,50 $") as Decimal; None when there is no number."""
+    if isinstance(value, bool):
+        return None
+    direct = to_decimal(value)
+    if direct is not None:
+        return direct
+    match = re.search(r"\d[\d\s,]*(?:\.\d+)?", str(value or ""))
+    return to_decimal(match.group(0)) if match else None
+
 OK_STATUS = _StatusStr("ok")  # pragma: no cover
 
 def ok_reply(  # pragma: no cover
@@ -843,7 +853,7 @@ def setup_payment_arrangement_impl(  # pragma: no cover
         )
     first: Decimal | None = None
     if str(first_payment_amount if first_payment_amount is not None else "").strip():
-        first = to_decimal(first_payment_amount)
+        first = _bill_to_amount(first_payment_amount)
         if first is None or first <= _BILL_ZERO or first >= live["balance"]:
             return validation_error(
                 st,

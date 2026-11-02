@@ -101,6 +101,17 @@ def _bill_q(value: Decimal) -> Decimal:
     return value.quantize(_BILL_CENT, rounding=ROUND_HALF_UP)
 
 
+def _bill_to_amount(value: Any) -> Decimal | None:
+    """A caller amount with words around it ("85.50 dollars", "85,50 $") as Decimal; None when there is no number."""
+    if isinstance(value, bool):
+        return None
+    direct = to_decimal(value)
+    if direct is not None:
+        return direct
+    match = re.search(r"\d[\d\s,]*(?:\.\d+)?", str(value or ""))
+    return to_decimal(match.group(0)) if match else None
+
+
 def _bill_date(days: int, lang: str) -> dict[str, str]:
     iso = relative_date(days)
     return {"iso": iso, "display": display_date(iso, lang)}
@@ -524,7 +535,7 @@ def _bill_payment_amount(amount: Any, live: dict[str, Decimal]) -> Decimal | Non
         return live["balance"]
     if any(w in text for w in _BILL_PAST_DUE_WORDS):
         return live["past_due"]
-    return to_decimal(amount)
+    return _bill_to_amount(amount)
 
 
 def process_bill_payment_impl(
@@ -824,7 +835,7 @@ def apply_bill_adjustment_impl(
     reference = tracking_id("apply_bill_adjustment", account_id, kind, amount, desc, outage_days, charge_id)
     asked: Decimal | None = None
     if str(amount if amount is not None else "").strip():
-        asked = to_decimal(amount)
+        asked = _bill_to_amount(amount)
         if asked is None or asked <= _BILL_ZERO:
             return validation_error(st, "The amount is not a valid positive amount.", "Ask the caller for the amount of the charge.", reference, lang)
     applied = [p for p in str(st.get("applied_adjustments") or "").split(",") if p]
@@ -1002,7 +1013,7 @@ def setup_payment_arrangement_impl(
         )
     first: Decimal | None = None
     if str(first_payment_amount if first_payment_amount is not None else "").strip():
-        first = to_decimal(first_payment_amount)
+        first = _bill_to_amount(first_payment_amount)
         if first is None or first <= _BILL_ZERO or first >= live["balance"]:
             return validation_error(
                 st,

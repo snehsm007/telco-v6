@@ -971,6 +971,16 @@ def _bill_start(  # pragma: no cover
         return st, lang, login_err
     return st, lang, None
 
+def _bill_to_amount(value: Any) -> Decimal | None:  # pragma: no cover
+    """A caller amount with words around it ("85.50 dollars", "85,50 $") as Decimal; None when there is no number."""
+    if isinstance(value, bool):
+        return None
+    direct = to_decimal(value)
+    if direct is not None:
+        return direct
+    match = re.search(r"\d[\d\s,]*(?:\.\d+)?", str(value or ""))
+    return to_decimal(match.group(0)) if match else None
+
 def dispatch_sms(state: dict[str, Any], purpose: str) -> dict[str, Any]:  # pragma: no cover
     """Record a text message to the mobile number on file; returns its delivery facts."""
     dest = str(state.get("phone_last4") or account_record(state)["phone"][-4:])
@@ -1040,7 +1050,7 @@ def apply_bill_adjustment_impl(  # pragma: no cover
     reference = tracking_id("apply_bill_adjustment", account_id, kind, amount, desc, outage_days, charge_id)
     asked: Decimal | None = None
     if str(amount if amount is not None else "").strip():
-        asked = to_decimal(amount)
+        asked = _bill_to_amount(amount)
         if asked is None or asked <= _BILL_ZERO:
             return validation_error(st, "The amount is not a valid positive amount.", "Ask the caller for the amount of the charge.", reference, lang)
     applied = [p for p in str(st.get("applied_adjustments") or "").split(",") if p]

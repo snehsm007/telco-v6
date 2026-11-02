@@ -317,6 +317,14 @@ def test_payment_amount_not_a_number():
     assert process_bill_payment_impl(True, "card_on_file", state=logged_in())["error"] == "INVALID_INPUT"
 
 
+def test_amounts_with_words_around_them():
+    reply = process_bill_payment_impl("20.50 dollars", "card_on_file", state=logged_in())
+    assert reply["data"]["amount_paid_display"] == "20.50"
+    french = process_bill_payment_impl("20,50 $", "carte au dossier", state=logged_in(), language="fr-CA")
+    assert french["data"]["amount_paid_display"] == "20.50"
+    assert billing._bill_to_amount(True) is None
+
+
 def test_payment_id_is_unique_per_payment():
     state = logged_in()
     first = process_bill_payment_impl("10", "card_on_file", state=state)

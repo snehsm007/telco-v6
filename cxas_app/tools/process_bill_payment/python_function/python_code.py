@@ -359,6 +359,16 @@ _BILL_FULL_WORDS = ("full", "all", "balance", "total", "entire", "everything", "
 
 _BILL_PAST_DUE_WORDS = ("past", "overdue", "late", "arrears", "retard", "souffrance", "arriéré", "arriere", "échu", "echu")  # pragma: no cover
 
+def _bill_to_amount(value: Any) -> Decimal | None:  # pragma: no cover
+    """A caller amount with words around it ("85.50 dollars", "85,50 $") as Decimal; None when there is no number."""
+    if isinstance(value, bool):
+        return None
+    direct = to_decimal(value)
+    if direct is not None:
+        return direct
+    match = re.search(r"\d[\d\s,]*(?:\.\d+)?", str(value or ""))
+    return to_decimal(match.group(0)) if match else None
+
 def _bill_payment_amount(amount: Any, live: dict[str, Decimal]) -> Decimal | None:  # pragma: no cover
     text = str(amount if amount is not None else "").strip().lower()
     if isinstance(amount, bool):
@@ -367,7 +377,7 @@ def _bill_payment_amount(amount: Any, live: dict[str, Decimal]) -> Decimal | Non
         return live["balance"]
     if any(w in text for w in _BILL_PAST_DUE_WORDS):
         return live["past_due"]
-    return to_decimal(amount)
+    return _bill_to_amount(amount)
 
 BANK_ON_FILE_ENDING = "6083"  # pragma: no cover
 
