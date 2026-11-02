@@ -1,12 +1,47 @@
+# Goldens: scripted turns with the exact verbatim lines (prd.md §7, lib/fakes.py SPOKEN_LINES).
+# Validated offline by `scripts/run_evals.py --mode local`; executed only on the server.
 goldens:
-  - id: golden_identify_and_route_en
-    cuj: CUJ-01
+  - id: golden_greeting_and_recording_notice_en
+    cuj: CUJ-1
     language: en-US
     priority: P0
     turns:
       - user: "Hi there."
-        agent: "Hello, thanks for calling. Which phone number or account number can I look up for you?"
-      - user: "It's 202 555 0143."
+        agent: "Welcome to Telco. I can help with billing, technical support, or managing your account. To get started, could you tell me the phone number or account number associated with your service? This call may be recorded for quality and training purposes."
+      - user: "Wait, is this call being recorded?"
+        agent: "This call may be recorded for quality and training purposes."
+
+  - id: golden_fraud_escalation_without_login_en
+    cuj: CUJ-7
+    language: en-US
+    priority: P0
+    turns:
+      - user: "Someone hacked my account and swapped my SIM card. I need help right now."
+        expected_tool_calls:
+          - name: handover_to_person
+        agent: "I'm very sorry to hear that you are facing challenges. I will ensure we handle your request with the utmost care. I'll connect you to a representative who can help. Please hold."
+
+  - id: golden_business_handoff_en
+    cuj: CUJ-1
+    language: en-US
+    priority: P0
+    session_variables:
+      fx_business_account: "true"
+    turns:
+      - user: "Hi, I have a question about my bill."
+        agent: "Welcome to Telco. I can help with billing, technical support, or managing your account. To get started, could you tell me the phone number or account number associated with your service? This call may be recorded for quality and training purposes."
+      - user: "It's 303 555 0188."
         expected_tool_calls:
           - name: lookup_account
-        agent: "I found your account ending in 0143. What can I help you with today?"
+          - name: handover_to_person
+        agent: "To get you the best support for your business account, I'll transfer you to an agent. You'll need to use your phone keypad instead of talking to the virtual assistant. Just a moment while I connect you."
+
+  - id: golden_live_agent_request_fr
+    cuj: CUJ-1
+    language: fr-CA
+    priority: P0
+    turns:
+      - user: "Bonjour, je veux parler à un représentant, s'il vous plaît."
+        expected_tool_calls:
+          - name: handover_to_person
+        agent: "Je vais vous mettre en relation avec un représentant qui pourra vous aider. Veuillez patienter."

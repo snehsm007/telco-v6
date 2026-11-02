@@ -1,100 +1,540 @@
+# Local tool tests for the shared tools (suite/tool_tests.py; no cloud).
+# Domain tool cases go in their own files (evals/tool_tests/<domain>.yaml).
+# Verbatim handoff lines are copied from lib/fakes.py SPOKEN_LINES.
 tests:
-  - id: tt_lookup_account_found
-    tool: lookup_account
+- id: tt_lookup_known_account_last4_only
+  tool: lookup_account
+  requirements:
+  - REQ-8
+  - REQ-9
+  args:
+    phone_or_account: 202 555 0186
+  expected_status: ok
+  expected_fields:
+    identification_status: Pass
+    phone_last4: 0186
+    business_flag: false
+    service_status: active
+  expected_state:
+    account_id: A1001
+    identification_status: Pass
+  forbidden_substrings:
+  - '2025550186'
+  priority: P0
+- id: tt_lookup_plausible_unknown_number_is_synthetic
+  tool: lookup_account
+  requirements:
+  - REQ-8
+  args:
+    phone_or_account: (303) 555-0188
+  expected_status: ok
+  expected_fields:
+    identification_status: Pass
+    phone_last4: 0188
+  priority: P0
+- id: tt_lookup_implausible_number_not_found
+  tool: lookup_account
+  requirements:
+  - REQ-8
+  args:
+    phone_or_account: 123 555 0188
+  expected_status: error
+  expected_error: NOT_FOUND
+  priority: P0
+- id: tt_lookup_blocked_caller
+  tool: lookup_account
+  requirements:
+  - REQ-2
+  args:
+    phone_or_account: 900-555-0199
+  expected_status: error
+  expected_error: PERMISSION_DENIED
+  expected_state:
+    is_blocked: true
+  priority: P0
+- id: tt_lookup_business_flag_from_fixture
+  tool: lookup_account
+  requirements:
+  - REQ-12
+  args:
+    phone_or_account: 202 555 0186
+  initial_state:
+    fx_business_account: 'true'
+  expected_status: ok
+  expected_fields:
+    business_flag: true
+  expected_agent_action: 'Business account: hand over with reason business_handoff.'
+  expected_state:
+    business_flag: true
+  priority: P0
+- id: tt_lookup_suspended_from_fixture
+  tool: lookup_account
+  requirements:
+  - REQ-27
+  args:
+    phone_or_account: 202 555 0186
+  initial_state:
+    fx_service_status: suspended_nonpayment
+  expected_status: ok
+  expected_fields:
+    service_status: suspended_nonpayment
+  priority: P0
+- id: tt_lookup_third_validation_error_is_too_many_errors
+  tool: lookup_account
+  requirements:
+  - REQ-10
+  args:
+    phone_or_account: ''
+  initial_state:
+    global_err_count: 2
+  expected_status: error
+  expected_error: TOO_MANY_ERRORS
+  expected_state:
+    global_err_count: 3
+  priority: P0
+- id: tt_lookup_mock_error_is_system_unavailable
+  tool: lookup_account
+  requirements:
+  - REQ-10
+  args:
+    phone_or_account: 202 555 0186
+  initial_state:
+    mock_error: SYSTEM_DOWN
+  expected_status: error
+  expected_error: SYSTEM_UNAVAILABLE
+  expected_agent_action: Hand over with reason system_unavailable.
+  priority: P0
+- id: tt_send_login_code_sms_masks_destination
+  tool: send_login_code
+  requirements:
+  - REQ-19
+  - REQ-9
+  args:
+    channel: sms
+  initial_state:
+    account_id: A1001
+    phone_last4: 0186
+    identification_status: Pass
+    auth_status: none
+  expected_status: ok
+  expected_fields:
+    sent: true
+    channel: sms
+    purpose: login
+    destination_last4: 0186
+  expected_state:
+    auth_status: code_sent
+  forbidden_substrings:
+  - '271846'
+  - '482913'
+  priority: P0
+- id: tt_send_login_code_email_step_up
+  tool: send_login_code
+  requirements:
+  - REQ-25
+  args:
+    channel: email
+  initial_state:
+    account_id: A1001
+    phone_last4: 0186
+    identification_status: Pass
+    auth_status: pass
+    logged_in: true
+  expected_status: ok
+  expected_fields:
+    sent: true
+    channel: email
+    purpose: step_up
+  expected_state:
+    auth_status: pass
+    code_purpose: step_up
+  priority: P0
+- id: tt_login_ladder_first_try_any_code
+  tool: check_login_code
+  requirements:
+  - REQ-19
+  args:
+    code: '314159'
+  initial_state:
+    account_id: A1001
+    phone_last4: 0186
+    identification_status: Pass
+    auth_status: code_sent
+  expected_status: ok
+  expected_fields:
+    verified: true
+    logged_in: true
+  expected_state:
+    auth_status: pass
+    logged_in: true
+  priority: P0
+- id: tt_login_ladder_second_try_unknown_code_fails
+  tool: check_login_code
+  requirements:
+  - REQ-19
+  args:
+    code: '314159'
+  initial_state:
+    account_id: A1001
+    phone_last4: 0186
+    identification_status: Pass
+    auth_status: code_sent
+    auth_failure_count: 1
+  expected_status: error
+  expected_error: WRONG_CODE
+  expected_state:
+    auth_failure_count: 2
+  priority: P0
+- id: tt_login_ladder_third_try_locks
+  tool: check_login_code
+  requirements:
+  - REQ-19
+  args:
+    code: '271846'
+  initial_state:
+    account_id: A1001
+    phone_last4: 0186
+    identification_status: Pass
+    auth_status: code_sent
+    auth_failure_count: 2
+  expected_status: error
+  expected_error: TOO_MANY_ATTEMPTS
+  expected_agent_action: Hand over with reason auth_failure_handoff.
+  expected_state:
+    auth_status: locked
+  priority: P0
+- id: tt_weak_code_always_fails
+  tool: check_login_code
+  requirements:
+  - REQ-19
+  args:
+    code: '111111'
+  initial_state:
+    account_id: A1001
+    phone_last4: 0186
+    identification_status: Pass
+    auth_status: code_sent
+  expected_status: error
+  expected_error: WRONG_CODE
+  priority: P0
+- id: tt_otp_on_file_rejects_other_codes
+  tool: check_login_code
+  requirements:
+  - REQ-19
+  args:
+    code: '271846'
+  initial_state:
+    account_id: A1001
+    phone_last4: 0186
+    identification_status: Pass
+    auth_status: code_sent
+    fx_otp_on_file: '804627'
+  expected_status: error
+  expected_error: WRONG_CODE
+  priority: P0
+- id: tt_otp_on_file_exact_code_passes_on_last_try
+  tool: check_login_code
+  requirements:
+  - REQ-19
+  args:
+    code: '804627'
+  initial_state:
+    account_id: A1001
+    phone_last4: 0186
+    identification_status: Pass
+    auth_status: code_sent
+    fx_otp_on_file: '804627'
+    auth_failure_count: 2
+  expected_status: ok
+  expected_fields:
+    verified: true
+  expected_state:
+    auth_status: pass
+  priority: P0
+- id: tt_step_up_email_code_sets_step_up_verified
+  tool: check_login_code
+  requirements:
+  - REQ-25
+  args:
+    code: '482913'
+  initial_state:
+    account_id: A1001
+    phone_last4: 0186
+    identification_status: Pass
+    auth_status: pass
+    logged_in: true
+    code_purpose: step_up
+  expected_status: ok
+  expected_fields:
+    step_up_verified: true
+  expected_state:
+    step_up_verified: true
+  priority: P0
+- id: tt_pin_on_file_exact_pin_passes
+  tool: check_secret_pin
+  requirements:
+  - REQ-19
+  args:
+    pin: '4321'
+  initial_state:
+    account_id: A1001
+    phone_last4: 0186
+    identification_status: Pass
+    fx_pin_on_file: '4321'
+  expected_status: ok
+  expected_fields:
+    verified: true
+  expected_state:
+    auth_status: pass
+  priority: P0
+- id: tt_pin_on_file_rejects_ladder_pin
+  tool: check_secret_pin
+  requirements:
+  - REQ-19
+  args:
+    pin: '5903'
+  initial_state:
+    account_id: A1001
+    phone_last4: 0186
+    identification_status: Pass
+    fx_pin_on_file: '4321'
+  expected_status: error
+  expected_error: WRONG_PIN
+  expected_state:
+    pin_failure_count: 1
+  priority: P0
+- id: tt_weak_pin_always_fails
+  tool: check_secret_pin
+  requirements:
+  - REQ-19
+  args:
+    pin: '7777'
+  initial_state: &id001
+    account_id: A1001
+    phone_last4: 0186
+    identification_status: Pass
+  expected_status: error
+  expected_error: WRONG_PIN
+  priority: P0
+- id: tt_lockout_survives_account_switch
+  tool: check_login_code
+  requirements:
+  - REQ-19
+  description: Third wrong PIN locks; switching to another number does not reset the lockout.
+  args:
+    code: '271846'
+  initial_state:
+    account_id: A1001
+    phone_last4: 0186
+    identification_status: Pass
+    auth_failure_count: 2
+  setup:
+  - tool: check_secret_pin
     args:
-      phone_or_account: "202 555 0186"
-    expected_status: ok
-    expected_fields:
-      first_name: Jordan
-      phone_last4: "0186"
-    expected_state:
-      account_id: A1001
-    forbidden_substrings:
-      - "2025550186"
-  - id: tt_lookup_account_not_found
-    tool: lookup_account
-    args:
-      phone_or_account: "123"
+      pin: '4444'
     expected_status: error
-    expected_error: NOT_FOUND
-  - id: tt_send_login_code_masks_the_destination
-    tool: send_login_code
-    args: {}
-    initial_state:
-      account_id: A1001
-      phone_last4: "0186"
-      auth_status: none
-      auth_failure_count: 0
+    expected_error: TOO_MANY_ATTEMPTS
+  - tool: lookup_account
+    args:
+      phone_or_account: 303 555 0188
     expected_status: ok
     expected_fields:
-      sent: true
-      destination_last4: "0186"
-    expected_state:
-      auth_status: code_sent
-  - id: tt_check_login_code_wrong_code
-    tool: check_login_code
+      phone_last4: 0188
+  expected_status: error
+  expected_error: TOO_MANY_ATTEMPTS
+  expected_state:
+    auth_status: locked
+  priority: P0
+- id: tt_account_switch_keeps_failure_count
+  tool: check_login_code
+  requirements:
+  - REQ-19
+  description: Two wrong codes, switch number, the next try is still the third (locks).
+  args:
+    code: '271846'
+  setup:
+  - tool: lookup_account
     args:
-      code: "999999"
-    initial_state:
-      account_id: A1001
-      auth_status: code_sent
-      auth_failure_count: 0
+      phone_or_account: 202 555 0186
+    expected_status: ok
+    expected_fields:
+      phone_last4: 0186
+  - tool: check_login_code
+    args:
+      code: '4444'
     expected_status: error
     expected_error: WRONG_CODE
-    expected_state:
-      auth_failure_count: 1
-  - id: tt_check_secret_pin_ok
-    tool: check_secret_pin
+  - tool: check_login_code
     args:
-      pin: "5903"
-    initial_state:
-      account_id: A1001
-      auth_status: none
-      pin_failure_count: 0
-    expected_status: ok
-    expected_fields:
-      verified: true
-    expected_state:
-      auth_status: pass
-  - id: tt_submit_request_after_login
-    tool: submit_request
-    args:
-      summary: Mail a paper copy of the last statement
-    setup:
-      - tool: lookup_account
-        args:
-          phone_or_account: "202 555 0186"
-        expected_fields:
-          first_name: Jordan
-      - tool: send_login_code
-        args: {}
-        expected_fields:
-          sent: true
-      - tool: check_login_code
-        args:
-          code: "271846"
-        expected_fields:
-          verified: true
-    expected_status: ok
-    expected_fields:
-      submitted: true
-  - id: tt_submit_request_needs_login
-    tool: submit_request
-    args:
-      summary: Mail a paper copy of the last statement
-    initial_state:
-      account_id: A1001
-      auth_status: none
+      code: '314159'
     expected_status: error
-    expected_error: NOT_LOGGED_IN
-  - id: tt_handover_to_person_fr
-    tool: handover_to_person
+    expected_error: WRONG_CODE
+  - tool: lookup_account
     args:
-      reason: "besoin d'un agent"
-      language: "fr-CA"
+      phone_or_account: 303 555 0188
     expected_status: ok
     expected_fields:
-      handoff_status: completed_via_specialist_queue
-      language: fr-CA
-    expected_state:
-      handover_complete: true
+      phone_last4: 0188
+  expected_status: error
+  expected_error: TOO_MANY_ATTEMPTS
+  priority: P0
+- id: tt_handover_fraud_empathy_then_live_agent
+  tool: handover_to_person
+  requirements:
+  - REQ-13
+  - REQ-15
+  args:
+    reason: fraud_escalation
+    summary: Caller reports a SIM swap
+    language: en-US
+  expected_status: ok
+  expected_fields:
+    reason: fraud_escalation
+    queue: fraud
+    queue_open: true
+    handoff_message: I'm very sorry to hear that you are facing challenges. I will ensure we handle your request with the utmost care. I'll connect you to a representative who can help. Please hold.
+  expected_state:
+    handover_complete: true
+    handoff_reason: fraud_escalation
+  priority: P0
+- id: tt_handover_fraud_french
+  tool: handover_to_person
+  requirements:
+  - REQ-13
+  - REQ-11
+  args:
+    reason: fraud_escalation
+    language: fr-CA
+  expected_status: ok
+  expected_fields:
+    handoff_message: Je suis vraiment désolé d'apprendre que vous éprouvez des difficultés. Je veillerai à ce que votre demande soit traitée avec le plus grand soin. Je vais vous mettre en relation avec un représentant qui pourra vous aider. Veuillez patienter.
+    language: fr-CA
+  priority: P0
+- id: tt_handover_refund_threshold_specialist_line
+  tool: handover_to_person
+  requirements:
+  - REQ-20
+  args:
+    reason: refund_threshold_exceeded
+    language: en-US
+  expected_status: ok
+  expected_fields:
+    queue: billing_specialist
+    handoff_message: I'll connect you to a billing specialist now — they'll have everything we've already discussed.
+  priority: P0
+- id: tt_handover_refund_threshold_french
+  tool: handover_to_person
+  requirements:
+  - REQ-20
+  - REQ-11
+  args:
+    reason: refund_threshold_exceeded
+    language: fr-CA
+  expected_status: ok
+  expected_fields:
+    handoff_message: Je vais vous mettre en relation avec un spécialiste de la facturation — il aura tout ce dont nous avons déjà discuté.
+  priority: P0
+- id: tt_handover_business_line
+  tool: handover_to_person
+  requirements:
+  - REQ-12
+  args:
+    reason: business_handoff
+    language: en-US
+  initial_state:
+    account_id: A1001
+    phone_last4: 0186
+    identification_status: Pass
+    business_flag: true
+  expected_status: ok
+  expected_fields:
+    queue: business
+    handoff_message: To get you the best support for your business account, I'll transfer you to an agent. You'll need to use your phone keypad instead of talking to the virtual assistant. Just a moment while I connect you.
+  priority: P0
+- id: tt_handover_business_french
+  tool: handover_to_person
+  requirements:
+  - REQ-12
+  - REQ-11
+  args:
+    reason: business_handoff
+    language: fr-CA
+  expected_status: ok
+  expected_fields:
+    handoff_message: Pour vous offrir le meilleur soutien pour votre compte d'affaires, je vais vous transférer à un agent. Vous devrez utiliser le clavier de votre téléphone au lieu de parler à l'assistant virtuel. Un instant pendant que je vous mets en relation.
+  priority: P0
+- id: tt_handover_reason_text_is_normalized
+  tool: handover_to_person
+  requirements:
+  - REQ-13
+  args:
+    reason: my account was hacked
+    language: en-US
+  expected_status: ok
+  expected_fields:
+    reason: fraud_escalation
+  priority: P0
+- id: tt_handover_auth_failure_live_agent_line
+  tool: handover_to_person
+  requirements:
+  - REQ-19
+  args:
+    reason: auth_failure_handoff
+    language: en-US
+  expected_status: ok
+  expected_fields:
+    reason: auth_failure_handoff
+    handoff_message: I'll connect you to a representative who can help. Please hold.
+  priority: P0
+- id: tt_handover_turn_one_french_detected
+  tool: handover_to_person
+  requirements:
+  - REQ-4
+  - REQ-11
+  args:
+    reason: user_requested_agent
+    summary: Je veux parler à un représentant
+  expected_status: ok
+  expected_fields:
+    language: fr-CA
+    handoff_message: Je vais vous mettre en relation avec un représentant qui pourra vous aider. Veuillez patienter.
+  expected_state:
+    language: fr-CA
+  priority: P0
+- id: tt_handover_french_call_stays_french
+  tool: handover_to_person
+  requirements:
+  - REQ-4
+  args:
+    reason: user_requested_agent
+    language: en-US
+  initial_state:
+    language: fr-CA
+  expected_status: ok
+  expected_fields:
+    language: fr-CA
+    handoff_message: Je vais vous mettre en relation avec un représentant qui pourra vous aider. Veuillez patienter.
+  priority: P0
+- id: tt_send_sms_notification_ok
+  tool: send_sms_notification
+  requirements:
+  - REQ-22
+  args:
+    purpose: troubleshooting_guide
+  initial_state: *id001
+  expected_status: ok
+  expected_fields:
+    purpose: troubleshooting_guide
+    sms_sent: true
+    destination_last4: 0186
+  priority: P0
+- id: tt_send_sms_notification_needs_identification
+  tool: send_sms_notification
+  requirements:
+  - REQ-8
+  args:
+    purpose: outage_updates
+  expected_status: error
+  expected_error: NOT_IDENTIFIED
+  priority: P0
+

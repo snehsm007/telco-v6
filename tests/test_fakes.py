@@ -1,11 +1,16 @@
 from lib.fakes import (
+    ACCOUNTS,
     ALWAYS_WRONG_LOGIN_CODES,
     SPOKEN_LINES,
+    SUPPORTED_LOCALES,
+    VALID_OTPS,
+    VALID_PINS,
     find_account,
+    is_plausible_phone,
+    is_weak_code,
     login_code_accepted,
-    normalize_identifier,
-    normalize_identifier,
     normalize_code,
+    normalize_identifier,
     only_digits,
     read_count,
     relative_date,
@@ -19,6 +24,9 @@ def test_only_digits_and_normalize_code() -> None:
     assert only_digits("(202) 555-0186") == "2025550186"
     assert only_digits("") == ""
     assert normalize_code(5903.0) == "5903"
+    assert normalize_code(-5903) == "5903"
+    assert normalize_code("5903.0") == "5903"
+    assert normalize_code(59.5) == "595"
     assert normalize_code("59-03") == "5903"
     assert normalize_code(271846) == "271846"
     assert normalize_code(None) == ""
@@ -27,28 +35,43 @@ def test_only_digits_and_normalize_code() -> None:
 
 def test_read_count_and_locales() -> None:
     assert read_count({"a": 2.0}, "a") == 2
+    assert read_count({"a": "x"}, "a") == 0
     assert read_count(None, "a") == 0
+    assert SUPPORTED_LOCALES == ("en-US", "fr-CA")
     assert resolve_locale("fr") == "fr-CA"
-    assert resolve_locale("es-MX") == "es-US"
+    assert resolve_locale("fr_FR") == "fr-CA"
+    assert resolve_locale("es-MX") == "en-US"
     assert resolve_locale("en-GB") == "en-US"
     assert resolve_locale("") == "en-US"
-    assert "0186" in spoken_line("code_sent", "en-US", destination_last4="0186")
-    assert set(SPOKEN_LINES["handover"]) == {"en-US", "fr-CA", "es-US"}
+    assert resolve_locale(None) == "en-US"
+
+
+def test_spoken_line_fills_slots_and_falls_back() -> None:
+    assert "0186" in spoken_line("otp_callback_confirm", "en-US", last4="0186")
+    assert "0186" in spoken_line("otp_callback_confirm", "fr-CA", last4="0186")
+    assert spoken_line("refund_confirmation_pattern", "en-US", amount="12.50", days=2) == (
+        "Your refund of $12.50 will appear on your next statement within 2 business days."
+    )
+    assert spoken_line("live_agent_handoff", "es-US") == SPOKEN_LINES["live_agent_handoff"]["en-US"]
+    assert spoken_line("no_such_key") == ""
 
 
 def test_normalize_identifier() -> None:
     assert normalize_identifier("2025550186") == {"kind": "phone", "value": "2025550186"}
     assert normalize_identifier("+1 (202) 555-0186") == {"kind": "phone", "value": "2025550186"}
+    assert normalize_identifier("1-202-555-0186") == {"kind": "phone", "value": "2025550186"}
     assert normalize_identifier("+44 20 7946 0958") == {"kind": "international_phone", "value": "+442079460958"}
     assert normalize_identifier("0044 20 7946 0958") == {"kind": "international_phone", "value": "+442079460958"}
     assert normalize_identifier("12345") == {"kind": "account", "value": "12345"}
     assert normalize_identifier("REF-12345") == {"kind": "reference", "value": "REF-12345"}
     assert normalize_identifier("12345-REF") == {"kind": "reference", "value": "12345-REF"}
     assert normalize_identifier("unknown-word") == {"kind": "unknown", "value": "unknown-word"}
+    assert normalize_identifier("") == {"kind": "unknown", "value": ""}
 
 
 def test_relative_date() -> None:
     from datetime import datetime, timezone
+
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     assert relative_date(0) == today
     assert len(relative_date(3)) == 10
@@ -56,37 +79,58 @@ def test_relative_date() -> None:
 
 def test_known_account_by_phone_or_account_number() -> None:
     by_phone = find_account("202-555-0186")
-    assert by_phone is not None and by_phone["account_id"] == "A1001"
-    assert by_phone["caller_provided_phone_last4"] == "0186"
-    by_id = find_account("a1001")
-    assert by_id is not None and by_id["account_id"] == "A1001"
-    assert by_id["caller_provided_phone_last4"] == ""
-    assert find_account("ACC-1001") == by_id
+    assert by_phone is not None and by_phone["account_id"] == ACCOUNTS[0]["account_id"]
+    by_id = find_account(ACCOUNTS[0]["account_id"].lower())
+    assert by_id is not None and by_id["phone"] == ACCOUNTS[0]["phone"]
+    second = find_account(ACCOUNTS[1]["phone"])
+    assert second is not None and second["preferred_language"] == "fr-CA"
 
 
-def test_other_nine_or_ten_digit_numbers_get_a_made_up_record() -> None:
+def test_plausible_unknown_numbers_get_a_synthetic_record() -> None:
     record = find_account("303 555 0188")
     assert record is not None
     assert record["phone"] == "3035550188" and record["first_name"] == ""
+    assert record["account_id"] != ACCOUNTS[0]["account_id"]
     nine_digit = find_account("303555019")
-    assert nine_digit is not None and nine_digit["phone"] == "303555019"
+    assert nine_digit is not None and nine_digit["first_name"] == ""
+    intl = find_account("+44 20 7946 0958")
+    assert intl is not None and intl["phone"] == "2079460958"
+    by_ref = find_account("A-123456")
+    assert by_ref is not None and by_ref["account_id"] == "A123456"
 
 
-def test_short_or_alpha_numbers_are_not_found() -> None:
+def test_implausible_numbers_are_not_found() -> None:
     assert find_account("12345") is None
     assert find_account("ACC-12") is None
     assert find_account("ABC982736451") is None
     assert find_account("") is None
+    assert find_account("1235550188") is None  # area code starts with 1
+    assert find_account("2021550188") is None  # exchange starts with 1
+    assert find_account("5555555555") is None  # one repeated digit
+    assert find_account("1234567890") is None
+    assert find_account("111111111") is None  # weak 9-digit account number
+
+
+def test_phone_and_weak_code_helpers() -> None:
+    assert is_plausible_phone("3035550188")
+    assert not is_plausible_phone("303555018")
+    assert not is_plausible_phone("0035550188")
+    assert not is_plausible_phone("9876543210")
+    assert is_weak_code("7777") and is_weak_code("000000")
+    assert not is_weak_code("") and not is_weak_code("5903")
 
 
 def test_login_ladder_for_codes_and_secret_pins() -> None:
-    assert login_code_accepted("271846")
-    assert login_code_accepted("314159", attempts=0)  # first try: any 4-10 digit code
+    otp = sorted(VALID_OTPS)[0]
+    pin = sorted(VALID_PINS)[0]
+    assert login_code_accepted("314159", attempts=0)  # first try: any well-formed code
     assert not login_code_accepted("314159", attempts=1)  # second try: only known codes
-    assert login_code_accepted("271846", attempts=1)
-    assert not login_code_accepted("271846", attempts=2)  # last try: always wrong (lockout)
-    assert login_code_accepted("271846", attempts=2, max_attempts=5)
-    assert secret_pin_accepted("5903", attempts=1)
-    assert not secret_pin_accepted("5903", attempts=2)
+    assert login_code_accepted(otp, attempts=1)
+    assert not login_code_accepted(otp, attempts=2)  # last try: always wrong (lockout)
+    assert login_code_accepted(otp, attempts=2, max_attempts=5)
+    assert secret_pin_accepted(pin, attempts=1)
+    assert not secret_pin_accepted(pin, attempts=2)
     assert not login_code_accepted("12")
+    assert not login_code_accepted("123456789")
+    assert not login_code_accepted("4444")  # weak
     assert all(not login_code_accepted(code) for code in ALWAYS_WRONG_LOGIN_CODES)
