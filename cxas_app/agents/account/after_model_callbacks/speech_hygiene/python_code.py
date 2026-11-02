@@ -61,6 +61,11 @@ _LAST4_CONTEXT_RE = re.compile(  # pragma: no cover
     re.IGNORECASE,
 )
 
+_PAYMENT_OR_ACCOUNT_WORDS: tuple[str, ...] = (  # pragma: no cover
+    "card", "carte", "visa", "mastercard", "amex", "crédit", "credit", "débit", "debit",
+    "bank", "bancaire", "banque", "account", "compte", "chequing", "chèque", "cheque",
+)
+
 NUMBER_RUN_RE = re.compile(r"\(?\d+\)?(?:[-.]\(?\d+\)?|\s\(?\d{3,}\)?)*")  # pragma: no cover
 
 SPEAKABLE_NUMBERS: frozenset[str] = frozenset()  # pragma: no cover
@@ -108,11 +113,9 @@ def clean_agent_speech(  # pragma: no cover
 
         def _replace_non_card_last4(m: re.Match[str]) -> str:
             prefix = cleaned[max(0, m.start() - 35) : m.start()].lower()
-            if any(
-                w in prefix
-                for w in ("card", "carte", "tarjeta", "visa", "mastercard", "amex", "crédit", "credit", "débit", "debit")
-            ):
-                return f"{m.group(1)}{card_last4}" if (len(card_last4) == 4 and card_last4.isdigit()) else m.group(0)
+            if any(w in prefix for w in _PAYMENT_OR_ACCOUNT_WORDS):
+                # Card, bank and account endings come from tool results; never swap them for phone digits.
+                return m.group(0)
             if len(card_last4) == 4 and m.group(2) == card_last4:
                 return m.group(0)
             return f"{m.group(1)}{caller_last4}"

@@ -38,6 +38,12 @@ def strip_markdown(text: str) -> str:
     return MARKDOWN_RE.sub("", text)
 
 
+_PAYMENT_OR_ACCOUNT_WORDS: tuple[str, ...] = (
+    "card", "carte", "visa", "mastercard", "amex", "crédit", "credit", "débit", "debit",
+    "bank", "bancaire", "banque", "account", "compte", "chequing", "chèque", "cheque",
+)
+
+
 def clean_speech(text: str) -> str:
     """Everything the speech_hygiene callback does to one piece of reply text."""
     return mask_long_numbers(strip_markdown(text))
@@ -65,11 +71,9 @@ def clean_agent_speech(
 
         def _replace_non_card_last4(m: re.Match[str]) -> str:
             prefix = cleaned[max(0, m.start() - 35) : m.start()].lower()
-            if any(
-                w in prefix
-                for w in ("card", "carte", "tarjeta", "visa", "mastercard", "amex", "crédit", "credit", "débit", "debit")
-            ):
-                return f"{m.group(1)}{card_last4}" if (len(card_last4) == 4 and card_last4.isdigit()) else m.group(0)
+            if any(w in prefix for w in _PAYMENT_OR_ACCOUNT_WORDS):
+                # Card, bank and account endings come from tool results; never swap them for phone digits.
+                return m.group(0)
             if len(card_last4) == 4 and m.group(2) == card_last4:
                 return m.group(0)
             return f"{m.group(1)}{caller_last4}"
