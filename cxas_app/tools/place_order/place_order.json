@@ -1,0 +1,10 @@
+{
+  "name": "place_order",
+  "displayName": "place_order",
+  "executionType": "SYNCHRONOUS",
+  "pythonFunction": {
+    "name": "place_order",
+    "description": "Orders the plan or add-on the caller chose. Needs login. First call with confirmed false to get the quote (error CONFIRMATION_REQUIRED with price, new monthly total and effective date), read it, and call again with confirmed true only after the caller says yes. Safe to retry.",
+    "pythonCode": "tools/place_order/python_function/python_code.py"
+  }
+}

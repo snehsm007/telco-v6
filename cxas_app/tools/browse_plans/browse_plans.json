@@ -1,0 +1,10 @@
+{
+  "name": "browse_plans",
+  "displayName": "browse_plans",
+  "executionType": "SYNCHRONOUS",
+  "pythonFunction": {
+    "name": "browse_plans",
+    "description": "Lists at most three plans or add-ons for one line of business, filtered by the caller's monthly budget and ranked by what they need, with coverage at the service address. No login needed. Call it when the caller wants to upgrade, compare plans or add a TV pack. Returns current_plan, price differences, new monthly totals, contract_terms and activation timing.",
+    "pythonCode": "tools/browse_plans/python_function/python_code.py"
+  }
+}

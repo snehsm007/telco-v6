@@ -203,6 +203,157 @@ DEVICES_ON_FILE: tuple[dict[str, Any], ...] = (
 )
 DEVICE_WARRANTY_DAYS = 365
 
+# --- sales fixtures ---
+# Sales & equipment backend facts (docs/tdd.md §4), read by lib/sales.py only.
+# Dates are day offsets from today; copy has one entry per locale and the tool
+# returns only the call language's text.
+SALES_COVERAGE_MAX_MBPS: dict[str, int] = {"Region-A": 3000, "Region-B": 8000, "Region-C": 1000}
+SALES_ACTIVATION_DAYS: dict[str, int] = {"mobility": 0, "internet": 1, "tv": 0, "homephone": 1}
+SALES_EQUIPMENT_DELIVERY_DAYS = 3        # a new gateway ships with an internet plan change
+SALES_WARRANTY_SHIP_DAYS = 3             # standard warranty replacement
+SALES_URGENT_SHIP_DAYS = 1               # expedited safety replacement
+SALES_RETURN_WINDOW_DAYS = 15
+SALES_OUT_OF_WARRANTY_AGE_DAYS = 430     # device age reported when fx_device_warranty=out_of_warranty
+SALES_REPAIR_FEE = "139.00"
+SALES_PORT_DAYS: dict[str, int] = {"mobile": 0, "landline": 3}
+
+# French wording of the plan features in PLANS (English is the catalogue text).
+SALES_FEATURES_FR: dict[str, str] = {
+    "20 GB high-speed data": "20 Go de données haute vitesse",
+    "50 GB high-speed data": "50 Go de données haute vitesse",
+    "100 GB high-speed data": "100 Go de données haute vitesse",
+    "175 GB high-speed data": "175 Go de données haute vitesse",
+    "Unlimited Canada-wide calling": "Appels illimités partout au Canada",
+    "Canada-US calling": "Appels Canada–États-Unis",
+    "Canada-US-Mexico calling": "Appels Canada–États-Unis–Mexique",
+    "5G access": "Accès 5G",
+    "5G+ access": "Accès 5G+",
+    "Up to 1 Gbps download": "Téléchargement jusqu'à 1 Gbit/s",
+    "Up to 3 Gbps download": "Téléchargement jusqu'à 3 Gbit/s",
+    "Up to 8 Gbps download": "Téléchargement jusqu'à 8 Gbit/s",
+    "Unlimited usage": "Utilisation illimitée",
+    "Wi-Fi 6 gateway": "Passerelle Wi-Fi 6",
+    "Wi-Fi 6E gateway": "Passerelle Wi-Fi 6E",
+    "Wi-Fi 7 gateway": "Passerelle Wi-Fi 7",
+    "Whole-home Wi-Fi pod": "Module Wi-Fi pour toute la maison",
+    "Two Wi-Fi pods": "Deux modules Wi-Fi",
+    "National sports networks": "Réseaux de sports nationaux",
+    "Regional game coverage": "Couverture des matchs régionaux",
+    "Sports on demand": "Sports sur demande",
+    "Premium movie channels": "Chaînes de films haut de gamme",
+    "Movies on demand": "Films sur demande",
+    "Over 150 channels": "Plus de 150 chaînes",
+    "Cloud PVR": "Enregistreur numérique infonuagique",
+}
+
+# Need words that rank plans (browse_plans `need`): capacity first or price first.
+SALES_CAPACITY_WORDS: tuple[str, ...] = (
+    "data", "données", "higher tier", "unlimited", "heavy", "gaming", "stream", "fast", "speed",
+    "work from home", "working from home", "remote work", "reliable", "bandwidth", "upload",
+    "video call", "plus de données", "illimit", "vitesse", "rapide", "télétravail", "fiable",
+    "bande passante",
+)
+SALES_PRICE_WORDS: tuple[str, ...] = (
+    "budget", "cheap", "afford", "save", "lower price", "lowest", "moins cher", "économ", "abordable",
+)
+# Words in a warranty description that mean a battery or heat safety hazard.
+SALES_SAFETY_WORDS: tuple[str, ...] = (
+    "swollen", "swelling", "bulging", "bulge", "puffy", "expanding", "smoke", "smoking", "overheat",
+    "too hot", "burning", "fire", "melt", "gonfl", "bombé", "fumée", "surchauff", "brûl",
+)
+# Words in target_line / current_provider meaning the number is a home phone (landline).
+SALES_LANDLINE_WORDS: tuple[str, ...] = ("landline", "home phone", "house phone", "fixe", "résidentiel", "maison")
+# Words in target_line meaning the number goes on a new line on the account.
+SALES_NEW_LINE_WORDS: tuple[str, ...] = ("new", "add", "family", "nouvelle", "ajout", "famille")
+# Answers that mean "not provided yet".
+SALES_PLACEHOLDERS: frozenset[str] = frozenset(
+    {"", "unknown", "external", "none", "n/a", "na", "tbd", "pending", "not sure", "?", "inconnu", "aucun", "other", "autre"}
+)
+
+SALES_COPY: dict[str, dict[str, str]] = {
+    "contract_terms": {
+        "en-US": "Month-to-month, no term contract and no activation fee. Prices are before tax.",
+        "fr-CA": "Au mois, sans contrat à terme et sans frais d'activation. Les prix sont avant taxes.",
+    },
+    "activation_today": {
+        "en-US": "Takes effect today, with no service interruption.",
+        "fr-CA": "Prend effet aujourd'hui, sans interruption de service.",
+    },
+    "activation_next_day": {
+        "en-US": "Takes effect the next business day; no technician visit is needed.",
+        "fr-CA": "Prend effet le jour ouvrable suivant; aucune visite de technicien n'est requise.",
+    },
+    "after_data_cap": {
+        "en-US": "After the high-speed data is used, data continues at a reduced speed with no overage fees.",
+        "fr-CA": "Une fois les données haute vitesse utilisées, les données continuent à vitesse réduite, sans frais d'excédent.",
+    },
+    "proration": {
+        "en-US": "This month's bill is prorated for the days on each plan.",
+        "fr-CA": "La facture de ce mois-ci est calculée au prorata des jours passés sur chaque forfait.",
+    },
+    "coverage_unchecked": {
+        "en-US": "Coverage at the service address is confirmed once the account is identified.",
+        "fr-CA": "La couverture à l'adresse de service est confirmée une fois le compte identifié.",
+    },
+    "battery_safety": {
+        "en-US": "For your safety, power the phone off now, unplug it, stop charging it, and keep it on a hard surface away from anything flammable. Don't press on the battery or mail the phone.",
+        "fr-CA": "Pour votre sécurité, éteignez le téléphone maintenant, débranchez-le, cessez de le charger et posez-le sur une surface dure, loin de tout objet inflammable. N'appuyez pas sur la batterie et n'envoyez pas le téléphone par la poste.",
+    },
+    "return_standard": {
+        "en-US": "The replacement comes with a prepaid return label. Back up the old phone, then send it back in the same box before the return deadline.",
+        "fr-CA": "Le téléphone de remplacement arrive avec une étiquette de retour prépayée. Sauvegardez l'ancien téléphone, puis renvoyez-le dans la même boîte avant la date limite de retour.",
+    },
+    "return_urgent": {
+        "en-US": "Do not ship the damaged phone. Bring it to a Telco store or a certified battery recycling drop-off; no return label is needed.",
+        "fr-CA": "N'expédiez pas le téléphone endommagé. Apportez-le dans une boutique Telco ou à un point de dépôt certifié pour le recyclage des batteries; aucune étiquette de retour n'est nécessaire.",
+    },
+    "repair_paid": {
+        "en-US": "Paid repair at a Telco repair centre",
+        "fr-CA": "Réparation payante dans un centre de réparation Telco",
+    },
+    "repair_protection": {
+        "en-US": "A claim with your device protection plan, if you have one",
+        "fr-CA": "Une réclamation auprès de votre plan de protection d'appareil, si vous en avez un",
+    },
+    "repair_trade_in": {
+        "en-US": "Trade-in credit toward a new phone",
+        "fr-CA": "Un crédit d'échange applicable à un nouveau téléphone",
+    },
+    "port_keep_active": {
+        "en-US": "Keep the service with the current provider active until the transfer is done; it closes automatically when the number moves.",
+        "fr-CA": "Gardez le service actif chez le fournisseur actuel jusqu'à la fin du transfert; il se ferme automatiquement quand le numéro est transféré.",
+    },
+    "port_check_number": {
+        "en-US": "The phone number you want to bring over",
+        "fr-CA": "Le numéro de téléphone que vous voulez transférer",
+    },
+    "port_check_provider": {
+        "en-US": "The name of the current provider",
+        "fr-CA": "Le nom du fournisseur actuel",
+    },
+    "port_check_account": {
+        "en-US": "The account number with that provider, from a recent bill",
+        "fr-CA": "Le numéro de compte chez ce fournisseur, indiqué sur une facture récente",
+    },
+    "port_check_pin": {
+        "en-US": "A transfer PIN, if that provider uses one",
+        "fr-CA": "Un NIP de transfert, si ce fournisseur en utilise un",
+    },
+    "port_check_active": {
+        "en-US": "Keep that service active; don't cancel it before the transfer",
+        "fr-CA": "Gardez ce service actif; ne l'annulez pas avant le transfert",
+    },
+    "port_temporary_number": {
+        "en-US": "The new line works right away on a temporary number until the transfer completes.",
+        "fr-CA": "La nouvelle ligne fonctionne tout de suite avec un numéro temporaire jusqu'à la fin du transfert.",
+    },
+    "port_existing_line": {
+        "en-US": "The transferred number replaces the current number on that line when the transfer completes.",
+        "fr-CA": "Le numéro transféré remplacera le numéro actuel de cette ligne à la fin du transfert.",
+    },
+}
+# --- end sales fixtures ---
+
 # Appointments and tickets (prd.md §13).
 APPOINTMENT = {
     "appointment_id": "APT-4471",

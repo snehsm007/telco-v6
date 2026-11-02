@@ -504,6 +504,33 @@
       }
     },
     {
+      "name": "sales_orders",
+      "description": "Comma list of plan ids ordered on this call (place_order idempotency).",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "sales_claims",
+      "description": "Comma list of warranty claim ids filed on this call (no duplicate claims).",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "sales_transfers",
+      "description": "Comma list of number transfer ids started on this call (no duplicate ports).",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
       "name": "pending_confirmation",
       "description": "The action waiting for the caller's confirmation.",
       "schema": {

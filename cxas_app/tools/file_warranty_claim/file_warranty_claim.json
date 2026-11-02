@@ -1,0 +1,10 @@
+{
+  "name": "file_warranty_claim",
+  "displayName": "file_warranty_claim",
+  "executionType": "SYNCHRONOUS",
+  "pythonFunction": {
+    "name": "file_warranty_claim",
+    "description": "Checks warranty coverage for the caller's device on file and files a replacement claim. Needs login. Call with the damage answers empty to check coverage; call again with both damage answers to file. A swollen battery, smoke or overheating files an urgent expedited claim and returns safety_advice.",
+    "pythonCode": "tools/file_warranty_claim/python_function/python_code.py"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "start_number_transfer",
+  "displayName": "start_number_transfer",
+  "executionType": "SYNCHRONOUS",
+  "pythonFunction": {
+    "name": "start_number_transfer",
+    "description": "Transfers (ports) a phone number in from another provider, onto an existing line or a new line. With no number yet it returns required_port_checklist without login. Starting the transfer needs login and a valid 10-digit number. Never returns any PIN.",
+    "pythonCode": "tools/start_number_transfer/python_function/python_code.py"
+  }
+}
