@@ -47,7 +47,7 @@ import re
 HANDOVER_LINES: dict[str, tuple[str, ...]] = {  # pragma: no cover
     "business_handoff": ("business_handoff",),
     "fraud_escalation": ("empathy_protocol", "live_agent_handoff"),
-    "refund_threshold_exceeded": ("transfer_to_specialist",),
+    "refund_threshold_exceeded": ("refund_over_limit", "transfer_to_specialist"),
 }
 
 HANDOVER_QUEUES: dict[str, str] = {  # pragma: no cover
@@ -58,6 +58,8 @@ HANDOVER_QUEUES: dict[str, str] = {  # pragma: no cover
     "sales_specialist": "sales",
     "appointment_booking": "appointments",
 }
+
+SELF_SERVE_ADJUSTMENT_LIMIT = "25.00"  # pragma: no cover
 
 _HANDOVER_FR_WORDS = re.compile(  # pragma: no cover
     r"\b(?:bonjour|merci|compte|facture|facturation|paiement|transf[eé]rer|repr[eé]sentant|"
@@ -346,6 +348,47 @@ ERROR_CODE_DEFAULTS: dict[str, tuple[str, str]] = {  # pragma: no cover
     ),
 }
 
+ERROR_MESSAGES_FR: dict[str, str] = {  # pragma: no cover
+    "INVALID_INPUT": "Les renseignements fournis ne sont pas valides.",
+    "NOT_FOUND": "Aucun dossier correspondant n'a été trouvé.",
+    "NOT_IDENTIFIED": "Le compte de l'appelant n'a pas encore été trouvé.",
+    "NOT_LOGGED_IN": "L'identité de l'appelant n'a pas encore été vérifiée.",
+    "CODE_NOT_SENT": "Aucun code de connexion n'a été envoyé pendant cet appel.",
+    "WRONG_CODE": "Le code ne correspond pas.",
+    "WRONG_PIN": "Le NIP ne correspond pas.",
+    "TOO_MANY_ATTEMPTS": "Trop de codes erronés pendant cet appel.",
+    "LOCKED_OUT": "L'accès est verrouillé après trop de tentatives infructueuses.",
+    "CARD_DECLINED": "La carte a été refusée.",
+    "PAYMENT_DECLINED": "Le mode de paiement a été refusé.",
+    "INELIGIBLE": "Le compte n'est pas admissible à cette demande.",
+    "NOT_ELIGIBLE": "Le compte n'est pas admissible à cette option.",
+    "ALREADY_PROCESSED": "Cette demande a déjà été traitée.",
+    "ALREADY_APPLIED": "Ce crédit ou cet ajustement a déjà été appliqué.",
+    "ALREADY_ENROLLED": "Le compte est déjà inscrit à cette fonction.",
+    "OUT_OF_WINDOW": "La demande est hors du délai permis.",
+    "OUTAGE_ACTIVE": "Une panne de service touche actuellement ce secteur.",
+    "LIMIT_EXCEEDED": "Le montant ou le nombre demandé dépasse la limite permise.",
+    "INTERNAL_ERROR": "Une erreur interne est survenue pendant le traitement de la demande.",
+    "SERVICE_UNAVAILABLE": "Le service est actuellement indisponible.",
+    "SYSTEM_UNAVAILABLE": "Le service est temporairement indisponible.",
+    "SYSTEM_DOWN": "Le service est temporairement indisponible.",
+    "PERMISSION_DENIED": "Accès refusé.",
+    "TOO_MANY_ERRORS": "Trop d'entrées non valides pendant cet appel.",
+    "MALFORMED_REQUEST": "La demande est mal formée.",
+    "AUTH_SERVICE_UNAVAILABLE": "Le service de connexion est indisponible.",
+    "INSUFFICIENT_FUNDS": "Le mode de paiement n'a pas les fonds suffisants.",
+    "REFUND_THRESHOLD_EXCEEDED": "Le montant dépasse la limite libre-service.",
+    "TECHNICIAN_EN_ROUTE": "Le technicien est déjà en route.",
+    "NO_AVAILABILITY": "Aucune plage horaire n'est disponible dans cette période.",
+    "STEP_UP_REQUIRED": "Cette modification exige une étape de vérification supplémentaire.",
+    "NO_PAYMENT_FOUND": "Aucun paiement enregistré ne couvre le montant en souffrance.",
+    "CONFIRMATION_REQUIRED": "L'appelant doit confirmer avant que ce soit appliqué.",
+    "TV_SUB_TYPE_REQUIRED": "Le type de service télé est requis d'abord.",
+    "CARD_EXPIRED": "La carte au dossier est expirée.",
+    "NOT_SUSPENDED": "Le service n'est pas suspendu.",
+    "DELIVERY_FAILED": "Le texto n'a pas pu être livré.",
+}
+
 class _StatusStr(str):  # pragma: no cover
     """String status value that compares equal case-insensitively ('ok' == 'OK')."""
 
@@ -393,6 +436,9 @@ def error_reply(  # pragma: no cover
     action = agent_action or default_action
     if reference is None:
         reference = tracking_id("error", code, msg)
+    if str(language or "").strip().lower().startswith("fr"):
+        # fr-CA call: tools pass English detail, so the French default wins.
+        msg = ERROR_MESSAGES_FR.get(code) or msg
     payload = dict(data or {})
     reply: dict[str, Any] = {
         "status": ERROR_STATUS,
@@ -432,6 +478,22 @@ def check_mock_error(state: dict[str, Any], lang: str = "en-US", tool_name: str 
             language=lang,
         )
     return None
+
+def display_amount(value: Any) -> str:  # pragma: no cover
+    """Format money for the agent to say: 85.5 -> "85.50" (two decimals, half-up rounding).
+
+    Return it next to the number, never instead of it:
+    {"amount": 85.5, "amount_display": "85.50", "currency": "CAD"}.
+    """
+    if isinstance(value, bool) or value is None:
+        raise ValueError(f"not an amount: {value!r}")
+    try:
+        amount = Decimal(str(value).replace(",", "").strip())
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(f"not an amount: {value!r}") from exc
+    if not amount.is_finite():
+        raise ValueError(f"not an amount: {value!r}")
+    return str(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 def get_state(  # pragma: no cover
     state: dict[str, Any] | None = None,
@@ -563,6 +625,10 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "I'll connect you to a billing specialist now — they'll have everything we've already discussed.",
         "fr-CA": "Je vais vous mettre en relation avec un spécialiste de la facturation — il aura tout ce dont nous avons déjà discuté.",
     },
+    "refund_over_limit": {
+        "en-US": "That amount is above our $[limit] self-serve limit, so it needs a specialist's approval.",
+        "fr-CA": "Ce montant dépasse notre limite libre-service de [limit] $, il doit donc être approuvé par un spécialiste.",
+    },
     "otp_callback_confirm": {
         "en-US": "I'll send a 6-digit code to the number ending in [last4]. Ready?",
         "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro se terminant par [last4]. Êtes-vous prêt?",
@@ -614,7 +680,8 @@ def handover_to_person_impl(  # pragma: no cover
     if err and code != "system_unavailable":
         return err
     keys = HANDOVER_LINES.get(code, ("live_agent_handoff",))
-    message = " ".join(spoken_line(k, lang) for k in keys)
+    limit = display_amount(SELF_SERVE_ADJUSTMENT_LIMIT)
+    message = " ".join(spoken_line(k, lang, limit=limit) for k in keys)
     queue = HANDOVER_QUEUES.get(code, "general")
     open_now = queue_open(queue)
     context = {

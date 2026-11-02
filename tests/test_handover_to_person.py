@@ -28,8 +28,12 @@ def test_handover_fraud_business_and_refund_lines(monkeypatch) -> None:
     business = tool.handover_to_person(reason="business_handoff", language="fr-CA")
     assert business["handoff_message"] == SPOKEN_LINES["business_handoff"]["fr-CA"]
     monkeypatch.setattr(tool, "context", {}, raising=False)
-    refund = tool.handover_to_person(reason="refund_threshold_exceeded", language="en-US")
-    assert refund["handoff_message"] == SPOKEN_LINES["transfer_to_specialist"]["en-US"]
+    refund = tool.handover_to_person(reason="refund_threshold_exceeded", language="fr-CA")
+    assert refund["handoff_message"] == (
+        SPOKEN_LINES["refund_over_limit"]["fr-CA"].replace("[limit]", tool.display_amount(tool.SELF_SERVE_ADJUSTMENT_LIMIT))
+        + " "
+        + SPOKEN_LINES["transfer_to_specialist"]["fr-CA"]
+    )
 
 
 def test_handover_without_a_session_detects_turn_one_french(monkeypatch) -> None:
