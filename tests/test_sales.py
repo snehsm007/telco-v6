@@ -521,3 +521,47 @@ def test_transfer_gives_a_typical_timeframe_before_the_details_are_in(lang: str)
     assert str(sales.SALES_PORT_MAX_DAYS["landline"]) in landline["data"]["typical_timeframe_display"]
     started = start_number_transfer_impl("(416) 555-0123", "Bell", "778812", "", "new line", state=state)["data"]
     assert started["transfer_started"] is True and started["typical_timeframe_display"] == mobile
+
+
+# ----------------------------------------------------------------------------- fix/22 (port-in, plan, device, ship-to facts)
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_transfer_replies_carry_fee_and_authorization_facts(lang: str) -> None:
+    """VE-39 r2 / VE-66 r3: "any fees?" got an invented "free" or "can't confirm"; VE-66 r2:
+    the caller's port authorization code got an invented answer."""
+    checklist = start_number_transfer_impl("", state={}, language=lang)["data"]
+    state = _logged_in(language=lang)
+    pending = start_number_transfer_impl("(416) 555-0123", "Bell", "", "", "new line", state=state)["data"]
+    submitted = start_number_transfer_impl("(416) 555-0123", "Bell", "778812", "", "new line", state=state)["data"]
+    assert pending["status"] == "pending_details" and submitted["status"] == "submitted"
+    for data in (checklist, pending, submitted):
+        assert data["fees_note"] == SALES_COPY["port_fees"][lang]
+        assert data["authorization_note"] == SALES_COPY["port_authorization"][lang]
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_transfer_accepts_the_phones_imei_instead_of_the_account_number(lang: str) -> None:
+    """VE-66 r1: the caller had no account number and offered the IMEI; the agent couldn't say."""
+    checklist = start_number_transfer_impl("", state={}, language=lang)["data"]
+    assert "IMEI" in checklist["required_port_checklist"][2] and "*#06#" in checklist["required_port_checklist"][2]
+    assert len(checklist["account_number_alternatives"]) == 2
+    state = _logged_in(language=lang)
+    pending = start_number_transfer_impl("5145558291", "Rogers", "", "", "new_line", state=state)["data"]
+    assert pending["missing_details"] == ["current_account_number"], "one identifier is still required"
+    assert pending["account_number_alternatives"] == checklist["account_number_alternatives"]
+    started = start_number_transfer_impl("5145558291", "Rogers", "35 209900 176148 1", "", "new_line", state=state)["data"]
+    assert started["transfer_started"] is True and started["account_identifier_type"] == "imei"
+    assert started["current_account_number_last4"] == "1481"
+    by_account = start_number_transfer_impl("4165550123", "Bell", "AC-55120", "", "new_line", state=_logged_in())["data"]
+    assert by_account["account_identifier_type"] == "account_number"
+
+
+def test_transfer_pending_target_is_not_given_until_the_caller_says() -> None:
+    """VE-39 r1: pending showed target=existing_line, so asking "new or existing line?" was judged ungrounded."""
+    pending = start_number_transfer_impl("4165550123", state=_logged_in())["data"]
+    assert pending["status"] == "pending_details" and pending["target"] == "not_given"
+    named = start_number_transfer_impl("4165550123", "", "", "", "new line", state=_logged_in())["data"]
+    assert named["target"] == "new_line"
+    existing = start_number_transfer_impl("4165550123", "", "", "", "existing_line", state=_logged_in())["data"]
+    assert existing["target"] == "existing_line"

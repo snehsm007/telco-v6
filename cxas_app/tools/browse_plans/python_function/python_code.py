@@ -159,8 +159,24 @@ SALES_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
         "fr-CA": "Le nom du fournisseur actuel",
     },
     "port_check_account": {
-        "en-US": "The account number with that provider, from a recent bill",
-        "fr-CA": "Le numéro de compte chez ce fournisseur, indiqué sur une facture récente",
+        "en-US": "The account number with that provider, from a recent bill, or the phone's 15-digit IMEI (dial *#06# to see it)",
+        "fr-CA": "Le numéro de compte chez ce fournisseur, indiqué sur une facture récente, ou le code IMEI à 15 chiffres du téléphone (composez *#06# pour l'afficher)",
+    },
+    "port_account_alt_bill": {
+        "en-US": "The account number with the current provider, from a recent bill or their app",
+        "fr-CA": "Le numéro de compte chez le fournisseur actuel, sur une facture récente ou dans son application",
+    },
+    "port_account_alt_imei": {
+        "en-US": "The phone's 15-digit IMEI instead: dial *#06# on that phone to see it",
+        "fr-CA": "Le code IMEI à 15 chiffres du téléphone à la place : composez *#06# sur ce téléphone pour l'afficher",
+    },
+    "port_fees": {
+        "en-US": "There is no fee to transfer a number in and no activation fee.",
+        "fr-CA": "Il n'y a aucuns frais pour transférer un numéro et aucuns frais d'activation.",
+    },
+    "port_authorization": {
+        "en-US": "No code or extra authorization is needed on this call. The current provider may text that phone to confirm the transfer; just follow that message.",
+        "fr-CA": "Aucun code ni autorisation supplémentaire n'est nécessaire pendant cet appel. Le fournisseur actuel peut envoyer un texto à ce téléphone pour confirmer le transfert; suivez simplement ce message.",
     },
     "port_check_pin": {
         "en-US": "A transfer PIN, if that provider uses one",

@@ -19,7 +19,8 @@ def start_number_transfer(
       number_to_transfer: The 10-digit number to bring over, as said; empty if the
         caller doesn't have it yet.
       current_provider: The provider the number is with now (the one it is leaving).
-      current_account_number: The caller's account number with that provider, as said.
+      current_account_number: The caller's account number with that provider, as said,
+        or the phone's 15-digit IMEI when they don't have the account number.
       transfer_pin: Transfer PIN from that provider, if they have one; never repeat it
         back.
       target_line: Where the number goes: new_line (add a line, e.g. a family member),
@@ -30,7 +31,7 @@ def start_number_transfer(
       status, data (status submitted or pending_details, transfer_id,
         estimated_completion_display, typical_timeframe_display, number_type, target,
         temporary_number_last4, target_line_last4, sms_updates, missing_details, required_port_checklist,
-        keep_old_service_note), error_message, tracking_id. Errors add error
+        keep_old_service_note, fees_note, authorization_note, account_number_alternatives), error_message, tracking_id. Errors add error
         (NOT_LOGGED_IN, INVALID_INPUT) and agent_action.
     """
     ctx = globals().get("context")
@@ -56,6 +57,8 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 import hashlib
 import re
+
+SALES_IMEI_DIGITS = 15  # pragma: no cover
 
 SALES_LANDLINE_WORDS: tuple[str, ...] = ("landline", "home phone", "house phone", "fixe", "résidentiel", "maison")  # pragma: no cover
 
@@ -213,8 +216,24 @@ SALES_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
         "fr-CA": "Le nom du fournisseur actuel",
     },
     "port_check_account": {
-        "en-US": "The account number with that provider, from a recent bill",
-        "fr-CA": "Le numéro de compte chez ce fournisseur, indiqué sur une facture récente",
+        "en-US": "The account number with that provider, from a recent bill, or the phone's 15-digit IMEI (dial *#06# to see it)",
+        "fr-CA": "Le numéro de compte chez ce fournisseur, indiqué sur une facture récente, ou le code IMEI à 15 chiffres du téléphone (composez *#06# pour l'afficher)",
+    },
+    "port_account_alt_bill": {
+        "en-US": "The account number with the current provider, from a recent bill or their app",
+        "fr-CA": "Le numéro de compte chez le fournisseur actuel, sur une facture récente ou dans son application",
+    },
+    "port_account_alt_imei": {
+        "en-US": "The phone's 15-digit IMEI instead: dial *#06# on that phone to see it",
+        "fr-CA": "Le code IMEI à 15 chiffres du téléphone à la place : composez *#06# sur ce téléphone pour l'afficher",
+    },
+    "port_fees": {
+        "en-US": "There is no fee to transfer a number in and no activation fee.",
+        "fr-CA": "Il n'y a aucuns frais pour transférer un numéro et aucuns frais d'activation.",
+    },
+    "port_authorization": {
+        "en-US": "No code or extra authorization is needed on this call. The current provider may text that phone to confirm the transfer; just follow that message.",
+        "fr-CA": "Aucun code ni autorisation supplémentaire n'est nécessaire pendant cet appel. Le fournisseur actuel peut envoyer un texto à ce téléphone pour confirmer le transfert; suivez simplement ce message.",
     },
     "port_check_pin": {
         "en-US": "A transfer PIN, if that provider uses one",
@@ -315,6 +334,14 @@ def display_date(iso_date: str, lang: str = "en-US") -> str:  # pragma: no cover
 def _sales_port_eta(kind: str, lang: str) -> dict[str, str]:  # pragma: no cover
     iso = _sales_business_date(SALES_PORT_DAYS.get(kind, 0))
     return {"date": iso, "display": display_date(iso, lang)}
+
+def _sales_port_facts(lang: str) -> dict[str, Any]:  # pragma: no cover
+    """Follow-up facts callers ask before giving details: cost, authorization, no account number (rule 33)."""
+    return {
+        "fees_note": _sales_text("port_fees", lang),
+        "authorization_note": _sales_text("port_authorization", lang),
+        "account_number_alternatives": [_sales_text(k, lang) for k in ("port_account_alt_bill", "port_account_alt_imei")],
+    }
 
 SALES_PORT_MAX_DAYS: dict[str, int] = {"mobile": 2, "landline": 5}  # pragma: no cover
 
@@ -1002,6 +1029,7 @@ def start_number_transfer_impl(  # pragma: no cover
                 "mobile_typical_timeframe_display": _sales_port_timeframe("mobile", lang),
                 "landline_typical_timeframe_display": _sales_port_timeframe("landline", lang),
                 "keep_old_service_note": _sales_text("port_keep_active", lang),
+                **_sales_port_facts(lang),
                 "login_required_to_start": True,
             },
             reference,
@@ -1035,7 +1063,7 @@ def start_number_transfer_impl(  # pragma: no cover
         return validation_error(
             state,
             "The account number with the current provider looks incomplete.",
-            "Ask for the account number from the current provider's bill again.",
+            "Ask again for the provider's account number or the phone's IMEI.",
             reference,
             lang,
         )
@@ -1052,6 +1080,8 @@ def start_number_transfer_impl(  # pragma: no cover
     if provider_found_by_lookup:
         provider = _sales_text("port_provider_lookup", lang)
 
+    account_identifier = "imei" if re.fullmatch(rf"\d{{{SALES_IMEI_DIGITS}}}", account_number) else "account_number"
+    target_given = not _sales_placeholder(target_line)
     target_digits = normalize_code(target_line)
     target_last4 = ""
     if len(target_digits) >= 10:
@@ -1080,10 +1110,13 @@ def start_number_transfer_impl(  # pragma: no cover
         "provider_found_by_lookup": provider_found_by_lookup and not internal_move,
         "internal_move": internal_move,
         "current_account_number_last4": account_number[-4:] if account_number else "",
+        "account_identifier_type": account_identifier if account_number else "",
         "transfer_pin_received": bool(pin_digits),
         "target": target,
         "typical_timeframe_display": _sales_port_timeframe(number_type, lang),
         "keep_old_service_note": _sales_text("port_keep_active", lang),
+        "fees_note": _sales_text("port_fees", lang),
+        "authorization_note": _sales_text("port_authorization", lang),
     }
     if internal_move:
         data["internal_move_note"] = _sales_text("port_internal_move", lang)
@@ -1098,6 +1131,9 @@ def start_number_transfer_impl(  # pragma: no cover
                 "transfer_started": False,
                 "missing_details": missing,
                 "required_port_checklist": _sales_port_checklist(lang),
+                "account_number_alternatives": _sales_port_facts(lang)["account_number_alternatives"],
+                # Not asked yet: never present a default the caller didn't choose.
+                "target": target if target_given else "not_given",
             }
         )
         reply = ok_reply(data, reference, language=lang)
