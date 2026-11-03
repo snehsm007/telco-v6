@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -634,3 +635,21 @@ def test_mfa_enable_carries_sms_cost_and_setup_notes(lang: str) -> None:
     state["step_up_verified"] = True
     off = manage_mfa_impl("disable", state=state, language=lang)["data"]
     assert off["sms_cost_note"] == "" and off["setup_note"] == ""
+
+
+# --- fix/35 (h): the final bill's parts are in the cancel quote ---------------------------
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+@pytest.mark.parametrize("mode", ["cancel", "port_out"])
+def test_cancel_quote_breaks_the_final_bill_into_fee_and_service(lang: str, mode: str) -> None:
+    """VE-02 r1: "is the rest prorated or a full month?" had no fact; the caller asked for a person."""
+    data = cancel_or_port_out_service_impl("mobility", mode, "", False, state=_logged_in(), language=lang)["data"]
+    total = Decimal(data["final_bill_estimate_display"])
+    assert Decimal(data["early_termination_fee_display"]) + Decimal(data["final_service_charge_display"]) == total
+    assert 0 < data["service_days_billed"] <= data["billing_cycle_days"]
+    note = data["final_service_charge_note"]
+    assert data["final_service_charge_display"] in note
+    full = data["service_days_billed"] == data["billing_cycle_days"]
+    words = {"en-US": ("full monthly price", "prorated"), "fr-CA": ("prix mensuel complet", "prorata")}[lang]
+    assert (words[0] in note) == full and (words[1] in note) == (not full)

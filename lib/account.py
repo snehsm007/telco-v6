@@ -435,6 +435,22 @@ def execute_suspend_restore_impl(
     )
 
 
+def _acct_cancel_service_note(amount: str, days_used: int, lang: str) -> str:
+    """What the service part of the final bill covers: the full cycle, or the days up to the effective date."""
+    cycle = ACCT_BILLING_CYCLE_DAYS
+    if days_used >= cycle:
+        return _acct_text(
+            lang,
+            f"The service part of the final bill, ${amount}, is the full monthly price, because the effective date closes the current {cycle}-day billing cycle.",
+            f"La partie service de la facture finale, {amount} $, correspond au prix mensuel complet, car la date d'effet termine le cycle de facturation actuel de {cycle} jours.",
+        )
+    return _acct_text(
+        lang,
+        f"The service part of the final bill, ${amount}, is the monthly price prorated for {days_used} of the {cycle} days in the billing cycle, up to the effective date.",
+        f"La partie service de la facture finale, {amount} $, correspond au prix mensuel calculé au prorata pour {days_used} des {cycle} jours du cycle de facturation, jusqu'à la date d'effet.",
+    )
+
+
 def _acct_cancel_quote(lob: str, mode: str, lang: str) -> dict[str, Any]:
     """Fee, final bill estimate and effective date for cancelling or porting out one service."""
     terms = ACCT_CONTRACT_TERMS.get(lob, {"early_termination_fee": "0.00", "months_remaining": 0})
@@ -450,6 +466,7 @@ def _acct_cancel_quote(lob: str, mode: str, lang: str) -> dict[str, Any]:
     effective = date_in(days_to_effective, lang)
     fee_money = money(fee, "early_termination_fee")
     bill_money = money(final_bill, "final_bill_estimate")
+    usage_money = money(usage, "final_service_charge")
     return {
         "lob": lob,
         "mode": mode,
@@ -458,6 +475,11 @@ def _acct_cancel_quote(lob: str, mode: str, lang: str) -> dict[str, Any]:
         "contract_months_remaining": int(terms["months_remaining"]),
         **bill_money,
         "final_bill_includes_fee": fee > 0,
+        # The final bill's two parts, so "is that prorated?" is answered from the reply.
+        **usage_money,
+        "service_days_billed": days_used,
+        "billing_cycle_days": ACCT_BILLING_CYCLE_DAYS,
+        "final_service_charge_note": _acct_cancel_service_note(usage_money["final_service_charge_display"], days_used, lang),
         "effective_date": effective["date"],
         "effective_date_display": effective["date_display"],
         # Turn N+1 facts (DESIGN_RULES rule 33): other services and what the final bill covers.
