@@ -931,6 +931,11 @@ def _bill_credit_reply(
     return _bill_finish(state, ok_reply(data, credit_id, language=lang))
 
 
+# The agent must speak the over-limit spoken_message (limit + verbatim transfer line), never a
+# generic handoff line (VE-24 r1, full-3cd4d6b). Kept <= 120 chars (rule 5).
+OVER_LIMIT_ACTION = "Say spoken_message word for word, then hand over with reason refund_threshold_exceeded."
+
+
 def apply_bill_adjustment_impl(
     adjustment_type: str = "",
     amount: Any = "",
@@ -981,7 +986,7 @@ def apply_bill_adjustment_impl(
             error_reply(
                 "REFUND_THRESHOLD_EXCEEDED",
                 "The amount is above the self-serve adjustment limit.",
-                "Hand over with reason refund_threshold_exceeded.",
+                OVER_LIMIT_ACTION,
                 reference,
                 language=lang,
                 data={

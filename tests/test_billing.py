@@ -6,6 +6,7 @@ import pytest
 
 from lib import billing
 from lib.billing import (
+    OVER_LIMIT_ACTION,
     apply_bill_adjustment_impl,
     get_billing_summary_impl,
     process_bill_payment_impl,
@@ -552,7 +553,7 @@ def test_over_limit_amount_goes_to_specialist():
     state = logged_in()
     reply = apply_bill_adjustment_impl("incorrect_charge", "150.00", "modem already returned", state=state)
     assert reply["error"] == "REFUND_THRESHOLD_EXCEEDED"
-    assert reply["agent_action"] == "Hand over with reason refund_threshold_exceeded."
+    assert reply["agent_action"] == OVER_LIMIT_ACTION
     assert reply["data"]["limit_display"] == SELF_SERVE_ADJUSTMENT_LIMIT
     assert not state.get("applied_adjustments")
 
@@ -565,7 +566,11 @@ def test_over_limit_reply_carries_the_why_and_the_verbatim_transfer_line(lang):
     expected = spoken_line("refund_over_limit", lang, limit=SELF_SERVE_ADJUSTMENT_LIMIT) + " " + spoken_line("transfer_to_specialist", lang)
     assert reply["data"]["spoken_message"] == expected
     assert reply["spoken_message"] == expected
-    assert reply["agent_action"] == "Hand over with reason refund_threshold_exceeded."
+    # VE-24 r1: with a bare "hand over" action the agent spoke a generic handoff line instead.
+    assert reply["agent_action"] == (
+        "Say spoken_message word for word, then hand over with reason refund_threshold_exceeded."
+    )
+    assert len(reply["agent_action"]) <= 120
 
 
 def test_whole_service_line_over_limit_goes_to_specialist():

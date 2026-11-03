@@ -62,6 +62,8 @@ DISPUTE_ETA_BUSINESS_DAYS = 10  # pragma: no cover
 
 DUPLICATE_PAYMENT = {"amount": "140.00", "days_ago": 5, "method": "card_on_file"}  # pragma: no cover
 
+OVER_LIMIT_ACTION = "Say spoken_message word for word, then hand over with reason refund_threshold_exceeded."  # pragma: no cover
+
 REFUND_WINDOW_BUSINESS_DAYS = 2  # pragma: no cover
 
 SELF_SERVE_ADJUSTMENT_LIMIT = "25.00"  # pragma: no cover
@@ -1221,7 +1223,7 @@ def apply_bill_adjustment_impl(  # pragma: no cover
             error_reply(
                 "REFUND_THRESHOLD_EXCEEDED",
                 "The amount is above the self-serve adjustment limit.",
-                "Hand over with reason refund_threshold_exceeded.",
+                OVER_LIMIT_ACTION,
                 reference,
                 language=lang,
                 data={
