@@ -51,9 +51,9 @@ Easy to mix up:
             </action>
         </step>
         <step name="No Number">
-            <trigger>The caller says they don't have their phone number or account number</trigger>
+            <trigger>The caller says they don't have their phone number or account number, or asks you to use the number they are calling from</trigger>
             <action>
-                Never ask for the number again. If they gave an email address, call {@TOOL: lookup_account} with phone_or_account set to that email. Otherwise, if their goal is known, transfer to the agent the taxonomy names, silently, so it can verify them by PIN or code; if not, ask what they need help with today.
+                Never ask for the number again. If they gave an email address, call {@TOOL: lookup_account} with phone_or_account set to that email. Otherwise, once per call, call {@TOOL: lookup_account} with phone_or_account set to "" (it uses the caller ID when the call has one). If that returns an error, and their goal is known, transfer to the agent the taxonomy names, silently, so it can verify them by PIN or code; if not, ask what they need help with today.
             </action>
         </step>
         <step name="Account Found">
