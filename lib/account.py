@@ -35,10 +35,12 @@ from lib.fakes import (
     ACCT_CONTRACT_TERMS,
     ACCT_EQUIPMENT_RETURN_DAYS,
     ACCT_LINES_OF_BUSINESS,
+    ACCT_MFA_FACTS,
     ACCT_MFA_METHOD,
     ACCT_PORT_OUT_COMPLETION_DAYS,
     ACCT_PORTABLE_LINES,
     BILL_CYCLE_DAYS_AGO,
+    OTP_EXPIRES_IN_SEC,
     PASSWORD_RESET_VALID_MINUTES,
     SERVICE_PRICES,
     is_plausible_phone,
@@ -89,6 +91,12 @@ _ACCT_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\
 def _acct_text(lang: str, en: str, fr: str) -> str:
     """One string in the call language (never both; DESIGN_RULES rule 5)."""
     return fr if lang == "fr-CA" else en
+
+
+def _acct_mfa_fact(key: str, lang: str) -> str:
+    """One public two-step verification fact from ACCT_MFA_FACTS in the call language."""
+    en, fr = ACCT_MFA_FACTS[key]
+    return _acct_text(lang, en, fr).replace("[minutes]", str(OTP_EXPIRES_IN_SEC // 60))
 
 
 def _acct_flag(value: Any) -> bool:
@@ -211,6 +219,9 @@ def manage_mfa_impl(
         return err
     gate = require_login(state, lang, "manage_mfa")
     if gate:
+        # Pre-login product questions ("how fast do codes come?", "what if I lose my
+        # phone?") are answered from these, never invented (DESIGN_RULES rule 33).
+        gate["data"].update({key: _acct_mfa_fact(key, lang) for key in ACCT_MFA_FACTS})
         return gate
     account_id = str(state.get("account_id") or "")
     key = _acct_key(action)
@@ -274,22 +285,10 @@ def manage_mfa_impl(
             "effective_display": _acct_text(lang, "effective immediately", "en vigueur immédiatement"),
             "confirmation_sms_sent": dispatch_sms(state, "mfa_" + act)["sms_sent"],
             "spoken_summary": summary,
-            "lost_phone_note": _acct_text(
-                lang,
-                "If this phone is lost or stolen, call us and verify with your secret PIN instead of a text code; we can then suspend the line and update the mobile number that sign-in codes go to.",
-                "Si ce téléphone est perdu ou volé, appelez-nous et vérifiez votre identité avec votre NIP secret plutôt qu'avec un code par texto; nous pourrons ensuite suspendre la ligne et mettre à jour le numéro de cellulaire qui reçoit les codes de connexion.",
-            ) if now_on else "",
+            "lost_phone_note": _acct_mfa_fact("lost_phone_note", lang) if now_on else "",
             # Turn N+1 facts callers ask right after the change (DESIGN_RULES rule 33).
-            "fee_note": _acct_text(
-                lang,
-                "Two-step verification is free; turning it on or off never adds a charge to the bill.",
-                "La vérification en deux étapes est gratuite; l'activer ou la désactiver n'ajoute jamais de frais à la facture.",
-            ),
-            "sms_cost_note": _acct_text(
-                lang,
-                "Sign-in codes by text are free from us; your mobile carrier's standard messaging rates may apply.",
-                "Les codes de connexion par texto sont gratuits de notre part; les frais de messagerie habituels de votre fournisseur cellulaire peuvent s'appliquer.",
-            ) if now_on else "",
+            "fee_note": _acct_mfa_fact("fee_note", lang),
+            "sms_cost_note": _acct_mfa_fact("sms_cost_note", lang) if now_on else "",
             "setup_note": _acct_text(
                 lang,
                 "Setup is complete on this call and works right away; the next sign-in asks for a text code.",

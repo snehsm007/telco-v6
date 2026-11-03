@@ -40,6 +40,37 @@ import contextvars
 import hashlib
 import re
 
+ACCT_MFA_FACTS: dict[str, tuple[str, str]] = {  # pragma: no cover
+    "code_delivery_note": (
+        "Sign-in codes go by text to the mobile number on file and normally arrive within a minute; if one doesn't, we can resend it.",
+        "Les codes de connexion sont envoyés par texto au numéro de cellulaire au dossier et arrivent normalement en moins d'une minute; sinon, nous pouvons le renvoyer.",
+    ),
+    "code_expiry_note": (
+        "Each code is 6 digits and expires after [minutes] minutes.",
+        "Chaque code compte 6 chiffres et expire après [minutes] minutes.",
+    ),
+    "pin_backup_note": (
+        "If a text code can't be received, the 4-digit secret PIN on the account works as a backup on a call with us.",
+        "Si un code par texto ne peut pas être reçu, le NIP secret à 4 chiffres du compte sert de solution de rechange lors d'un appel avec nous.",
+    ),
+    "lost_phone_note": (
+        "If this phone is lost or stolen, call us and verify with your secret PIN instead of a text code; we can then suspend the line and update the mobile number that sign-in codes go to.",
+        "Si ce téléphone est perdu ou volé, appelez-nous et vérifiez votre identité avec votre NIP secret plutôt qu'avec un code par texto; nous pourrons ensuite suspendre la ligne et mettre à jour le numéro de cellulaire qui reçoit les codes de connexion.",
+    ),
+    "fee_note": (
+        "Two-step verification is free; turning it on or off never adds a charge to the bill.",
+        "La vérification en deux étapes est gratuite; l'activer ou la désactiver n'ajoute jamais de frais à la facture.",
+    ),
+    "sms_cost_note": (
+        "Sign-in codes by text are free from us; your mobile carrier's standard messaging rates may apply.",
+        "Les codes de connexion par texto sont gratuits de notre part; les frais de messagerie habituels de votre fournisseur cellulaire peuvent s'appliquer.",
+    ),
+    "disable_risk_note": (
+        "With two-step verification off, the account is protected by the password alone, so anyone who learns the password could sign in; it can be turned back on at any time.",
+        "Sans la vérification en deux étapes, le compte est protégé par le mot de passe seulement; quiconque l'apprend pourrait donc se connecter. Elle peut être réactivée en tout temps.",
+    ),
+}
+
 ACCT_MFA_METHOD = "sms"  # pragma: no cover
 
 _ACCT_TRUE = ("true", "1", "yes", "y", "oui", "confirmed", "confirm")  # pragma: no cover
@@ -56,6 +87,17 @@ def _acct_key(value: Any) -> str:  # pragma: no cover
     for src, dst in (("é", "e"), ("è", "e"), ("ê", "e"), ("à", "a"), ("ç", "c"), ("ô", "o")):
         text = text.replace(src, dst)
     return re.sub(r"[\s\-/]+", "_", text)
+
+OTP_EXPIRES_IN_SEC = 300  # pragma: no cover
+
+def _acct_text(lang: str, en: str, fr: str) -> str:  # pragma: no cover
+    """One string in the call language (never both; DESIGN_RULES rule 5)."""
+    return fr if lang == "fr-CA" else en
+
+def _acct_mfa_fact(key: str, lang: str) -> str:  # pragma: no cover
+    """One public two-step verification fact from ACCT_MFA_FACTS in the call language."""
+    en, fr = ACCT_MFA_FACTS[key]
+    return _acct_text(lang, en, fr).replace("[minutes]", str(OTP_EXPIRES_IN_SEC // 60))
 
 FIXTURE_DEFAULTS: dict[str, str] = {  # pragma: no cover
     "fx_pin_on_file": "",
@@ -112,10 +154,6 @@ def _acct_mfa_on(state: dict[str, Any], requested: str = "") -> bool:  # pragma:
     on = requested == "disable"
     state["mfa_state"] = "enabled" if on else "disabled"
     return on
-
-def _acct_text(lang: str, en: str, fr: str) -> str:  # pragma: no cover
-    """One string in the call language (never both; DESIGN_RULES rule 5)."""
-    return fr if lang == "fr-CA" else en
 
 ACCOUNTS: tuple[dict[str, Any], ...] = (  # pragma: no cover
     {
@@ -829,6 +867,9 @@ def manage_mfa_impl(  # pragma: no cover
         return err
     gate = require_login(state, lang, "manage_mfa")
     if gate:
+        # Pre-login product questions ("how fast do codes come?", "what if I lose my
+        # phone?") are answered from these, never invented (DESIGN_RULES rule 33).
+        gate["data"].update({key: _acct_mfa_fact(key, lang) for key in ACCT_MFA_FACTS})
         return gate
     account_id = str(state.get("account_id") or "")
     key = _acct_key(action)
@@ -892,22 +933,10 @@ def manage_mfa_impl(  # pragma: no cover
             "effective_display": _acct_text(lang, "effective immediately", "en vigueur immédiatement"),
             "confirmation_sms_sent": dispatch_sms(state, "mfa_" + act)["sms_sent"],
             "spoken_summary": summary,
-            "lost_phone_note": _acct_text(
-                lang,
-                "If this phone is lost or stolen, call us and verify with your secret PIN instead of a text code; we can then suspend the line and update the mobile number that sign-in codes go to.",
-                "Si ce téléphone est perdu ou volé, appelez-nous et vérifiez votre identité avec votre NIP secret plutôt qu'avec un code par texto; nous pourrons ensuite suspendre la ligne et mettre à jour le numéro de cellulaire qui reçoit les codes de connexion.",
-            ) if now_on else "",
+            "lost_phone_note": _acct_mfa_fact("lost_phone_note", lang) if now_on else "",
             # Turn N+1 facts callers ask right after the change (DESIGN_RULES rule 33).
-            "fee_note": _acct_text(
-                lang,
-                "Two-step verification is free; turning it on or off never adds a charge to the bill.",
-                "La vérification en deux étapes est gratuite; l'activer ou la désactiver n'ajoute jamais de frais à la facture.",
-            ),
-            "sms_cost_note": _acct_text(
-                lang,
-                "Sign-in codes by text are free from us; your mobile carrier's standard messaging rates may apply.",
-                "Les codes de connexion par texto sont gratuits de notre part; les frais de messagerie habituels de votre fournisseur cellulaire peuvent s'appliquer.",
-            ) if now_on else "",
+            "fee_note": _acct_mfa_fact("fee_note", lang),
+            "sms_cost_note": _acct_mfa_fact("sms_cost_note", lang) if now_on else "",
             "setup_note": _acct_text(
                 lang,
                 "Setup is complete on this call and works right away; the next sign-in asks for a text code.",
