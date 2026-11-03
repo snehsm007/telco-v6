@@ -404,6 +404,17 @@ def _bill_reference_text(lang: str, kind: str, reference: str) -> str:  # pragma
     en, fr = _BILL_REFERENCE_NAMES[kind]
     return _bill_text(lang, f" Your {en} reference number is {reference}.", f" Votre numéro de référence {fr} est le {reference}.")
 
+RECONNECT_MINUTES = 15  # pragma: no cover
+
+RECONNECT_NOTE = (  # pragma: no cover
+    "Service comes back within [minutes] minutes; if it doesn't, restart the modem or phone.",
+    "Le service revient d'ici [minutes] minutes; sinon, redémarrez le modem ou le téléphone.",
+)
+
+def _bill_reconnect_note(lang: str) -> str:  # pragma: no cover
+    """How soon a restored service comes back and what to do if it doesn't (DESIGN_RULES rule 33)."""
+    return _bill_text(lang, *RECONNECT_NOTE).replace("[minutes]", str(RECONNECT_MINUTES))
+
 def dispatch_sms(state: dict[str, Any], purpose: str) -> dict[str, Any]:  # pragma: no cover
     """Record a text message to the mobile number on file; returns its delivery facts."""
     dest = str(state.get("phone_last4") or account_record(state)["phone"][-4:])
@@ -412,11 +423,17 @@ def dispatch_sms(state: dict[str, Any], purpose: str) -> dict[str, Any]:  # prag
     state["sms_sent"] = ",".join(sent[-10:])
     return {"sms_sent": True, "destination_last4": dest, "sms_purpose": purpose}
 
-def _bill_restore(state: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover
+def _bill_restore(state: dict[str, Any], lang: str) -> dict[str, Any]:  # pragma: no cover
     """Lift a non-payment suspension and text the confirmation."""
     state["service_status"] = "active"
     sms = dispatch_sms(state, "service_restored")
-    return {"service_restored": True, "new_service_status": "active", "restore_sms_sent": True, "sms_destination_last4": sms["destination_last4"]}
+    return {
+        "service_restored": True,
+        "new_service_status": "active",
+        "restore_sms_sent": True,
+        "sms_destination_last4": sms["destination_last4"],
+        "reconnect_note": _bill_reconnect_note(lang),
+    }
 
 MOCK_ERROR_OFF: frozenset[str] = frozenset({"false", "none", "0", "off", "no", "null"})  # pragma: no cover
 
@@ -1104,7 +1121,7 @@ def setup_payment_arrangement_impl(  # pragma: no cover
         f"puis {_bill_amount_text(lang, Decimal(str(two['amount'])))} d'ici le {two['due_date_display']}.",
     )
     if status_before == "suspended_nonpayment":
-        data.update(_bill_restore(st))
+        data.update(_bill_restore(st, lang))
         data["service_status"] = "active"
         summary += _bill_text(lang, " Your service is restored.", " Votre service est rétabli.")
     if sms["sms_sent"]:

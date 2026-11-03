@@ -57,6 +57,8 @@ from lib.fakes import (
     NEXT_BILL_CYCLE_DAYS,
     PAST_DUE_AMOUNT,
     RECENT_PAYMENT_DAYS_AGO,
+    RECONNECT_MINUTES,
+    RECONNECT_NOTE,
     REFUND_WINDOW_BUSINESS_DAYS,
     SELF_SERVE_ADJUSTMENT_LIMIT,
     SERVICE_KEYWORDS,
@@ -248,11 +250,22 @@ def _bill_flag(state: dict[str, Any], key: str) -> bool:
     return value is True or str(value).strip().lower() == "true"
 
 
-def _bill_restore(state: dict[str, Any]) -> dict[str, Any]:
+def _bill_reconnect_note(lang: str) -> str:
+    """How soon a restored service comes back and what to do if it doesn't (DESIGN_RULES rule 33)."""
+    return _bill_text(lang, *RECONNECT_NOTE).replace("[minutes]", str(RECONNECT_MINUTES))
+
+
+def _bill_restore(state: dict[str, Any], lang: str) -> dict[str, Any]:
     """Lift a non-payment suspension and text the confirmation."""
     state["service_status"] = "active"
     sms = dispatch_sms(state, "service_restored")
-    return {"service_restored": True, "new_service_status": "active", "restore_sms_sent": True, "sms_destination_last4": sms["destination_last4"]}
+    return {
+        "service_restored": True,
+        "new_service_status": "active",
+        "restore_sms_sent": True,
+        "sms_destination_last4": sms["destination_last4"],
+        "reconnect_note": _bill_reconnect_note(lang),
+    }
 
 
 def _bill_card_on_file(state: dict[str, Any]) -> dict[str, str]:
@@ -548,6 +561,7 @@ def get_billing_summary_impl(
     if status == "suspended_nonpayment":
         data["amount_to_restore_display"] = display_amount(live["past_due"])
         data["restore_options"] = ["pay_past_due", "verify_recent_payment", "payment_arrangement"]
+        data["reconnect_note"] = _bill_reconnect_note(lang)
     elif status in ("suspended_lost_stolen", "suspended_travel"):
         data["restore_handled_by"] = "account"
     if live["balance"] > _BILL_ZERO and not arrangement:
@@ -674,7 +688,7 @@ def process_bill_payment_impl(
     # cut-off (the default account is suspended; docs/tdd.md §5): no unprompted
     # "suspended", and "fully active" confirms a restore.
     if status_before == "suspended_nonpayment" and new_past_due == _BILL_ZERO:
-        data.update(_bill_restore(st))
+        data.update(_bill_restore(st, lang))
         data["service_status"] = "active"
         data["suspension_risk_cleared"] = True
         summary += _bill_text(
@@ -1160,7 +1174,7 @@ def setup_payment_arrangement_impl(
         f"puis {_bill_amount_text(lang, Decimal(str(two['amount'])))} d'ici le {two['due_date_display']}.",
     )
     if status_before == "suspended_nonpayment":
-        data.update(_bill_restore(st))
+        data.update(_bill_restore(st, lang))
         data["service_status"] = "active"
         summary += _bill_text(lang, " Your service is restored.", " Votre service est rétabli.")
     if sms["sms_sent"]:
@@ -1235,7 +1249,7 @@ def verify_payment_and_restore_impl(
     st["recent_payment_applied"] = True
     new_balance = _bill_q(max(live["balance"] - posted, _BILL_ZERO))
     _bill_save(st, new_balance, _BILL_ZERO)
-    restored = _bill_restore(st)
+    restored = _bill_restore(st, lang)
     data = {
         "payment_verified": True,
         "verified_payment_date": when["iso"],

@@ -532,6 +532,13 @@ ARRANGEMENT_FIRST_DUE_DAYS = 7       # first instalment within 7 days
 NEXT_BILL_CYCLE_DAYS = 30
 DISPUTE_ETA_BUSINESS_DAYS = 10
 RECENT_PAYMENT_DAYS_AGO = 1          # fx_recent_payment=posted_yesterday
+# After a non-payment restore (DESIGN_RULES rule 33: "when is it back / do I restart
+# anything?"), (en-US, fr-CA). [minutes] = RECONNECT_MINUTES.
+RECONNECT_MINUTES = 15
+RECONNECT_NOTE = (
+    "Service comes back within [minutes] minutes; if it doesn't, restart the modem or phone.",
+    "Le service revient d'ici [minutes] minutes; sinon, redémarrez le modem ou le téléphone.",
+)
 CARD_BRANDS_BY_PREFIX: dict[str, str] = {"4": "Visa", "5": "Mastercard", "2": "Mastercard", "3": "American Express"}
 # Autopay follow-up facts (DESIGN_RULES rule 33), (en-US, fr-CA). [days] = bill date to due date.
 AUTOPAY_WITHDRAWAL_NOTE = (

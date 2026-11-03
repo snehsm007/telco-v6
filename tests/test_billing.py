@@ -26,6 +26,8 @@ from lib.fakes import (
     BILL_EXTRA_LINE_NOTES,
     DUPLICATE_PAYMENT,
     PAST_DUE_AMOUNT,
+    RECONNECT_MINUTES,
+    RECONNECT_NOTE,
     REFUND_WINDOW_BUSINESS_DAYS,
     SELF_SERVE_ADJUSTMENT_LIMIT,
     SERVICE_PRICES,
@@ -871,3 +873,30 @@ def test_default_world_unrelated_billing_lines_never_mention_the_suspension():
     assert autopay["status"] == "ok" and "suspen" not in str(autopay["data"].get("spoken_summary", ""))
     credit = apply_bill_adjustment_impl("unrecognized_charge", STREAMING["amount"], "streaming", state=logged_in())
     assert credit["data"]["approved"] is True and "suspen" not in str(credit)
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_every_restore_path_says_when_service_returns_and_what_to_restart(lang):
+    # "How long until it's back / do I restart my modem?" must come from a payload.
+    en, fr = RECONNECT_NOTE
+    note = (fr if lang == "fr-CA" else en).replace("[minutes]", str(RECONNECT_MINUTES))
+    assert "modem" in en and str(RECONNECT_MINUTES) in note
+    summary = get_billing_summary_impl(state=logged_in(), language=lang)["data"]
+    assert summary["reconnect_note"] == note
+    restores = (
+        lambda s: process_bill_payment_impl("past due", "card_on_file", state=s, language=lang),
+        lambda s: setup_payment_arrangement_impl(state=s, language=lang),
+        lambda s: verify_payment_and_restore_impl(state=s, language=lang),
+    )
+    for call in restores:
+        data = call(logged_in())["data"]
+        assert data["service_restored"] is True
+        assert data["reconnect_note"] == note
+
+
+def test_no_reconnect_note_without_a_restore():
+    state = logged_in(fx_service_status="active")
+    assert "reconnect_note" not in get_billing_summary_impl(state=state)["data"]
+    assert "reconnect_note" not in process_bill_payment_impl("50", "card_on_file", state=state)["data"]
+    partial = process_bill_payment_impl("10", "card_on_file", state=logged_in(fx_recent_payment="none"))["data"]
+    assert partial["service_restored"] is False and "reconnect_note" not in partial

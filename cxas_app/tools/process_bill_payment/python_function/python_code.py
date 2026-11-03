@@ -967,6 +967,17 @@ def _bill_resolve_method(  # pragma: no cover
         )
     return {"method": method, "last4": digits[-4:] if digits else BANK_ON_FILE_ENDING, "brand": ""}, None
 
+RECONNECT_MINUTES = 15  # pragma: no cover
+
+RECONNECT_NOTE = (  # pragma: no cover
+    "Service comes back within [minutes] minutes; if it doesn't, restart the modem or phone.",
+    "Le service revient d'ici [minutes] minutes; sinon, redémarrez le modem ou le téléphone.",
+)
+
+def _bill_reconnect_note(lang: str) -> str:  # pragma: no cover
+    """How soon a restored service comes back and what to do if it doesn't (DESIGN_RULES rule 33)."""
+    return _bill_text(lang, *RECONNECT_NOTE).replace("[minutes]", str(RECONNECT_MINUTES))
+
 def dispatch_sms(state: dict[str, Any], purpose: str) -> dict[str, Any]:  # pragma: no cover
     """Record a text message to the mobile number on file; returns its delivery facts."""
     dest = str(state.get("phone_last4") or account_record(state)["phone"][-4:])
@@ -975,11 +986,17 @@ def dispatch_sms(state: dict[str, Any], purpose: str) -> dict[str, Any]:  # prag
     state["sms_sent"] = ",".join(sent[-10:])
     return {"sms_sent": True, "destination_last4": dest, "sms_purpose": purpose}
 
-def _bill_restore(state: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover
+def _bill_restore(state: dict[str, Any], lang: str) -> dict[str, Any]:  # pragma: no cover
     """Lift a non-payment suspension and text the confirmation."""
     state["service_status"] = "active"
     sms = dispatch_sms(state, "service_restored")
-    return {"service_restored": True, "new_service_status": "active", "restore_sms_sent": True, "sms_destination_last4": sms["destination_last4"]}
+    return {
+        "service_restored": True,
+        "new_service_status": "active",
+        "restore_sms_sent": True,
+        "sms_destination_last4": sms["destination_last4"],
+        "reconnect_note": _bill_reconnect_note(lang),
+    }
 
 def _bill_save(state: dict[str, Any], balance: Decimal, past_due: Decimal) -> None:  # pragma: no cover
     state["balance_due"] = display_amount(max(balance, _BILL_ZERO))
@@ -1324,7 +1341,7 @@ def process_bill_payment_impl(  # pragma: no cover
     # cut-off (the default account is suspended; docs/tdd.md §5): no unprompted
     # "suspended", and "fully active" confirms a restore.
     if status_before == "suspended_nonpayment" and new_past_due == _BILL_ZERO:
-        data.update(_bill_restore(st))
+        data.update(_bill_restore(st, lang))
         data["service_status"] = "active"
         data["suspension_risk_cleared"] = True
         summary += _bill_text(

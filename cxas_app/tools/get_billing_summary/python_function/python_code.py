@@ -491,6 +491,17 @@ def _bill_payments(state: dict[str, Any], lang: str, past_due: Decimal) -> list[
 def _bill_public_line(line: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover
     return {k: v for k, v in line.items() if k not in ("keywords", "kind")}
 
+RECONNECT_MINUTES = 15  # pragma: no cover
+
+RECONNECT_NOTE = (  # pragma: no cover
+    "Service comes back within [minutes] minutes; if it doesn't, restart the modem or phone.",
+    "Le service revient d'ici [minutes] minutes; sinon, redémarrez le modem ou le téléphone.",
+)
+
+def _bill_reconnect_note(lang: str) -> str:  # pragma: no cover
+    """How soon a restored service comes back and what to do if it doesn't (DESIGN_RULES rule 33)."""
+    return _bill_text(lang, *RECONNECT_NOTE).replace("[minutes]", str(RECONNECT_MINUTES))
+
 MOCK_ERROR_OFF: frozenset[str] = frozenset({"false", "none", "0", "off", "no", "null"})  # pragma: no cover
 
 ERROR_CODES = (  # pragma: no cover
@@ -1102,6 +1113,7 @@ def get_billing_summary_impl(  # pragma: no cover
     if status == "suspended_nonpayment":
         data["amount_to_restore_display"] = display_amount(live["past_due"])
         data["restore_options"] = ["pay_past_due", "verify_recent_payment", "payment_arrangement"]
+        data["reconnect_note"] = _bill_reconnect_note(lang)
     elif status in ("suspended_lost_stolen", "suspended_travel"):
         data["restore_handled_by"] = "account"
     if live["balance"] > _BILL_ZERO and not arrangement:
