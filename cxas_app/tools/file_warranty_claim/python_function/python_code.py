@@ -235,6 +235,22 @@ SALES_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "Do not ship the damaged phone. Bring it to a Telco store or a certified battery recycling drop-off; no return label is needed.",
         "fr-CA": "N'expédiez pas le téléphone endommagé. Apportez-le dans une boutique Telco ou à un point de dépôt certifié pour le recyclage des batteries; aucune étiquette de retour n'est nécessaire.",
     },
+    "data_transfer_urgent": {
+        "en-US": "Do not charge or power on the swollen phone to copy your data. If it was backed up to the cloud, sign in to that same cloud account on the replacement to restore; data that was not backed up may not be recoverable.",
+        "fr-CA": "Ne chargez pas et n'allumez pas le téléphone gonflé pour copier vos données. S'il était sauvegardé dans le nuage, connectez-vous au même compte infonuagique sur le téléphone de remplacement pour tout restaurer; les données non sauvegardées pourraient être irrécupérables.",
+    },
+    "data_transfer_standard": {
+        "en-US": "Back up the old phone to the cloud before shipping it, then sign in to that same cloud account on the replacement to restore your data, and remove the account and SIM from the old phone before sending it back.",
+        "fr-CA": "Sauvegardez l'ancien téléphone dans le nuage avant de l'expédier, puis connectez-vous au même compte infonuagique sur le téléphone de remplacement pour restaurer vos données, et retirez le compte et la carte SIM de l'ancien téléphone avant de le renvoyer.",
+    },
+    "warranty_no_card_hold": {
+        "en-US": "No deposit or hold is placed on your card for the replacement. Send the old phone back by the return deadline with the prepaid label; a non-return fee may apply only if it is not returned.",
+        "fr-CA": "Aucun dépôt ni blocage n'est appliqué à votre carte pour le remplacement. Renvoyez l'ancien téléphone avant la date limite de retour avec l'étiquette prépayée; des frais de non-retour peuvent s'appliquer seulement s'il n'est pas renvoyé.",
+    },
+    "warranty_no_card_hold_urgent": {
+        "en-US": "No deposit or hold is placed on your card, and there is no non-return fee because the damaged phone is not mailed back.",
+        "fr-CA": "Aucun dépôt ni blocage n'est appliqué à votre carte, et il n'y a aucuns frais de non-retour puisque le téléphone endommagé n'est pas renvoyé par la poste.",
+    },
     "warranty_fees": {
         "en-US": "An in-warranty replacement costs nothing: no fee or deductible, free shipping of the replacement, and a prepaid return label for the old phone.",
         "fr-CA": "Un remplacement sous garantie ne coûte rien : aucuns frais ni franchise, livraison gratuite du téléphone de remplacement et étiquette de retour prépayée pour l'ancien téléphone.",
@@ -311,6 +327,10 @@ SALES_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "Fibre has low latency, typically under 10 milliseconds on a wired connection, well suited to video calls.",
         "fr-CA": "La fibre a une faible latence, habituellement moins de 10 millisecondes sur une connexion câblée, idéale pour les appels vidéo.",
     },
+    "usage_unlimited": {
+        "en-US": "No data cap and no throttling: usage is unlimited at the plan's full speed.",
+        "fr-CA": "Aucune limite de données et aucun ralentissement : l'utilisation est illimitée à la pleine vitesse du forfait.",
+    },
     "full_channel_list": {
         "en-US": "The full channel list for this pack is on the TV packs page of the Telco website and in the receiver's channel guide once the pack is added.",
         "fr-CA": "La liste complète des chaînes de ce forfait se trouve sur la page des forfaits télé du site Web de Telco et dans le guide des chaînes du récepteur une fois le forfait ajouté.",
@@ -346,50 +366,6 @@ def _sales_text(key: str, lang: str) -> str:  # pragma: no cover
     """Sales copy in the call language only (no sibling-language keys in replies)."""
     table = SALES_COPY.get(key, {})
     return table.get(resolve_copy_locale(lang)) or table.get("en-US", "")
-
-ACCOUNTS: tuple[dict[str, Any], ...] = (  # pragma: no cover
-    {
-        "account_id": "A1001",
-        "phone": "2025550186",
-        "first_name": "Morgan",
-        "email": "m.okafor@mailprovider.example",
-        "status": "active",
-        "preferred_language": "en-US",
-        "card_last4": "7742",
-        "card_brand": "Visa",
-        "customer_type": "Existing",
-        "postal_code": "K2P 1L4",
-        "service_address_last_line": "Ottawa, ON K2P 1L4",
-        "lines_of_business": ["mobility", "internet", "tv", "homephone"],
-        "business_flag": False,
-    },
-    {
-        "account_id": "A1002",
-        "phone": "2025550198",
-        "first_name": "Taylor",
-        "email": "taylor.r@mailprovider.example",
-        "status": "active",
-        "preferred_language": "fr-CA",
-        "card_last4": "8853",
-        "card_brand": "Mastercard",
-        "customer_type": "Existing",
-        "postal_code": "K1A 0B1",
-        "service_address_last_line": "Ottawa, ON K1A 0B1",
-        "lines_of_business": ["mobility", "internet"],
-        "business_flag": False,
-    },
-)
-
-def account_record(state: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover
-    """The active account record, falling back to the default account."""
-    account_id = str(state.get("account_id") or "")
-    for record in ACCOUNTS:
-        if record["account_id"] == account_id:
-            return dict(record)
-    base = dict(ACCOUNTS[0])
-    if account_id:
-        base["account_id"] = account_id
-    return base
 
 def append_list(state: dict[str, Any], key: str, value: str) -> list[str]:  # pragma: no cover
     """Append to a comma-separated list stored in one STRING session variable."""
@@ -733,6 +709,50 @@ def check_mock_error(state: dict[str, Any], lang: str = "en-US", tool_name: str 
             language=lang,
         )
     return None
+
+ACCOUNTS: tuple[dict[str, Any], ...] = (  # pragma: no cover
+    {
+        "account_id": "A1001",
+        "phone": "2025550186",
+        "first_name": "Morgan",
+        "email": "m.okafor@mailprovider.example",
+        "status": "active",
+        "preferred_language": "en-US",
+        "card_last4": "7742",
+        "card_brand": "Visa",
+        "customer_type": "Existing",
+        "postal_code": "K2P 1L4",
+        "service_address_last_line": "Ottawa, ON K2P 1L4",
+        "lines_of_business": ["mobility", "internet", "tv", "homephone"],
+        "business_flag": False,
+    },
+    {
+        "account_id": "A1002",
+        "phone": "2025550198",
+        "first_name": "Taylor",
+        "email": "taylor.r@mailprovider.example",
+        "status": "active",
+        "preferred_language": "fr-CA",
+        "card_last4": "8853",
+        "card_brand": "Mastercard",
+        "customer_type": "Existing",
+        "postal_code": "K1A 0B1",
+        "service_address_last_line": "Ottawa, ON K1A 0B1",
+        "lines_of_business": ["mobility", "internet"],
+        "business_flag": False,
+    },
+)
+
+def account_record(state: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover
+    """The active account record, falling back to the default account."""
+    account_id = str(state.get("account_id") or "")
+    for record in ACCOUNTS:
+        if record["account_id"] == account_id:
+            return dict(record)
+    base = dict(ACCOUNTS[0])
+    if account_id:
+        base["account_id"] = account_id
+    return base
 
 def dispatch_sms(state: dict[str, Any], purpose: str) -> dict[str, Any]:  # pragma: no cover
     """Record a text message to the mobile number on file; returns its delivery facts."""
@@ -1157,6 +1177,8 @@ def file_warranty_claim_impl(  # pragma: no cover
         "replacement_shipping_free": True,
         "return_shipping_prepaid": not urgent,
         "fees_note": _sales_text("warranty_fees_urgent" if urgent else "warranty_fees", lang),
+        "card_hold": False,
+        "card_hold_note": _sales_text("warranty_no_card_hold_urgent" if urgent else "warranty_no_card_hold", lang),
     }
     if urgent:
         base["safety_advice_key"] = "battery_safety"
@@ -1194,7 +1216,6 @@ def file_warranty_claim_impl(  # pragma: no cover
             "damage_check_needed": True,
             "missing": missing,
             **fees,
-            # Turn N+1: the caller can confirm where the replacement goes before the claim is filed.
         }
         reply = ok_reply(check, reference, language=lang)
         reply["agent_action"] = "Confirm the device model, ask about cracks or water damage, then call again."
@@ -1212,6 +1233,7 @@ def file_warranty_claim_impl(  # pragma: no cover
         "replacement_eta_date": eta_iso,
         "replacement_eta_display": display_date(eta_iso, lang),
         "return_instructions": _sales_text("return_urgent" if urgent else "return_standard", lang),
+        "data_transfer_note": _sales_text("data_transfer_urgent" if urgent else "data_transfer_standard", lang),
     }
     if not urgent:
         return_by = relative_date(SALES_RETURN_WINDOW_DAYS + ship_days)
@@ -1234,7 +1256,6 @@ def file_warranty_claim_impl(  # pragma: no cover
         **terms,
         "claim_id": claim_id,
         "claim_filed": True,
-        "shipping_address_last_line": account_record(state).get("service_address_last_line", ""),
         "already_filed": already,
     }
     if not already:

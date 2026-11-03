@@ -234,10 +234,10 @@ PLANS: tuple[dict[str, Any], ...] = (
     {"plan_id": "MOB-50", "lob": "mobility", "name": "Plus 50", "price": "58.00", "data_gb": 50, "features": ["50 GB high-speed data", "Unlimited Canada-wide calling", "5G access"]},
     {"plan_id": "MOB-100", "lob": "mobility", "name": "Max 100", "price": "72.00", "data_gb": 100, "features": ["100 GB high-speed data", "Canada-US calling", "5G+ access"]},
     {"plan_id": "MOB-UNL", "lob": "mobility", "name": "Unlimited Premium", "price": "89.00", "data_gb": 175, "features": ["175 GB high-speed data", "Canada-US-Mexico calling", "5G+ access"]},
-    {"plan_id": "INT-1G", "lob": "internet", "upload_mbps": 1000, "symmetric": True, "latency_key": "latency_fibre", "name": "Fibre 1 Gigabit", "price": "97.00", "speed_mbps": 1000, "features": ["Up to 1 Gbps download", "Unlimited usage", "Wi-Fi 6 gateway"]},
-    {"plan_id": "INT-3G", "lob": "internet", "upload_mbps": 3000, "symmetric": True, "latency_key": "latency_fibre", "name": "Fibre 3 Gigabit", "price": "118.00", "speed_mbps": 3000, "features": ["Up to 3 Gbps download", "Unlimited usage", "Wi-Fi 6E gateway", "Whole-home Wi-Fi pod"]},
-    {"plan_id": "INT-8G", "lob": "internet", "upload_mbps": 8000, "symmetric": True, "latency_key": "latency_fibre", "name": "Fibre 8 Gigabit", "price": "143.00", "speed_mbps": 8000, "features": ["Up to 8 Gbps download", "Unlimited usage", "Wi-Fi 7 gateway", "Two Wi-Fi pods"]},
-    {"plan_id": "TV-SPORTS", "lob": "tv", "name": "Sports Pack", "price": "16.00", "addon": True, "channel_count": 14, "blackout_key": "blackout_sports", "keywords": ["sport", "hockey", "football", "soccer", "basketball", "baseball"], "features": ["National sports networks", "Regional game coverage", "Sports on demand"], "hd_included": True, "channel_examples": ["National hockey, football and basketball broadcasts", "Regional and local team games", "International soccer", "Sports news and highlights"]},
+    {"plan_id": "INT-1G", "lob": "internet", "usage_key": "usage_unlimited", "upload_mbps": 1000, "symmetric": True, "latency_key": "latency_fibre", "name": "Fibre 1 Gigabit", "price": "97.00", "speed_mbps": 1000, "features": ["Up to 1 Gbps download", "Unlimited usage", "Wi-Fi 6 gateway"]},
+    {"plan_id": "INT-3G", "lob": "internet", "usage_key": "usage_unlimited", "upload_mbps": 3000, "symmetric": True, "latency_key": "latency_fibre", "name": "Fibre 3 Gigabit", "price": "118.00", "speed_mbps": 3000, "features": ["Up to 3 Gbps download", "Unlimited usage", "Wi-Fi 6E gateway", "Whole-home Wi-Fi pod"]},
+    {"plan_id": "INT-8G", "lob": "internet", "usage_key": "usage_unlimited", "upload_mbps": 8000, "symmetric": True, "latency_key": "latency_fibre", "name": "Fibre 8 Gigabit", "price": "143.00", "speed_mbps": 8000, "features": ["Up to 8 Gbps download", "Unlimited usage", "Wi-Fi 7 gateway", "Two Wi-Fi pods"]},
+    {"plan_id": "TV-SPORTS", "lob": "tv", "name": "Sports Pack", "price": "16.00", "addon": True, "channel_count": 14, "blackout_key": "blackout_sports", "keywords": ["sport", "hockey", "football", "soccer", "basketball", "baseball"], "features": ["National sports networks", "Regional game coverage", "Sports on demand"], "hd_included": True, "channel_examples": ["National hockey, football and basketball broadcasts", "Regional and local team games", "International soccer", "Sports news and highlights"], "channel_lineup": ["TSN", "Sportsnet", "RDS", "TVA Sports", "Sportsnet ONE", "beIN SPORTS", "NBA TV Canada", "NFL Network"]},
     {"plan_id": "TV-MOVIES", "lob": "tv", "name": "Movies Pack", "price": "13.00", "addon": True, "channel_count": 9, "keywords": ["movie", "film", "cinema", "cinéma"], "features": ["Premium movie channels", "Movies on demand"], "hd_included": True, "channel_examples": ["Premium movie channels", "Recent releases on demand", "Classic film channels"]},
     {"plan_id": "TV-PLUS", "lob": "tv", "name": "TV Plus Package", "price": "61.00", "addon": False, "keywords": ["package", "channels", "upgrade"], "features": ["Over 150 channels", "Cloud PVR"], "hd_included": True, "channel_examples": ["National news and lifestyle channels", "Kids and family channels", "Specialty entertainment channels"]},
 )
@@ -388,6 +388,22 @@ SALES_COPY: dict[str, dict[str, str]] = {
         "en-US": "Do not ship the damaged phone. Bring it to a Telco store or a certified battery recycling drop-off; no return label is needed.",
         "fr-CA": "N'expédiez pas le téléphone endommagé. Apportez-le dans une boutique Telco ou à un point de dépôt certifié pour le recyclage des batteries; aucune étiquette de retour n'est nécessaire.",
     },
+    "data_transfer_urgent": {
+        "en-US": "Do not charge or power on the swollen phone to copy your data. If it was backed up to the cloud, sign in to that same cloud account on the replacement to restore; data that was not backed up may not be recoverable.",
+        "fr-CA": "Ne chargez pas et n'allumez pas le téléphone gonflé pour copier vos données. S'il était sauvegardé dans le nuage, connectez-vous au même compte infonuagique sur le téléphone de remplacement pour tout restaurer; les données non sauvegardées pourraient être irrécupérables.",
+    },
+    "data_transfer_standard": {
+        "en-US": "Back up the old phone to the cloud before shipping it, then sign in to that same cloud account on the replacement to restore your data, and remove the account and SIM from the old phone before sending it back.",
+        "fr-CA": "Sauvegardez l'ancien téléphone dans le nuage avant de l'expédier, puis connectez-vous au même compte infonuagique sur le téléphone de remplacement pour restaurer vos données, et retirez le compte et la carte SIM de l'ancien téléphone avant de le renvoyer.",
+    },
+    "warranty_no_card_hold": {
+        "en-US": "No deposit or hold is placed on your card for the replacement. Send the old phone back by the return deadline with the prepaid label; a non-return fee may apply only if it is not returned.",
+        "fr-CA": "Aucun dépôt ni blocage n'est appliqué à votre carte pour le remplacement. Renvoyez l'ancien téléphone avant la date limite de retour avec l'étiquette prépayée; des frais de non-retour peuvent s'appliquer seulement s'il n'est pas renvoyé.",
+    },
+    "warranty_no_card_hold_urgent": {
+        "en-US": "No deposit or hold is placed on your card, and there is no non-return fee because the damaged phone is not mailed back.",
+        "fr-CA": "Aucun dépôt ni blocage n'est appliqué à votre carte, et il n'y a aucuns frais de non-retour puisque le téléphone endommagé n'est pas renvoyé par la poste.",
+    },
     "warranty_fees": {
         "en-US": "An in-warranty replacement costs nothing: no fee or deductible, free shipping of the replacement, and a prepaid return label for the old phone.",
         "fr-CA": "Un remplacement sous garantie ne coûte rien : aucuns frais ni franchise, livraison gratuite du téléphone de remplacement et étiquette de retour prépayée pour l'ancien téléphone.",
@@ -463,6 +479,10 @@ SALES_COPY: dict[str, dict[str, str]] = {
     "latency_fibre": {
         "en-US": "Fibre has low latency, typically under 10 milliseconds on a wired connection, well suited to video calls.",
         "fr-CA": "La fibre a une faible latence, habituellement moins de 10 millisecondes sur une connexion câblée, idéale pour les appels vidéo.",
+    },
+    "usage_unlimited": {
+        "en-US": "No data cap and no throttling: usage is unlimited at the plan's full speed.",
+        "fr-CA": "Aucune limite de données et aucun ralentissement : l'utilisation est illimitée à la pleine vitesse du forfait.",
     },
     "full_channel_list": {
         "en-US": "The full channel list for this pack is on the TV packs page of the Telco website and in the receiver's channel guide once the pack is added.",

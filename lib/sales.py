@@ -252,12 +252,16 @@ def _sales_plan_view(state: dict[str, Any], plan: dict[str, Any], current: dict[
         view["upload_speed_display"] = _sales_speed_display(int(plan["upload_mbps"]), lang)
         view["symmetric"] = bool(plan.get("symmetric"))
         view["latency_note"] = _sales_text(str(plan.get("latency_key") or ""), lang)
+    if plan.get("usage_key"):  # follow-up fact: data cap / throttling (rule 33)
+        view["usage_note"] = _sales_text(str(plan["usage_key"]), lang)
     if plan.get("channel_examples"):
         view["channel_examples"] = [_sales_feature(c, lang) for c in plan["channel_examples"]]
         view["hd_included"] = bool(plan.get("hd_included"))
         # Follow-up facts for a TV pack: size, where the full lineup is, blackouts (rule 33).
         if plan.get("channel_count"):
             view["channel_count"] = int(plan["channel_count"])
+        if plan.get("channel_lineup"):  # named channels, for "which channels exactly?" (rule 33)
+            view["channel_lineup"] = list(plan["channel_lineup"])
         view["full_channel_list_note"] = _sales_text("full_channel_list", lang)
         if plan.get("blackout_key"):
             view["blackout_note"] = _sales_text(str(plan["blackout_key"]), lang)
@@ -590,6 +594,8 @@ def file_warranty_claim_impl(
         "replacement_shipping_free": True,
         "return_shipping_prepaid": not urgent,
         "fees_note": _sales_text("warranty_fees_urgent" if urgent else "warranty_fees", lang),
+        "card_hold": False,
+        "card_hold_note": _sales_text("warranty_no_card_hold_urgent" if urgent else "warranty_no_card_hold", lang),
     }
     if urgent:
         base["safety_advice_key"] = "battery_safety"
@@ -627,7 +633,6 @@ def file_warranty_claim_impl(
             "damage_check_needed": True,
             "missing": missing,
             **fees,
-            # Turn N+1: the caller can confirm where the replacement goes before the claim is filed.
         }
         reply = ok_reply(check, reference, language=lang)
         reply["agent_action"] = "Confirm the device model, ask about cracks or water damage, then call again."
@@ -645,6 +650,7 @@ def file_warranty_claim_impl(
         "replacement_eta_date": eta_iso,
         "replacement_eta_display": display_date(eta_iso, lang),
         "return_instructions": _sales_text("return_urgent" if urgent else "return_standard", lang),
+        "data_transfer_note": _sales_text("data_transfer_urgent" if urgent else "data_transfer_standard", lang),
     }
     if not urgent:
         return_by = relative_date(SALES_RETURN_WINDOW_DAYS + ship_days)
@@ -667,7 +673,6 @@ def file_warranty_claim_impl(
         **terms,
         "claim_id": claim_id,
         "claim_filed": True,
-        "shipping_address_last_line": account_record(state).get("service_address_last_line", ""),
         "already_filed": already,
     }
     if not already:
