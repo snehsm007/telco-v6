@@ -727,6 +727,12 @@ def spoken_line(key: str, language: str | None = "en-US", **slots: object) -> st
         template = template.replace(f"[{slot_name}]", str(slot_val))
     return template
 
+def login_offer_line(state: dict[str, Any], lang: str) -> str:  # pragma: no cover
+    """The login offer for a found account: a 6-digit code to the number on file, or the 4-digit PIN."""
+    last4 = str(state.get("caller_provided_phone_last4") or ("" if state.get("phone_derived") else state.get("phone_last4")) or "")
+    offer = spoken_line("otp_callback_confirm", lang, last4=last4) if last4 else spoken_line("otp_callback_on_file", lang)
+    return offer + " " + spoken_line("pin_alternative", lang)
+
 def require_login(state: dict[str, Any], lang: str, tool_name: str) -> dict[str, Any] | None:  # pragma: no cover
     """BR-TV-008: account reads and changes need a verified caller. Returns an error reply or None."""
     if state.get("auth_status") == "pass" and state.get("logged_in") is not False:
@@ -744,9 +750,7 @@ def require_login(state: dict[str, Any], lang: str, tool_name: str) -> dict[str,
             language=lang,
             data=data,
         )
-    last4 = str(state.get("caller_provided_phone_last4") or ("" if state.get("phone_derived") else state.get("phone_last4")) or "")
-    offer = spoken_line("otp_callback_confirm", lang, last4=last4) if last4 else spoken_line("otp_callback_on_file", lang)
-    data["spoken_message"] = offer + " " + spoken_line("pin_alternative", lang)
+    data["spoken_message"] = login_offer_line(state, lang)
     data["pin_prompt_message"] = spoken_line("id_verification_pin", lang)
     return error_reply(
         "NOT_LOGGED_IN",

@@ -27,6 +27,7 @@ from lib.core import (
     display_date,
     fixture,
     get_state,
+    login_offer_line,
     money,
     require_login,
     session_language,
@@ -705,6 +706,13 @@ def _sales_port_facts(lang: str) -> dict[str, Any]:
     }
 
 
+def _sales_login_offer(state: dict[str, Any], lang: str) -> dict[str, Any]:
+    """Not logged in yet: the login offer to use when the caller is ready to start (never improvised)."""
+    if state.get("auth_status") == "pass" or not state.get("account_id"):
+        return {}
+    return {"code_length": 6, "pin_length": 4, "login_offer_line": login_offer_line(state, lang)}
+
+
 def _sales_port_eta(kind: str, lang: str) -> dict[str, str]:
     iso = _sales_business_date(SALES_PORT_DAYS.get(kind, 0))
     return {"date": iso, "display": display_date(iso, lang)}
@@ -764,6 +772,7 @@ def start_number_transfer_impl(
                 "keep_old_service_note": _sales_text("port_keep_active", lang),
                 **_sales_port_facts(lang),
                 "login_required_to_start": True,
+                **_sales_login_offer(state, lang),
             },
             reference,
             language=lang,

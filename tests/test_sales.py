@@ -658,3 +658,27 @@ def test_mobile_plan_and_port_replies_carry_the_multi_line_note(lang: str) -> No
 
 def test_multi_line_note_only_on_mobile_plans() -> None:
     assert "multi_line_note" not in browse_plans_impl("internet", state=_identified())["data"]
+
+
+# --- fix/35 (g): the number-transfer checklist carries the login offer --------------------
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_port_checklist_before_login_carries_the_login_offer(lang: str) -> None:
+    """VE-39 r3: the agent improvised "a 6-digit code or your 4-digit PIN" with no tool saying it."""
+    from lib.core import login_offer_line, require_login
+
+    state = _identified(caller_provided_phone_last4="0199")
+    data = start_number_transfer_impl("", state=state, language=lang)["data"]
+    assert data["login_required_to_start"] is True
+    assert data["code_length"] == 6 and data["pin_length"] == 4
+    assert data["login_offer_line"] == login_offer_line(state, lang)
+    assert "0199" in data["login_offer_line"]
+    # Same wording as the NOT_LOGGED_IN offer from every task tool.
+    assert data["login_offer_line"] == require_login(dict(state), lang, "x")["data"]["spoken_message"]
+    assert "spoken_message" not in data  # the checklist itself is answered, not replaced by the offer
+
+
+def test_port_checklist_after_login_has_no_login_offer() -> None:
+    data = start_number_transfer_impl("", state=_logged_in())["data"]
+    assert "login_offer_line" not in data and "code_length" not in data
