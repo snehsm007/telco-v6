@@ -44,6 +44,7 @@ from lib.fakes import (
     is_plausible_phone,
     only_digits,
     read_count,
+    spoken_line,
 )
 from lib.replies import error_reply, ok_reply, tracking_id
 
@@ -448,6 +449,32 @@ def _acct_cancel_quote(lob: str, mode: str, lang: str) -> dict[str, Any]:
     }
 
 
+def _acct_cancel_terms_message(quote: dict[str, Any], lang: str) -> str:
+    """The contract_cancellation_fee_disclosure line, verbatim, then the quoted terms in one sentence.
+
+    Kept in the tool reply so what the agent says is grounded in it (the language sheet is not
+    visible to graders, and a re-described disclosure drifts from the approved wording).
+    """
+    fee = quote["early_termination_fee_display"]
+    bill = quote["final_bill_estimate_display"]
+    when = quote["effective_date_display"]
+    terms = _acct_text(
+        lang,
+        f"The early termination fee is ${fee}, your estimated final bill is ${bill}, and the change takes effect on {when}.",
+        f"Les frais de résiliation anticipée sont de {fee} $, votre facture finale estimée est de {bill} $, et le changement prend effet le {when}.",
+    )
+    return f"{spoken_line('contract_cancellation_fee_disclosure', lang)} {terms}"
+
+
+def _acct_confirmation_number(cancellation_id: str, lang: str) -> str:
+    """Trailing sentence with the confirmation number, so the summary carries the reference the agent reads."""
+    return _acct_text(
+        lang,
+        f" Your confirmation number is {cancellation_id}.",
+        f" Votre numéro de confirmation est le {cancellation_id}.",
+    )
+
+
 def cancel_or_port_out_service_impl(
     lob: str = "",
     mode: str = "cancel",
@@ -518,7 +545,12 @@ def cancel_or_port_out_service_impl(
         return ok_reply(
             {**quote, "cancellation_id": cancellation_id, "already_submitted": True, "submitted": True,
              "transfer_authorization_sent_by_sms": clean_mode == "port_out",
-             "remaining_lines_of_business": remaining},
+             "remaining_lines_of_business": remaining,
+             "spoken_summary": _acct_text(
+                 lang,
+                 f"That request is already submitted, effective {quote['effective_date_display']}.",
+                 f"Cette demande est déjà soumise, en vigueur le {quote['effective_date_display']}.",
+             ) + _acct_confirmation_number(cancellation_id, lang)},
             reference,
             language=lang,
         )
@@ -529,10 +561,11 @@ def cancel_or_port_out_service_impl(
         return error_reply(
             "CONFIRMATION_REQUIRED",
             "The caller must hear the terms and confirm before the request is submitted.",
-            "Say contract_cancellation_fee_disclosure, the fee, final bill and date; ask to confirm.",
+            "Say spoken_message word for word (contract_cancellation_fee_disclosure, then the terms); ask to confirm.",
             reference,
             language=lang,
             data={**quote, "disclosure_key": "contract_cancellation_fee_disclosure",
+                  "spoken_message": _acct_cancel_terms_message(quote, lang),
                   "remaining_lines_of_business": remaining},
         )
     state["pending_confirmation"] = ""
@@ -557,7 +590,7 @@ def cancel_or_port_out_service_impl(
             f"give it to your new provider. The line closes once the transfer completes, by {quote['effective_date_display']}.",
             f"Votre demande de transfert est soumise. Votre autorisation de transfert vous est envoyée par texto au numéro se terminant par {sms['destination_last4']}; "
             f"donnez-la à votre nouveau fournisseur. La ligne sera fermée une fois le transfert terminé, d'ici le {quote['effective_date_display']}.",
-        )
+        ) + _acct_confirmation_number(cancellation_id, lang)
     else:
         data["transfer_authorization_sent_by_sms"] = False
         if clean_lob in ("internet", "tv"):
@@ -571,7 +604,7 @@ def cancel_or_port_out_service_impl(
             lang,
             f"Your {quote['service_name']} cancellation is confirmed, effective {quote['effective_date_display']}.",
             f"L'annulation de votre {quote['service_name']} est confirmée, en vigueur le {quote['effective_date_display']}.",
-        )
+        ) + _acct_confirmation_number(cancellation_id, lang)
     return ok_reply(data, reference, language=lang)
 
 

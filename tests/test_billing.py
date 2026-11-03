@@ -18,6 +18,7 @@ from lib.fakes import (
     AUTOPAY_DISCOUNT,
     AUTOPAY_DISCOUNT_NOTE,
     AUTOPAY_WITHDRAWAL_NOTE,
+    BANK_ON_FILE_ENDING,
     BILL_CYCLE_DAYS_AGO,
     BILL_DATE_CHANGE_NOTE,
     BILL_DUE_IN_DAYS,
@@ -663,3 +664,73 @@ def test_agent_actions_stay_short():
         verify_payment_and_restore_impl(state=logged_in(fx_service_status="suspended_nonpayment")),
     ]
     assert all(len(r["agent_action"]) <= 120 for r in replies)
+
+
+# --- references and facts in spoken_summary (cluster D: VE-30 r3, VE-01 r2) ------
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_success_summaries_carry_their_reference_number(lang):
+    pay = process_bill_payment_impl("10", "card_on_file", state=logged_in(), language=lang)
+    assert pay["data"]["payment_id"] in pay["data"]["spoken_summary"]
+    auto = setup_autopay_impl("card_on_file", state=logged_in(), language=lang)
+    assert auto["data"]["autopay_id"] in auto["data"]["spoken_summary"]
+    for status in ("suspended_nonpayment", "active"):
+        arr = setup_payment_arrangement_impl(state=logged_in(fx_service_status=status), language=lang)
+        summary = arr["data"]["spoken_summary"]
+        assert arr["data"]["arrangement_id"] in summary
+        # The confirmation text the tool sent is said on every arrangement, restored or not.
+        assert ("confirmation" in summary) is arr["data"]["confirmation_sms_sent"]
+    assert ("référence" in pay["spoken_summary"]) is (lang == "fr-CA")
+
+
+def test_text_receipt_is_only_announced_when_the_tool_sent_it(monkeypatch):
+    def unsent(state, purpose):
+        return {"sms_sent": False, "destination_last4": "0000", "sms_purpose": purpose}
+
+    monkeypatch.setattr(billing, "dispatch_sms", unsent)
+    pay = process_bill_payment_impl("10", "card_on_file", state=logged_in())
+    assert pay["data"]["receipt_sms_sent"] is False
+    assert "text" not in pay["data"]["spoken_summary"]
+    auto = setup_autopay_impl("card_on_file", state=logged_in(), language="fr-CA")
+    assert auto["data"]["confirmation_sms_sent"] is False
+    assert "texto" not in auto["data"]["spoken_summary"]
+    arr = setup_payment_arrangement_impl(state=logged_in(fx_service_status="suspended_nonpayment"))
+    assert arr["data"]["confirmation_sms_sent"] is False
+    assert "text" not in arr["data"]["spoken_summary"]
+
+
+# --- bank account named by its ending (cluster F: VE-32 r1) ----------------------
+
+
+def test_autopay_with_bank_on_file_named_by_its_ending_in_french():
+    state = logged_in()
+    reply = setup_autopay_impl("bank_account", BANK_ON_FILE_ENDING, state=state, language="fr-CA")
+    assert reply["status"] == "ok"
+    assert reply["data"]["method"] == "bank_account"
+    assert reply["data"]["bank_last4"] == BANK_ON_FILE_ENDING and reply["data"]["card_last4"] == ""
+    assert f"compte bancaire se terminant par {BANK_ON_FILE_ENDING}" in reply["data"]["spoken_summary"]
+    assert state.get("global_err_count") in (None, 0, "0")
+    assert state.get("card_last4", "") == ""  # the card on file is not touched
+
+
+def test_bank_on_file_ending_sent_with_card_wording_stays_the_bank():
+    pay = process_bill_payment_impl("10", "card_on_file", BANK_ON_FILE_ENDING, state=logged_in())
+    assert pay["data"]["payment_method"] == "bank_account"
+    assert pay["data"]["bank_last4"] == BANK_ON_FILE_ENDING
+
+
+def test_other_bank_ending_is_a_tokenized_account_the_caller_holds():
+    pay = process_bill_payment_impl("10", "bank_account", "2468", state=logged_in())
+    assert pay["status"] == "ok"
+    assert pay["data"]["bank_last4"] == "2468"
+
+
+def test_bad_bank_digits_ask_the_caller_and_never_switch_method():
+    state = logged_in()
+    bad = setup_autopay_impl("bank_account", "12", state=state)
+    assert bad["error"] == "INVALID_INPUT"
+    assert "never switch" in bad["agent_action"].lower()
+    assert len(bad["agent_action"]) <= 120
+    assert bad["data"]["payment_method"] == "bank_account"
+    assert not state.get("autopay_enrolled")

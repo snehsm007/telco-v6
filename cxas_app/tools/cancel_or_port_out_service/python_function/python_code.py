@@ -209,6 +209,123 @@ def _acct_cancel_quote(lob: str, mode: str, lang: str) -> dict[str, Any]:  # pra
         ),
     }
 
+SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
+    "greeting_main": {
+        "en-US": "Welcome to Telco. I can help with billing, technical support, or managing your account. To get started, could you tell me the phone number or account number associated with your service?",
+        "fr-CA": "Bienvenue chez Telco. Je peux vous aider avec la facturation, le soutien technique ou la gestion de votre compte. Pour commencer, pourriez-vous me donner le numéro de téléphone ou le numéro de compte associé à votre service?",
+    },
+    "recording_notice": {
+        "en-US": "This call may be recorded for quality and training purposes.",
+        "fr-CA": "Cet appel peut être enregistré à des fins de qualité et de formation.",
+    },
+    "id_verification_otp": {
+        "en-US": "For your security, I just sent a 6-digit code to that number — please read it back to me.",
+        "fr-CA": "Pour votre sécurité, je viens d'envoyer un code à 6 chiffres à ce numéro — veuillez me le lire.",
+    },
+    "id_verification_pin": {
+        "en-US": "For your security, I'll need to verify your identity. Please enter the 4-digit PIN you set up.",
+        "fr-CA": "Pour votre sécurité, je dois vérifier votre identité. Veuillez entrer le NIP à 4 chiffres que vous avez configuré.",
+    },
+    "live_agent_handoff": {
+        "en-US": "I'll connect you to a representative who can help. Please hold.",
+        "fr-CA": "Je vais vous mettre en relation avec un représentant qui pourra vous aider. Veuillez patienter.",
+    },
+    "business_handoff": {
+        "en-US": "To get you the best support for your business account, I'll transfer you to an agent. You'll need to use your phone keypad instead of talking to the virtual assistant. Just a moment while I connect you.",
+        "fr-CA": "Pour vous offrir le meilleur soutien pour votre compte d'affaires, je vais vous transférer à un agent. Vous devrez utiliser le clavier de votre téléphone au lieu de parler à l'assistant virtuel. Un instant pendant que je vous mets en relation.",
+    },
+    "payment_method_preamble": {
+        "en-US": "Before we continue, please note that your payment details are protected and processed securely, and I will only ever refer to the last four digits of your card or account.",
+        "fr-CA": "Avant de continuer, sachez que vos renseignements de paiement sont protégés et traités de façon sécurisée, et que je ne mentionnerai jamais que les quatre derniers chiffres de votre carte ou de votre compte.",
+    },
+    "contract_cancellation_fee_disclosure": {
+        "en-US": "Please note that cancelling before the end of your contract term may result in an early termination fee and a final bill, as set out in your service agreement.",
+        "fr-CA": "Veuillez noter qu'une résiliation avant la fin de la durée de votre contrat peut entraîner des frais de résiliation anticipée et une facture finale, comme le prévoit votre entente de service.",
+    },
+    "refund_confirmation_pattern": {
+        "en-US": "Your refund of $[amount] will appear on your next statement within [days] business days.",
+        "fr-CA": "Votre remboursement de [amount] $ apparaîtra sur votre prochain relevé d'ici [days] jours ouvrables.",
+    },
+    "empathy_protocol": {
+        "en-US": "I'm very sorry to hear that you are facing challenges. I will ensure we handle your request with the utmost care.",
+        "fr-CA": "Je suis vraiment désolé d'apprendre que vous éprouvez des difficultés. Je veillerai à ce que votre demande soit traitée avec le plus grand soin.",
+    },
+    "outage_active": {
+        "en-US": "I see there's an active outage in your area. We're working on it. Would you like me to text you when it's restored?",
+        "fr-CA": "Je constate qu'il y a une panne active dans votre secteur. Nous y travaillons. Voulez-vous que je vous envoie un texto lorsque le service sera rétabli?",
+    },
+    "transfer_to_specialist": {
+        "en-US": "I'll connect you to a billing specialist now — they'll have everything we've already discussed.",
+        "fr-CA": "Je vais vous mettre en relation avec un spécialiste de la facturation — il aura tout ce dont nous avons déjà discuté.",
+    },
+    "refund_over_limit": {
+        "en-US": "That amount is above our $[limit] self-serve limit, so it needs a specialist's approval.",
+        "fr-CA": "Ce montant dépasse notre limite libre-service de [limit] $, il doit donc être approuvé par un spécialiste.",
+    },
+    "otp_callback_confirm": {
+        "en-US": "I'll send a 6-digit code to the number ending in [last4]. Ready?",
+        "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro se terminant par [last4]. Êtes-vous prêt?",
+    },
+    "pin_alternative": {
+        "en-US": "Or, if you prefer, you can use your 4-digit PIN instead.",
+        "fr-CA": "Ou, si vous préférez, vous pouvez plutôt utiliser votre NIP à 4 chiffres.",
+    },
+    # Operational line (no account number at hand); interim wording PENDING LEGAL APPROVAL.
+    "account_lookup_options": {
+        "en-US": "To find your account, I can use its phone number or account number, your email on file, or your 4-digit PIN.",
+        "fr-CA": "Pour trouver votre compte, je peux utiliser son numéro de téléphone ou son numéro de compte, votre courriel au dossier ou votre NIP à 4 chiffres.",
+    },
+    "email_code_sent": {
+        "en-US": "For your security, I just sent a 6-digit code to your email on file — please read it back to me.",
+        "fr-CA": "Pour votre sécurité, je viens d'envoyer un code à 6 chiffres à votre adresse courriel au dossier — veuillez me le lire.",
+    },
+    "restricted_caller": {
+        "en-US": "We're unable to help with this call on this line. Please visit one of our stores for assistance. Goodbye.",
+        "fr-CA": "Nous ne pouvons pas traiter cet appel sur cette ligne. Veuillez vous rendre dans l'une de nos boutiques pour obtenir de l'aide. Au revoir.",
+    },
+    "ai_disclosure": {
+        "en-US": "I'm an artificial intelligence customer care assistant.",
+        "fr-CA": "Je suis un assistant de service à la clientèle basé sur l'intelligence artificielle.",
+    },
+    "malicious_closing": {
+        "en-US": "I am unable to continue this conversation. Thank you for calling and have a good day.",
+        "fr-CA": "Je ne peux pas poursuivre cette conversation. Merci de votre appel et bonne journée.",
+    },
+}
+
+def spoken_line(key: str, language: str | None = "en-US", **slots: object) -> str:  # pragma: no cover
+    """Return the fixed spoken line for `key` and `language`, filling any `[slot]` placeholders."""
+    locale = resolve_locale(language)
+    table = SPOKEN_LINES.get(key, {})
+    template = table.get(locale) or table.get("en-US") or ""
+    for slot_name, slot_val in slots.items():
+        template = template.replace(f"[{slot_name}]", str(slot_val))
+    return template
+
+def _acct_cancel_terms_message(quote: dict[str, Any], lang: str) -> str:  # pragma: no cover
+    """The contract_cancellation_fee_disclosure line, verbatim, then the quoted terms in one sentence.
+
+    Kept in the tool reply so what the agent says is grounded in it (the language sheet is not
+    visible to graders, and a re-described disclosure drifts from the approved wording).
+    """
+    fee = quote["early_termination_fee_display"]
+    bill = quote["final_bill_estimate_display"]
+    when = quote["effective_date_display"]
+    terms = _acct_text(
+        lang,
+        f"The early termination fee is ${fee}, your estimated final bill is ${bill}, and the change takes effect on {when}.",
+        f"Les frais de résiliation anticipée sont de {fee} $, votre facture finale estimée est de {bill} $, et le changement prend effet le {when}.",
+    )
+    return f"{spoken_line('contract_cancellation_fee_disclosure', lang)} {terms}"
+
+def _acct_confirmation_number(cancellation_id: str, lang: str) -> str:  # pragma: no cover
+    """Trailing sentence with the confirmation number, so the summary carries the reference the agent reads."""
+    return _acct_text(
+        lang,
+        f" Your confirmation number is {cancellation_id}.",
+        f" Votre numéro de confirmation est le {cancellation_id}.",
+    )
+
 _ACCT_TRUE = ("true", "1", "yes", "y", "oui", "confirmed", "confirm")  # pragma: no cover
 
 def _acct_flag(value: Any) -> bool:  # pragma: no cover
@@ -688,99 +805,6 @@ def ok_reply(  # pragma: no cover
 
 NO_ACCOUNT_ACTION = "If the caller already gave a 4-digit PIN, call check_secret_pin now; else say spoken_message."  # pragma: no cover
 
-SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
-    "greeting_main": {
-        "en-US": "Welcome to Telco. I can help with billing, technical support, or managing your account. To get started, could you tell me the phone number or account number associated with your service?",
-        "fr-CA": "Bienvenue chez Telco. Je peux vous aider avec la facturation, le soutien technique ou la gestion de votre compte. Pour commencer, pourriez-vous me donner le numéro de téléphone ou le numéro de compte associé à votre service?",
-    },
-    "recording_notice": {
-        "en-US": "This call may be recorded for quality and training purposes.",
-        "fr-CA": "Cet appel peut être enregistré à des fins de qualité et de formation.",
-    },
-    "id_verification_otp": {
-        "en-US": "For your security, I just sent a 6-digit code to that number — please read it back to me.",
-        "fr-CA": "Pour votre sécurité, je viens d'envoyer un code à 6 chiffres à ce numéro — veuillez me le lire.",
-    },
-    "id_verification_pin": {
-        "en-US": "For your security, I'll need to verify your identity. Please enter the 4-digit PIN you set up.",
-        "fr-CA": "Pour votre sécurité, je dois vérifier votre identité. Veuillez entrer le NIP à 4 chiffres que vous avez configuré.",
-    },
-    "live_agent_handoff": {
-        "en-US": "I'll connect you to a representative who can help. Please hold.",
-        "fr-CA": "Je vais vous mettre en relation avec un représentant qui pourra vous aider. Veuillez patienter.",
-    },
-    "business_handoff": {
-        "en-US": "To get you the best support for your business account, I'll transfer you to an agent. You'll need to use your phone keypad instead of talking to the virtual assistant. Just a moment while I connect you.",
-        "fr-CA": "Pour vous offrir le meilleur soutien pour votre compte d'affaires, je vais vous transférer à un agent. Vous devrez utiliser le clavier de votre téléphone au lieu de parler à l'assistant virtuel. Un instant pendant que je vous mets en relation.",
-    },
-    "payment_method_preamble": {
-        "en-US": "Before we continue, please note that your payment details are protected and processed securely, and I will only ever refer to the last four digits of your card or account.",
-        "fr-CA": "Avant de continuer, sachez que vos renseignements de paiement sont protégés et traités de façon sécurisée, et que je ne mentionnerai jamais que les quatre derniers chiffres de votre carte ou de votre compte.",
-    },
-    "contract_cancellation_fee_disclosure": {
-        "en-US": "Please note that cancelling before the end of your contract term may result in an early termination fee and a final bill, as set out in your service agreement.",
-        "fr-CA": "Veuillez noter qu'une résiliation avant la fin de la durée de votre contrat peut entraîner des frais de résiliation anticipée et une facture finale, comme le prévoit votre entente de service.",
-    },
-    "refund_confirmation_pattern": {
-        "en-US": "Your refund of $[amount] will appear on your next statement within [days] business days.",
-        "fr-CA": "Votre remboursement de [amount] $ apparaîtra sur votre prochain relevé d'ici [days] jours ouvrables.",
-    },
-    "empathy_protocol": {
-        "en-US": "I'm very sorry to hear that you are facing challenges. I will ensure we handle your request with the utmost care.",
-        "fr-CA": "Je suis vraiment désolé d'apprendre que vous éprouvez des difficultés. Je veillerai à ce que votre demande soit traitée avec le plus grand soin.",
-    },
-    "outage_active": {
-        "en-US": "I see there's an active outage in your area. We're working on it. Would you like me to text you when it's restored?",
-        "fr-CA": "Je constate qu'il y a une panne active dans votre secteur. Nous y travaillons. Voulez-vous que je vous envoie un texto lorsque le service sera rétabli?",
-    },
-    "transfer_to_specialist": {
-        "en-US": "I'll connect you to a billing specialist now — they'll have everything we've already discussed.",
-        "fr-CA": "Je vais vous mettre en relation avec un spécialiste de la facturation — il aura tout ce dont nous avons déjà discuté.",
-    },
-    "refund_over_limit": {
-        "en-US": "That amount is above our $[limit] self-serve limit, so it needs a specialist's approval.",
-        "fr-CA": "Ce montant dépasse notre limite libre-service de [limit] $, il doit donc être approuvé par un spécialiste.",
-    },
-    "otp_callback_confirm": {
-        "en-US": "I'll send a 6-digit code to the number ending in [last4]. Ready?",
-        "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro se terminant par [last4]. Êtes-vous prêt?",
-    },
-    "pin_alternative": {
-        "en-US": "Or, if you prefer, you can use your 4-digit PIN instead.",
-        "fr-CA": "Ou, si vous préférez, vous pouvez plutôt utiliser votre NIP à 4 chiffres.",
-    },
-    # Operational line (no account number at hand); interim wording PENDING LEGAL APPROVAL.
-    "account_lookup_options": {
-        "en-US": "To find your account, I can use its phone number or account number, your email on file, or your 4-digit PIN.",
-        "fr-CA": "Pour trouver votre compte, je peux utiliser son numéro de téléphone ou son numéro de compte, votre courriel au dossier ou votre NIP à 4 chiffres.",
-    },
-    "email_code_sent": {
-        "en-US": "For your security, I just sent a 6-digit code to your email on file — please read it back to me.",
-        "fr-CA": "Pour votre sécurité, je viens d'envoyer un code à 6 chiffres à votre adresse courriel au dossier — veuillez me le lire.",
-    },
-    "restricted_caller": {
-        "en-US": "We're unable to help with this call on this line. Please visit one of our stores for assistance. Goodbye.",
-        "fr-CA": "Nous ne pouvons pas traiter cet appel sur cette ligne. Veuillez vous rendre dans l'une de nos boutiques pour obtenir de l'aide. Au revoir.",
-    },
-    "ai_disclosure": {
-        "en-US": "I'm an artificial intelligence customer care assistant.",
-        "fr-CA": "Je suis un assistant de service à la clientèle basé sur l'intelligence artificielle.",
-    },
-    "malicious_closing": {
-        "en-US": "I am unable to continue this conversation. Thank you for calling and have a good day.",
-        "fr-CA": "Je ne peux pas poursuivre cette conversation. Merci de votre appel et bonne journée.",
-    },
-}
-
-def spoken_line(key: str, language: str | None = "en-US", **slots: object) -> str:  # pragma: no cover
-    """Return the fixed spoken line for `key` and `language`, filling any `[slot]` placeholders."""
-    locale = resolve_locale(language)
-    table = SPOKEN_LINES.get(key, {})
-    template = table.get(locale) or table.get("en-US") or ""
-    for slot_name, slot_val in slots.items():
-        template = template.replace(f"[{slot_name}]", str(slot_val))
-    return template
-
 def require_login(state: dict[str, Any], lang: str, tool_name: str) -> dict[str, Any] | None:  # pragma: no cover
     """BR-TV-008: account reads and changes need a verified caller. Returns an error reply or None."""
     if state.get("auth_status") == "pass" and state.get("logged_in") is not False:
@@ -943,7 +967,12 @@ def cancel_or_port_out_service_impl(  # pragma: no cover
         return ok_reply(
             {**quote, "cancellation_id": cancellation_id, "already_submitted": True, "submitted": True,
              "transfer_authorization_sent_by_sms": clean_mode == "port_out",
-             "remaining_lines_of_business": remaining},
+             "remaining_lines_of_business": remaining,
+             "spoken_summary": _acct_text(
+                 lang,
+                 f"That request is already submitted, effective {quote['effective_date_display']}.",
+                 f"Cette demande est déjà soumise, en vigueur le {quote['effective_date_display']}.",
+             ) + _acct_confirmation_number(cancellation_id, lang)},
             reference,
             language=lang,
         )
@@ -954,10 +983,11 @@ def cancel_or_port_out_service_impl(  # pragma: no cover
         return error_reply(
             "CONFIRMATION_REQUIRED",
             "The caller must hear the terms and confirm before the request is submitted.",
-            "Say contract_cancellation_fee_disclosure, the fee, final bill and date; ask to confirm.",
+            "Say spoken_message word for word (contract_cancellation_fee_disclosure, then the terms); ask to confirm.",
             reference,
             language=lang,
             data={**quote, "disclosure_key": "contract_cancellation_fee_disclosure",
+                  "spoken_message": _acct_cancel_terms_message(quote, lang),
                   "remaining_lines_of_business": remaining},
         )
     state["pending_confirmation"] = ""
@@ -982,7 +1012,7 @@ def cancel_or_port_out_service_impl(  # pragma: no cover
             f"give it to your new provider. The line closes once the transfer completes, by {quote['effective_date_display']}.",
             f"Votre demande de transfert est soumise. Votre autorisation de transfert vous est envoyée par texto au numéro se terminant par {sms['destination_last4']}; "
             f"donnez-la à votre nouveau fournisseur. La ligne sera fermée une fois le transfert terminé, d'ici le {quote['effective_date_display']}.",
-        )
+        ) + _acct_confirmation_number(cancellation_id, lang)
     else:
         data["transfer_authorization_sent_by_sms"] = False
         if clean_lob in ("internet", "tv"):
@@ -996,6 +1026,6 @@ def cancel_or_port_out_service_impl(  # pragma: no cover
             lang,
             f"Your {quote['service_name']} cancellation is confirmed, effective {quote['effective_date_display']}.",
             f"L'annulation de votre {quote['service_name']} est confirmée, en vigueur le {quote['effective_date_display']}.",
-        )
+        ) + _acct_confirmation_number(cancellation_id, lang)
     return ok_reply(data, reference, language=lang)
 # --- END GENERATED SHARED BUNDLE ---

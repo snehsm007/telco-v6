@@ -359,6 +359,17 @@ def _bill_live(state: dict[str, Any], lang: str) -> dict[str, Decimal]:  # pragm
         balance = past_due + _bill_charges_total(_bill_lines(state, lang))
     return {"balance": _bill_q(max(balance, _BILL_ZERO)), "past_due": _bill_q(max(min(past_due, balance), _BILL_ZERO))}
 
+_BILL_REFERENCE_NAMES: dict[str, tuple[str, str]] = {  # pragma: no cover
+    "payment": ("payment", "de paiement"),
+    "autopay": ("autopay", "de paiement préautorisé"),
+    "arrangement": ("arrangement", "d'entente"),
+}
+
+def _bill_reference_text(lang: str, kind: str, reference: str) -> str:  # pragma: no cover
+    """Trailing sentence with the record's reference number, so the summary carries what the agent reads."""
+    en, fr = _BILL_REFERENCE_NAMES[kind]
+    return _bill_text(lang, f" Your {en} reference number is {reference}.", f" Votre numéro de référence {fr} est le {reference}.")
+
 def dispatch_sms(state: dict[str, Any], purpose: str) -> dict[str, Any]:  # pragma: no cover
     """Record a text message to the mobile number on file; returns its delivery facts."""
     dest = str(state.get("phone_last4") or account_record(state)["phone"][-4:])
@@ -1033,7 +1044,7 @@ def setup_payment_arrangement_impl(  # pragma: no cover
         "arrangement_id": arrangement_id,
         **plan,
         "balance_unchanged": True,
-        "confirmation_sms_sent": True,
+        "confirmation_sms_sent": sms["sms_sent"],
         "sms_destination_last4": sms["destination_last4"],
         "service_restored": False,
         "service_status": status_before,
@@ -1050,7 +1061,10 @@ def setup_payment_arrangement_impl(  # pragma: no cover
     if status_before == "suspended_nonpayment":
         data.update(_bill_restore(st))
         data["service_status"] = "active"
-        summary += _bill_text(lang, " Your service is restored and a confirmation text is on its way.", " Votre service est rétabli et une confirmation vous est envoyée par texto.")
+        summary += _bill_text(lang, " Your service is restored.", " Votre service est rétabli.")
+    if sms["sms_sent"]:
+        summary += _bill_text(lang, " A confirmation text is on its way.", " Une confirmation vous est envoyée par texto.")
+    summary += _bill_reference_text(lang, "arrangement", arrangement_id)
     data["spoken_summary"] = summary
     return _bill_finish(st, ok_reply(data, arrangement_id, language=lang))
 # --- END GENERATED SHARED BUNDLE ---
