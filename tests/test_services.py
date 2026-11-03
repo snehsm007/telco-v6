@@ -559,11 +559,12 @@ def test_lookup_by_email_identifies_the_default_account() -> None:
     assert lookup_account_impl("not-an-email@", state={})["error"] == "NOT_FOUND"
 
 
-def test_texted_code_goes_to_a_number_built_from_the_callers_account_digits() -> None:
+def test_account_number_lookups_never_expose_a_derived_phone_ending() -> None:
+    """The phone built from account digits is real but not the caller's words: never spoken."""
     state: dict = {}
-    assert lookup_account_impl("882940012", state=state)["data"]["phone_last4"] == "0012"
-    assert send_login_code_impl(state=state)["data"]["destination_last4"] == "0012"
-    assert lookup_account_impl("ACC-992834", state={})["data"]["phone_last4"] == "2834"
+    assert lookup_account_impl("882940012", state=state)["data"]["phone_last4"] == ""
+    assert send_login_code_impl(state=state)["data"]["destination_last4"] == ""
+    assert lookup_account_impl("ACC-992834", state={})["data"]["phone_last4"] == ""
 
 
 def test_email_login_code_tells_the_agent_what_to_say() -> None:
@@ -674,3 +675,26 @@ def test_closed_queue_handover_says_the_callback_not_please_hold(monkeypatch) ->
     reply = svc.handover_to_person_impl(reason="sales_specialist", state={})
     assert reply["data"]["handoff_status"] == "callback_next_business_day"
     assert reply["data"]["handoff_message"] == SPOKEN_LINES["callback_next_business_day"]["en-US"]
+
+
+@pytest.mark.parametrize("identifier", ["882940012", "ACC-0199"])
+def test_account_number_callers_never_hear_an_invented_phone_ending(identifier: str) -> None:
+    """Voice callers who give an account number objected to 'ending in <their account digits>'."""
+    from lib.billing import get_billing_summary_impl
+
+    state: dict = {}
+    lookup_account_impl(identifier, state=state)
+    assert state["phone_derived"] is True
+    gate = get_billing_summary_impl(state=state)
+    assert gate["data"]["spoken_message"].startswith(SPOKEN_LINES["otp_callback_on_file"]["en-US"])
+    assert send_login_code_impl(state=state)["data"]["destination_last4"] == ""
+    # The id we created resolves again on a later turn.
+    again = lookup_account_impl(state["account_id"], state=state)
+    assert again["status"] == "ok"
+
+
+def test_phone_callers_still_hear_their_own_ending() -> None:
+    state: dict = {}
+    lookup_account_impl("514-555-0199", state=state)
+    assert state["phone_derived"] is False
+    assert send_login_code_impl(state=state)["data"]["destination_last4"] == "0199"

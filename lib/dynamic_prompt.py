@@ -31,6 +31,7 @@ AGENT_VERBATIM_KEYS: dict[str, tuple[str, ...]] = {
 }
 
 _FRENCH_MARKERS: frozenset[str] = frozenset({
+    "quelqu'un", "quelqu", "piraté", "pirate",
     "bonjour", "merci", "oui", "non", "svp", "compte", "facture", "payer",
     "service", "aide", "besoin", "agent", "parler", "code", "reçu", "francais",
     "français", "salut", "allo", "allô", "s'il", "vous", "plaît", "plait",

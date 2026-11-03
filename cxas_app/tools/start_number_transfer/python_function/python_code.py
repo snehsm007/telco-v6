@@ -826,6 +826,10 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "That amount is above our $[limit] self-serve limit, so it needs a specialist's approval.",
         "fr-CA": "Ce montant dépasse notre limite libre-service de [limit] $, il doit donc être approuvé par un spécialiste.",
     },
+    "otp_callback_on_file": {
+        "en-US": "I'll send a 6-digit code to the mobile number on file. Ready?",
+        "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro de mobile au dossier. Êtes-vous prêt?",
+    },
     "otp_callback_confirm": {
         "en-US": "I'll send a 6-digit code to the number ending in [last4]. Ready?",
         "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro se terminant par [last4]. Êtes-vous prêt?",
@@ -891,10 +895,9 @@ def require_login(state: dict[str, Any], lang: str, tool_name: str) -> dict[str,
             language=lang,
             data=data,
         )
-    last4 = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or "")
-    data["spoken_message"] = (
-        spoken_line("otp_callback_confirm", lang, last4=last4) + " " + spoken_line("pin_alternative", lang)
-    )
+    last4 = str(state.get("caller_provided_phone_last4") or ("" if state.get("phone_derived") else state.get("phone_last4")) or "")
+    offer = spoken_line("otp_callback_confirm", lang, last4=last4) if last4 else spoken_line("otp_callback_on_file", lang)
+    data["spoken_message"] = offer + " " + spoken_line("pin_alternative", lang)
     data["pin_prompt_message"] = spoken_line("id_verification_pin", lang)
     return error_reply(
         "NOT_LOGGED_IN",

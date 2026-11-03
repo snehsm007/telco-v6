@@ -148,10 +148,9 @@ def require_login(state: dict[str, Any], lang: str, tool_name: str) -> dict[str,
             language=lang,
             data=data,
         )
-    last4 = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or "")
-    data["spoken_message"] = (
-        spoken_line("otp_callback_confirm", lang, last4=last4) + " " + spoken_line("pin_alternative", lang)
-    )
+    last4 = str(state.get("caller_provided_phone_last4") or ("" if state.get("phone_derived") else state.get("phone_last4")) or "")
+    offer = spoken_line("otp_callback_confirm", lang, last4=last4) if last4 else spoken_line("otp_callback_on_file", lang)
+    data["spoken_message"] = offer + " " + spoken_line("pin_alternative", lang)
     data["pin_prompt_message"] = spoken_line("id_verification_pin", lang)
     return error_reply(
         "NOT_LOGGED_IN",

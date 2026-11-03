@@ -253,6 +253,7 @@ def lookup_account_impl(
     business = bool(account.get("business_flag")) or fixture_flag(state, "fx_business_account")
     state["account_id"] = account["account_id"]
     state["phone_last4"] = account["phone"][-4:]
+    state["phone_derived"] = bool(account.get("phone_derived"))
     ident = normalize_identifier(raw)
     state["caller_provided_phone_last4"] = (
         only_digits(ident["value"])[-4:] if ident["kind"] in ("phone", "international_phone") else ""
@@ -267,7 +268,7 @@ def lookup_account_impl(
     data = {
         "identification_status": "Pass",
         "account_id_last4": normalize_code(account["account_id"])[-4:] or account["account_id"][-4:],
-        "phone_last4": account["phone"][-4:],
+        "phone_last4": "" if account.get("phone_derived") else account["phone"][-4:],
         "caller_provided_phone_last4": state["caller_provided_phone_last4"],
         "business_flag": business,
         "customer_type": state["customer_type"],
@@ -372,7 +373,10 @@ def send_login_code_impl(
         data["email_masked"] = (user[:1] + "***@" + domain) if domain else "on file"
         data["spoken_message"] = spoken_line("email_code_sent", lang)
     else:
-        data["destination_last4"] = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or record["phone"][-4:])
+        data["destination_last4"] = str(
+            state.get("caller_provided_phone_last4")
+            or ("" if state.get("phone_derived") else (state.get("phone_last4") or record["phone"][-4:]))
+        )
         data["spoken_message"] = spoken_line("id_verification_otp", lang)
     reply = ok_reply(data, reference, language=lang)
     if chan == "email" and purpose == "login":
