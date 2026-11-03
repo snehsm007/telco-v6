@@ -49,8 +49,10 @@ from lib.fakes import (
     DEFAULT_REGION,
     OTP_RE,
     PIN_RE,
+    classify_identifier,
     find_account,
     is_name_or_address,
+    is_plausible_phone,
     login_code_accepted,
     normalize_code,
     normalize_identifier,
@@ -158,6 +160,16 @@ def _region_for_postal(postal_code: str) -> str:
     return REGION_BY_POSTAL_LETTER.get(first, DEFAULT_REGION)
 
 
+# What the model passes when the caller asks to use the number they are calling from (prd.md §5 `clid`).
+CALLER_ID_REQUESTS: frozenset[str] = frozenset({"", "clid"})
+
+
+def _caller_id_phone(state: dict[str, Any]) -> str:
+    """The caller ID (`clid`, prd.md §5) when it is a valid 10-digit phone number, else ""."""
+    kind, digits = classify_identifier(state.get("clid"))
+    return digits if kind == "phone" and is_plausible_phone(digits) else ""
+
+
 def lookup_account_impl(
     phone_or_account: str | int | float,
     state: dict[str, Any] | None = None,
@@ -173,14 +185,27 @@ def lookup_account_impl(
         return err
     raw = str(phone_or_account or "").strip()
     raw = re.sub(r"\.0+$", "", raw)
+    used_caller_id = False
+    if raw.lower() in CALLER_ID_REQUESTS:
+        # No number given ("use the number I'm calling from"): try the caller ID once.
+        raw = _caller_id_phone(state)
+        used_caller_id = bool(raw)
     reference = tracking_id("lookup_account", raw)
     if not raw:
-        return validation_error(
-            state,
-            "No phone number or account number was given.",
-            "Ask for the phone number or account number on the account.",
+        # No number and no usable caller ID: not a wrong entry, so no strike (BR-TV-010).
+        state["last_tracking_id"] = reference
+        return error_reply(
+            "INVALID_INPUT",
+            "No phone number or account number was given, and no caller ID is available.",
+            NO_ACCOUNT_ACTION,
             reference,
-            lang,
+            language=lang,
+            data={
+                "spoken_message": spoken_line("account_lookup_options", lang),
+                "pin_length": 4,
+                "counted": False,
+                "caller_id_available": False,
+            },
         )
     digits = only_digits(raw)
     norm_digits = digits[1:] if (len(digits) == 11 and digits.startswith("1")) else digits
@@ -248,6 +273,7 @@ def lookup_account_impl(
         "customer_type": state["customer_type"],
         "lines_of_business": list(account.get("lines_of_business", [])),
         "region": state["region"],
+        "used_caller_id": used_caller_id,
     }
     reply = ok_reply(data, reference, language=lang)
     if business:

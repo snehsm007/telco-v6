@@ -485,15 +485,23 @@ TECH_VISIT_LENGTH_HOURS: tuple[int, int] = (1, 2)
 TECH_APP_GUIDE_MINUTES = 15
 # --- end tech fixtures ---
 
-# Outage regions (BR-TV-003, DESIGN_RULES rule 40: classes, not literals).
+# Service regions and outage districts (BR-TV-003, DESIGN_RULES rule 40: classes, not literals).
 # Canadian postal codes start with a province letter; Region-A is Quebec.
 REGION_BY_POSTAL_LETTER: dict[str, str] = {
     **{letter: "Region-A" for letter in "GHJ"},
     **{letter: "Region-B" for letter in "KLMNP"},
 }
 DEFAULT_REGION = "Region-C"
-ACTIVE_OUTAGES: dict[str, dict[str, Any]] = {
-    "Region-A": {"outage_id": "OUT-A-27", "services": ["internet", "tv"], "eta_hours": 4},
+# Outages hit a postal district, not a whole province (rule 40: district classes,
+# never full postal codes). A district is the first two characters of a Canadian
+# postal code: the province letter plus the district digit. Active today: a
+# Quebec City district and Montreal's centre-west district; the rest of Quebec
+# (other Montreal districts, the J suburbs), every other province and every ZIP
+# have none.
+OUTAGE_DISTRICT_LENGTH = 2
+ACTIVE_OUTAGES_BY_DISTRICT: dict[str, dict[str, Any]] = {
+    "G1": {"outage_id": "OUT-G1-27", "services": ["internet", "tv"], "eta_hours": 4},
+    "H3": {"outage_id": "OUT-H3-27", "services": ["internet", "tv"], "eta_hours": 4},
 }
 FIXTURE_OUTAGE = {"outage_id": "OUT-LOCAL-09", "services": ["internet", "tv"], "eta_hours": 3}
 

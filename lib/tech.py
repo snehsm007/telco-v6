@@ -26,12 +26,13 @@ from lib.core import (
     validation_error,
 )
 from lib.fakes import (
-    ACTIVE_OUTAGES,
+    ACTIVE_OUTAGES_BY_DISTRICT,
     APPOINTMENT,
     CURRENT_DATA_GB,
     CURRENT_DATA_USED_GB,
     DEFAULT_REGION,
     FIXTURE_OUTAGE,
+    OUTAGE_DISTRICT_LENGTH,
     REGION_BY_POSTAL_LETTER,
     SLOT_OFFSETS_DAYS,
     SLOT_WINDOWS,
@@ -150,14 +151,19 @@ def _tech_region(kind: str, code: str) -> str:
     return DEFAULT_REGION
 
 
-def _tech_area_outage(state: dict[str, Any], region: str) -> dict[str, Any] | None:
-    """The outage affecting a region: fixture override first, else the regional table."""
+def _tech_district(kind: str, code: str) -> str:
+    """Postal district of a Canadian postal code (province letter + district digit); "" for a ZIP."""
+    return code[:OUTAGE_DISTRICT_LENGTH] if kind == "postal" else ""
+
+
+def _tech_area_outage(state: dict[str, Any], district: str) -> dict[str, Any] | None:
+    """The outage affecting a postal district: fixture override first, else the district table."""
     status = fixture(state, "fx_outage_status")
     if status == "active":
         return dict(FIXTURE_OUTAGE)
     if status == "none":
         return None
-    found = ACTIVE_OUTAGES.get(region)
+    found = ACTIVE_OUTAGES_BY_DISTRICT.get(district)
     return dict(found) if found else None
 
 
@@ -193,7 +199,7 @@ def check_regional_outage_impl(
         )
     region = _tech_region(kind, code)
     service = _tech_lob(lob)
-    outage = _tech_area_outage(state, region)
+    outage = _tech_area_outage(state, _tech_district(kind, code))
     affected = list(outage["services"]) if outage else []
     active = bool(outage) and (not service or service in affected)
     state["region"] = region
@@ -745,8 +751,8 @@ def run_virtual_repair_impl(
                 data={"lob": "tv", "allowed_sub_types": list(_TECH_SUB_TYPES)},
             )
         state["tv_sub_type"] = sub_type
-    region = _tech_region(*_tech_parse_postal(account_record(state).get("postal_code", "")))
-    outage = _tech_area_outage(state, region)
+    on_file = _tech_parse_postal(account_record(state).get("postal_code", ""))
+    outage = _tech_area_outage(state, _tech_district(*on_file))
     if outage and service in outage["services"]:
         state["outage_active"] = True
         return error_reply(

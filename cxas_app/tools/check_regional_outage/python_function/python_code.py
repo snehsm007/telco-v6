@@ -44,8 +44,9 @@ from typing import Any
 import hashlib
 import re
 
-ACTIVE_OUTAGES: dict[str, dict[str, Any]] = {  # pragma: no cover
-    "Region-A": {"outage_id": "OUT-A-27", "services": ["internet", "tv"], "eta_hours": 4},
+ACTIVE_OUTAGES_BY_DISTRICT: dict[str, dict[str, Any]] = {  # pragma: no cover
+    "G1": {"outage_id": "OUT-G1-27", "services": ["internet", "tv"], "eta_hours": 4},
+    "H3": {"outage_id": "OUT-H3-27", "services": ["internet", "tv"], "eta_hours": 4},
 }
 
 FIXTURE_OUTAGE = {"outage_id": "OUT-LOCAL-09", "services": ["internet", "tv"], "eta_hours": 3}  # pragma: no cover
@@ -85,15 +86,21 @@ def fixture(state: dict[str, Any] | None, name: str) -> str:  # pragma: no cover
         raw = FIXTURE_DEFAULTS.get(name, "")
     return raw.strip().lower() if name not in ("fx_pin_on_file", "fx_otp_on_file", "fx_extra_bill_line") else raw.strip()
 
-def _tech_area_outage(state: dict[str, Any], region: str) -> dict[str, Any] | None:  # pragma: no cover
-    """The outage affecting a region: fixture override first, else the regional table."""
+def _tech_area_outage(state: dict[str, Any], district: str) -> dict[str, Any] | None:  # pragma: no cover
+    """The outage affecting a postal district: fixture override first, else the district table."""
     status = fixture(state, "fx_outage_status")
     if status == "active":
         return dict(FIXTURE_OUTAGE)
     if status == "none":
         return None
-    found = ACTIVE_OUTAGES.get(region)
+    found = ACTIVE_OUTAGES_BY_DISTRICT.get(district)
     return dict(found) if found else None
+
+OUTAGE_DISTRICT_LENGTH = 2  # pragma: no cover
+
+def _tech_district(kind: str, code: str) -> str:  # pragma: no cover
+    """Postal district of a Canadian postal code (province letter + district digit); "" for a ZIP."""
+    return code[:OUTAGE_DISTRICT_LENGTH] if kind == "postal" else ""
 
 def resolve_locale(language: str | None) -> str:  # pragma: no cover
     """Normalize a language tag or prefix to a supported locale (en-US or fr-CA)."""
@@ -801,7 +808,7 @@ def check_regional_outage_impl(  # pragma: no cover
         )
     region = _tech_region(kind, code)
     service = _tech_lob(lob)
-    outage = _tech_area_outage(state, region)
+    outage = _tech_area_outage(state, _tech_district(kind, code))
     affected = list(outage["services"]) if outage else []
     active = bool(outage) and (not service or service in affected)
     state["region"] = region

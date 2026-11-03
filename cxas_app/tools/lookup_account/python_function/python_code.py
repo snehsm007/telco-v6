@@ -44,7 +44,90 @@ import re
 
 BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199"})  # pragma: no cover
 
+CALLER_ID_REQUESTS: frozenset[str] = frozenset({"", "clid"})  # pragma: no cover
+
 NO_ACCOUNT_ACTION = "If the caller already gave a 4-digit PIN, call check_secret_pin now; else say spoken_message."  # pragma: no cover
+
+ACCOUNT_NUMBER_RE = re.compile(r"^[0-9](?:[\s\-]?[0-9]){5,14}$")  # pragma: no cover
+
+ACCOUNT_REFERENCE_RE = re.compile(  # pragma: no cover
+    r"^(?=(?:[^0-9]*[0-9]){4})(?=.*[A-Za-z])[A-Za-z0-9](?:[A-Za-z0-9]|[\s\-](?=[A-Za-z0-9])){3,24}$"
+)
+
+ALL_DIGITS_RE = re.compile(r"^[0-9]+$")  # pragma: no cover
+
+PHONE_INTL_RE = re.compile(r"^(?:\+|00)[1-9](?:[\s.\-]?[0-9]){9,14}$")  # pragma: no cover
+
+PHONE_LOCAL_PAIRS_RE = re.compile(r"^0[1-9](?:[\s.\-]?[0-9]{2}){4}$")  # pragma: no cover
+
+PHONE_NANP_RE = re.compile(r"^(?:\+?1[\s.\-]?)?\(?[0-9]{3}\)?[\s.\-]?[0-9]{3}[\s.\-]?[0-9]{4}$")  # pragma: no cover
+
+SPOKEN_DIGIT_SEPARATORS_RE = re.compile(r"[\s,.\-()]+")  # pragma: no cover
+
+def normalize_code(value: Any) -> str:  # pragma: no cover
+    """Coerce ints, floats (e.g. 5903.0), and formatted strings into a clean digit string."""
+    if value is None or isinstance(value, bool):
+        return ""
+    if isinstance(value, int):
+        return str(abs(value))
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(abs(value)))
+        return re.sub(r"\D", "", str(value))
+    text = str(value).strip()
+    if re.fullmatch(r"[+-]?\d+\.0+", text):
+        text = text.split(".", 1)[0]
+    return "".join(ch for ch in text if ch.isdigit())
+
+def classify_identifier(raw: Any) -> tuple[str, str]:  # pragma: no cover
+    """Match a caller identifier against the format patterns.
+
+    Phone speech-to-text writes numbers as "888,777,666" or "5 1 4 5 5 5 0 1 9 9";
+    when only separators (spaces, commas, dots, dashes, brackets) sit between the
+    digits, the digit string itself is classified by length with the same rules.
+    Returns (kind, digits): kind is phone, intl_phone, account_number,
+    account_reference, or "" when no pattern matches.
+    """
+    text = re.sub(r"\.0+$", "", str(raw or "").strip())
+    digits = normalize_code(text)
+    compact = SPOKEN_DIGIT_SEPARATORS_RE.sub("", text)
+    if compact and ALL_DIGITS_RE.fullmatch(compact) and not compact.startswith("00") and not PHONE_NANP_RE.fullmatch(text):
+        if len(compact) == 11 and compact.startswith("1"):
+            return "phone", compact[1:]
+        if len(compact) == 10 and not compact.startswith("0"):
+            return "phone", compact
+        if PHONE_LOCAL_PAIRS_RE.fullmatch(text):
+            return "phone", compact
+        if ACCOUNT_NUMBER_RE.fullmatch(compact):
+            return "account_number", compact
+    if PHONE_NANP_RE.fullmatch(text):
+        return "phone", digits[-10:]
+    if PHONE_LOCAL_PAIRS_RE.fullmatch(text):
+        return "phone", digits
+    if PHONE_INTL_RE.fullmatch(text):
+        return "intl_phone", digits
+    if ACCOUNT_NUMBER_RE.fullmatch(text):
+        return "account_number", digits
+    if ACCOUNT_REFERENCE_RE.fullmatch(text):
+        return "account_reference", digits
+    return "", digits
+
+DUMMY_NUMBERS: frozenset[str] = frozenset({"1234567890", "0123456789", "9876543210"})  # pragma: no cover
+
+def is_weak_code(digits: str) -> bool:  # pragma: no cover
+    """A code made of one repeated digit (e.g. all sevens) is never a valid credential."""
+    return bool(digits) and len(set(digits)) == 1
+
+def is_plausible_phone(digits: str) -> bool:  # pragma: no cover
+    """A 10-digit number that isn't one repeated digit or an obvious dummy run (Postel: accept generously)."""
+    if len(digits) != 10 or not digits.isdigit():
+        return False
+    return not is_weak_code(digits) and digits not in DUMMY_NUMBERS
+
+def _caller_id_phone(state: dict[str, Any]) -> str:  # pragma: no cover
+    """The caller ID (`clid`, prd.md §5) when it is a valid 10-digit phone number, else ""."""
+    kind, digits = classify_identifier(state.get("clid"))
+    return digits if kind == "phone" and is_plausible_phone(digits) else ""
 
 DEFAULT_REGION = "Region-C"  # pragma: no cover
 
@@ -425,8 +508,6 @@ ACCOUNTS: tuple[dict[str, Any], ...] = (  # pragma: no cover
     },
 )
 
-DUMMY_NUMBERS: frozenset[str] = frozenset({"1234567890", "0123456789", "9876543210"})  # pragma: no cover
-
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}$")  # pragma: no cover
 
 def _phone_from_digits(digits: str) -> str:  # pragma: no cover
@@ -447,80 +528,6 @@ def _synthetic_account(account_number: str, phone: str) -> dict[str, Any]:  # pr
     base["phone"] = phone
     base["first_name"] = ""
     return base
-
-ACCOUNT_NUMBER_RE = re.compile(r"^[0-9](?:[\s\-]?[0-9]){5,14}$")  # pragma: no cover
-
-ACCOUNT_REFERENCE_RE = re.compile(  # pragma: no cover
-    r"^(?=(?:[^0-9]*[0-9]){4})(?=.*[A-Za-z])[A-Za-z0-9](?:[A-Za-z0-9]|[\s\-](?=[A-Za-z0-9])){3,24}$"
-)
-
-ALL_DIGITS_RE = re.compile(r"^[0-9]+$")  # pragma: no cover
-
-PHONE_INTL_RE = re.compile(r"^(?:\+|00)[1-9](?:[\s.\-]?[0-9]){9,14}$")  # pragma: no cover
-
-PHONE_LOCAL_PAIRS_RE = re.compile(r"^0[1-9](?:[\s.\-]?[0-9]{2}){4}$")  # pragma: no cover
-
-PHONE_NANP_RE = re.compile(r"^(?:\+?1[\s.\-]?)?\(?[0-9]{3}\)?[\s.\-]?[0-9]{3}[\s.\-]?[0-9]{4}$")  # pragma: no cover
-
-SPOKEN_DIGIT_SEPARATORS_RE = re.compile(r"[\s,.\-()]+")  # pragma: no cover
-
-def normalize_code(value: Any) -> str:  # pragma: no cover
-    """Coerce ints, floats (e.g. 5903.0), and formatted strings into a clean digit string."""
-    if value is None or isinstance(value, bool):
-        return ""
-    if isinstance(value, int):
-        return str(abs(value))
-    if isinstance(value, float):
-        if value.is_integer():
-            return str(int(abs(value)))
-        return re.sub(r"\D", "", str(value))
-    text = str(value).strip()
-    if re.fullmatch(r"[+-]?\d+\.0+", text):
-        text = text.split(".", 1)[0]
-    return "".join(ch for ch in text if ch.isdigit())
-
-def classify_identifier(raw: Any) -> tuple[str, str]:  # pragma: no cover
-    """Match a caller identifier against the format patterns.
-
-    Phone speech-to-text writes numbers as "888,777,666" or "5 1 4 5 5 5 0 1 9 9";
-    when only separators (spaces, commas, dots, dashes, brackets) sit between the
-    digits, the digit string itself is classified by length with the same rules.
-    Returns (kind, digits): kind is phone, intl_phone, account_number,
-    account_reference, or "" when no pattern matches.
-    """
-    text = re.sub(r"\.0+$", "", str(raw or "").strip())
-    digits = normalize_code(text)
-    compact = SPOKEN_DIGIT_SEPARATORS_RE.sub("", text)
-    if compact and ALL_DIGITS_RE.fullmatch(compact) and not compact.startswith("00") and not PHONE_NANP_RE.fullmatch(text):
-        if len(compact) == 11 and compact.startswith("1"):
-            return "phone", compact[1:]
-        if len(compact) == 10 and not compact.startswith("0"):
-            return "phone", compact
-        if PHONE_LOCAL_PAIRS_RE.fullmatch(text):
-            return "phone", compact
-        if ACCOUNT_NUMBER_RE.fullmatch(compact):
-            return "account_number", compact
-    if PHONE_NANP_RE.fullmatch(text):
-        return "phone", digits[-10:]
-    if PHONE_LOCAL_PAIRS_RE.fullmatch(text):
-        return "phone", digits
-    if PHONE_INTL_RE.fullmatch(text):
-        return "intl_phone", digits
-    if ACCOUNT_NUMBER_RE.fullmatch(text):
-        return "account_number", digits
-    if ACCOUNT_REFERENCE_RE.fullmatch(text):
-        return "account_reference", digits
-    return "", digits
-
-def is_weak_code(digits: str) -> bool:  # pragma: no cover
-    """A code made of one repeated digit (e.g. all sevens) is never a valid credential."""
-    return bool(digits) and len(set(digits)) == 1
-
-def is_plausible_phone(digits: str) -> bool:  # pragma: no cover
-    """A 10-digit number that isn't one repeated digit or an obvious dummy run (Postel: accept generously)."""
-    if len(digits) != 10 or not digits.isdigit():
-        return False
-    return not is_weak_code(digits) and digits not in DUMMY_NUMBERS
 
 def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
     """Find an account by phone number, account number, account reference or email.
@@ -876,14 +883,27 @@ def lookup_account_impl(  # pragma: no cover
         return err
     raw = str(phone_or_account or "").strip()
     raw = re.sub(r"\.0+$", "", raw)
+    used_caller_id = False
+    if raw.lower() in CALLER_ID_REQUESTS:
+        # No number given ("use the number I'm calling from"): try the caller ID once.
+        raw = _caller_id_phone(state)
+        used_caller_id = bool(raw)
     reference = tracking_id("lookup_account", raw)
     if not raw:
-        return validation_error(
-            state,
-            "No phone number or account number was given.",
-            "Ask for the phone number or account number on the account.",
+        # No number and no usable caller ID: not a wrong entry, so no strike (BR-TV-010).
+        state["last_tracking_id"] = reference
+        return error_reply(
+            "INVALID_INPUT",
+            "No phone number or account number was given, and no caller ID is available.",
+            NO_ACCOUNT_ACTION,
             reference,
-            lang,
+            language=lang,
+            data={
+                "spoken_message": spoken_line("account_lookup_options", lang),
+                "pin_length": 4,
+                "counted": False,
+                "caller_id_available": False,
+            },
         )
     digits = only_digits(raw)
     norm_digits = digits[1:] if (len(digits) == 11 and digits.startswith("1")) else digits
@@ -951,6 +971,7 @@ def lookup_account_impl(  # pragma: no cover
         "customer_type": state["customer_type"],
         "lines_of_business": list(account.get("lines_of_business", [])),
         "region": state["region"],
+        "used_caller_id": used_caller_id,
     }
     reply = ok_reply(data, reference, language=lang)
     if business:

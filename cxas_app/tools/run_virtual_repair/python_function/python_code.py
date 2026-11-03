@@ -102,8 +102,9 @@ _TECH_RESET_NOTES: dict[str, dict[str, str]] = {  # pragma: no cover
 
 _TECH_SUB_TYPES = ("streaming", "satellite", "streaming_only")  # pragma: no cover
 
-ACTIVE_OUTAGES: dict[str, dict[str, Any]] = {  # pragma: no cover
-    "Region-A": {"outage_id": "OUT-A-27", "services": ["internet", "tv"], "eta_hours": 4},
+ACTIVE_OUTAGES_BY_DISTRICT: dict[str, dict[str, Any]] = {  # pragma: no cover
+    "G1": {"outage_id": "OUT-G1-27", "services": ["internet", "tv"], "eta_hours": 4},
+    "H3": {"outage_id": "OUT-H3-27", "services": ["internet", "tv"], "eta_hours": 4},
 }
 
 FIXTURE_OUTAGE = {"outage_id": "OUT-LOCAL-09", "services": ["internet", "tv"], "eta_hours": 3}  # pragma: no cover
@@ -143,14 +144,14 @@ def fixture(state: dict[str, Any] | None, name: str) -> str:  # pragma: no cover
         raw = FIXTURE_DEFAULTS.get(name, "")
     return raw.strip().lower() if name not in ("fx_pin_on_file", "fx_otp_on_file", "fx_extra_bill_line") else raw.strip()
 
-def _tech_area_outage(state: dict[str, Any], region: str) -> dict[str, Any] | None:  # pragma: no cover
-    """The outage affecting a region: fixture override first, else the regional table."""
+def _tech_area_outage(state: dict[str, Any], district: str) -> dict[str, Any] | None:  # pragma: no cover
+    """The outage affecting a postal district: fixture override first, else the district table."""
     status = fixture(state, "fx_outage_status")
     if status == "active":
         return dict(FIXTURE_OUTAGE)
     if status == "none":
         return None
-    found = ACTIVE_OUTAGES.get(region)
+    found = ACTIVE_OUTAGES_BY_DISTRICT.get(district)
     return dict(found) if found else None
 
 _TECH_CATEGORIES: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {  # pragma: no cover
@@ -254,6 +255,12 @@ def _tech_data_usage(lang: str) -> dict[str, Any]:  # pragma: no cover
         state=_tech_text(_TECH_DATA_NOTES["slowed" if slowed else "not_slowed"], lang),
     )
     return {"data_speed_reduced": slowed, "data_usage_note": usage, "throttling_note": _tech_text(_TECH_DATA_NOTES["throttling"], lang)}
+
+OUTAGE_DISTRICT_LENGTH = 2  # pragma: no cover
+
+def _tech_district(kind: str, code: str) -> str:  # pragma: no cover
+    """Postal district of a Canadian postal code (province letter + district digit); "" for a ZIP."""
+    return code[:OUTAGE_DISTRICT_LENGTH] if kind == "postal" else ""
 
 TECH_REPAIR_VISIT_FEE = "0.00"  # pragma: no cover
 
@@ -385,18 +392,6 @@ def _tech_parse_postal(raw: Any) -> tuple[str, str]:  # pragma: no cover
         if _TECH_POSTAL_RE.fullmatch(fixed):
             return "postal", f"{fixed[:3]} {fixed[3:]}"
     return "", compact
-
-DEFAULT_REGION = "Region-C"  # pragma: no cover
-
-REGION_BY_POSTAL_LETTER: dict[str, str] = {  # pragma: no cover
-    **{letter: "Region-A" for letter in "GHJ"},
-    **{letter: "Region-B" for letter in "KLMNP"},
-}
-
-def _tech_region(kind: str, code: str) -> str:  # pragma: no cover
-    if kind == "postal":
-        return REGION_BY_POSTAL_LETTER.get(code[:1], DEFAULT_REGION)
-    return DEFAULT_REGION
 
 _TECH_HOW_TO: dict[str, dict[str, str]] = {  # pragma: no cover
     "modem_restart": {
@@ -1383,8 +1378,8 @@ def run_virtual_repair_impl(  # pragma: no cover
                 data={"lob": "tv", "allowed_sub_types": list(_TECH_SUB_TYPES)},
             )
         state["tv_sub_type"] = sub_type
-    region = _tech_region(*_tech_parse_postal(account_record(state).get("postal_code", "")))
-    outage = _tech_area_outage(state, region)
+    on_file = _tech_parse_postal(account_record(state).get("postal_code", ""))
+    outage = _tech_area_outage(state, _tech_district(*on_file))
     if outage and service in outage["services"]:
         state["outage_active"] = True
         return error_reply(

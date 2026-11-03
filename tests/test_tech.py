@@ -38,8 +38,8 @@ def _walk_keys(obj: Any) -> list[str]:
 # --- check_regional_outage ---------------------------------------------------
 
 
-@pytest.mark.parametrize("code", ["G2A 3B4", "g2a3b4", "J4K-5L6", "h2x oa9"])
-def test_outage_quebec_region_class_is_active_without_login(code: str) -> None:
+@pytest.mark.parametrize("code", ["G1A 3B4", "g1k5e2", "H3A-1B2", "h3c oa9"])
+def test_outage_affected_district_class_is_active_without_login(code: str) -> None:
     state: dict[str, Any] = {}
     reply = check_regional_outage_impl(code, "internet", state=state)
     assert reply["status"] == "ok"
@@ -50,6 +50,19 @@ def test_outage_quebec_region_class_is_active_without_login(code: str) -> None:
     assert data["restoration_eta_display"]
     assert state["outage_active"] is True
     assert "outage_active" in reply["agent_action"]
+
+
+@pytest.mark.parametrize("code", ["H2X 1A1", "h1n2b3", "H4A 1B2", "G2A 3B4", "J4K-5L6"])
+def test_outage_other_quebec_districts_have_no_outage(code: str) -> None:
+    """Outages are by postal district, not province: the rest of Quebec stays Region-A with no outage."""
+    state: dict[str, Any] = {}
+    reply = check_regional_outage_impl(code, "internet", state=state)
+    data = reply["data"]
+    assert data["region"] == "Region-A"
+    assert data["outage_active"] is False
+    assert data["affected_services"] == []
+    assert state["outage_active"] is False
+    assert "troubleshooting" in reply["agent_action"]
 
 
 def test_outage_other_region_and_zip_have_no_outage() -> None:
@@ -65,18 +78,18 @@ def test_outage_fixture_overrides_regional_table() -> None:
     active = check_regional_outage_impl("M5V 2T6", "tv", state={"fx_outage_status": "active"})["data"]
     assert active["outage_active"] is True
     assert active["outage_id"] == FIXTURE_OUTAGE["outage_id"]
-    none = check_regional_outage_impl("G2A 3B4", state={"fx_outage_status": "none"})["data"]
+    none = check_regional_outage_impl("G1A 3B4", state={"fx_outage_status": "none"})["data"]
     assert none["outage_active"] is False
 
 
 def test_outage_lob_not_affected_is_not_active() -> None:
-    data = check_regional_outage_impl("G2A 3B4", "mobility", state={})["data"]
+    data = check_regional_outage_impl("G1A 3B4", "mobility", state={})["data"]
     assert data["outage_active"] is False
 
 
 def test_outage_lob_aliases() -> None:
-    assert check_regional_outage_impl("G2A 3B4", "Wi-Fi", state={})["data"]["outage_active"] is True
-    assert check_regional_outage_impl("G2A 3B4", "télé", state={})["data"]["outage_active"] is True
+    assert check_regional_outage_impl("G1A 3B4", "Wi-Fi", state={})["data"]["outage_active"] is True
+    assert check_regional_outage_impl("G1A 3B4", "télé", state={})["data"]["outage_active"] is True
 
 
 def test_outage_empty_code_uses_address_on_file() -> None:
@@ -100,7 +113,7 @@ def test_outage_three_invalid_codes_hand_over() -> None:
 
 
 def test_outage_french_display_and_mock_error() -> None:
-    fr = check_regional_outage_impl("G2A 3B4", language="fr-CA", state={})
+    fr = check_regional_outage_impl("G1A 3B4", language="fr-CA", state={})
     assert fr["data"]["restoration_eta_display"].startswith("environ")
     err = check_regional_outage_impl("G2A 3B4", state={"mock_error": "SYSTEM_DOWN"})
     assert err["error"] == "SYSTEM_UNAVAILABLE"
