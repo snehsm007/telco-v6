@@ -346,3 +346,13 @@ def test_first_turn_keypad_two_adds_french_choice_note():
              config=N(system_instruction="base"))
     dp.apply_language_prompt_filter(N(state={}), req2, agent_name="router")
     assert dp.KEYPAD_FRENCH_NOTE not in req2.config.system_instruction
+
+
+def test_first_turn_keypad_two_locks_french():
+    from types import SimpleNamespace as N
+    from lib import dynamic_prompt as dp
+    st = {}
+    req = N(contents=[N(role="user", parts=[N(text="2", function_response=None, function_call=None)])],
+            config=N(system_instruction="base"))
+    dp.apply_language_prompt_filter(N(state=st), req, agent_name="router")
+    assert st.get("language") == "fr-CA"
