@@ -637,14 +637,31 @@ def _synthetic_account(account_number: str, phone: str) -> dict[str, Any]:
     return base
 
 
+SPOKEN_DIGIT_SEPARATORS_RE = re.compile(r"[\s,.\-()]+")
+ALL_DIGITS_RE = re.compile(r"^[0-9]+$")
+
+
 def classify_identifier(raw: Any) -> tuple[str, str]:
     """Match a caller identifier against the format patterns.
 
+    Phone speech-to-text writes numbers as "888,777,666" or "5 1 4 5 5 5 0 1 9 9";
+    when only separators (spaces, commas, dots, dashes, brackets) sit between the
+    digits, the digit string itself is classified by length with the same rules.
     Returns (kind, digits): kind is phone, intl_phone, account_number,
     account_reference, or "" when no pattern matches.
     """
     text = re.sub(r"\.0+$", "", str(raw or "").strip())
     digits = normalize_code(text)
+    compact = SPOKEN_DIGIT_SEPARATORS_RE.sub("", text)
+    if compact and ALL_DIGITS_RE.fullmatch(compact) and not PHONE_NANP_RE.fullmatch(text):
+        if len(compact) == 11 and compact.startswith("1"):
+            return "phone", compact[1:]
+        if len(compact) == 10 and not compact.startswith("0"):
+            return "phone", compact
+        if PHONE_LOCAL_PAIRS_RE.fullmatch(text):
+            return "phone", compact
+        if ACCOUNT_NUMBER_RE.fullmatch(compact):
+            return "account_number", compact
     if PHONE_NANP_RE.fullmatch(text):
         return "phone", digits[-10:]
     if PHONE_LOCAL_PAIRS_RE.fullmatch(text):
