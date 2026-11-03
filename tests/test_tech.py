@@ -204,7 +204,7 @@ def test_repair_symptom_categories(lob: str, symptom: str, category: str) -> Non
     assert data["symptom_category"] == category
     assert data["catalogue_match"] is True
     assert data["step_count"] == len(data["steps"])
-    assert data["sms_recommended"] is (data["step_count"] > 2)
+    assert data["sms_recommended"] is (data["step_count"] > 2 and category != "mobile_no_service")
 
 
 def test_repair_short_steps_are_verbal() -> None:
@@ -604,3 +604,13 @@ def test_tv_app_guide_says_what_a_cache_clear_keeps_and_how_long_it_takes(lang: 
     assert str(tech.TECH_APP_GUIDE_MINUTES) in data["typical_duration_display"]
     receiver = run_virtual_repair_impl("internet", "slow", state=_logged_in(language=lang))["data"]
     assert "app_data_note" not in receiver and "typical_duration_display" not in receiver
+
+
+@pytest.mark.parametrize("lang,symptom", [("en-US", "no service on my phone"), ("fr-CA", "mon cellulaire affiche Aucun service")])
+def test_repair_no_service_phone_walks_through_instead_of_texting(lang: str, symptom: str) -> None:
+    """VE-41: a phone with no service can't get the text guide; the agent improvised an email offer."""
+    reply = run_virtual_repair_impl("mobility", symptom, state=_logged_in(), language=lang)
+    assert reply["data"]["symptom_category"] == "mobile_no_service"
+    assert reply["data"]["step_count"] > 2 and reply["data"]["sms_recommended"] is False
+    assert reply["agent_action"].startswith("Walk") and "troubleshooting_guide" not in reply["agent_action"]
+    assert "email" not in reply["agent_action"].lower()

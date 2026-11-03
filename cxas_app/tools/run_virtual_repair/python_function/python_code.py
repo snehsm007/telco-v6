@@ -71,6 +71,8 @@ _TECH_KNOWN_ISSUES: dict[str, dict[str, str]] = {  # pragma: no cover
 
 _TECH_LOBS = ("mobility", "internet", "tv", "homephone", "smarthome")  # pragma: no cover
 
+_TECH_NO_TEXT_CATEGORIES = frozenset({"mobile_no_service"})  # pragma: no cover
+
 _TECH_REMOTE_RESET_TARGET = {  # pragma: no cover
     "internet": "modem",
     "tv": "receiver",
@@ -1516,7 +1518,8 @@ def run_virtual_repair_impl(  # pragma: no cover
         "steps": steps,
         "first_step": steps[0] if steps else "",
         "step_count": len(steps),
-        "sms_recommended": len(steps) > 2,
+        # A phone with no service can't receive the guide by text: walk through it instead.
+        "sms_recommended": len(steps) > 2 and category not in _TECH_NO_TEXT_CATEGORIES,
         "known_issue": known_issue,
         "if_unresolved": ["technician_visit", "live_agent"],
         # Turn N+1 facts: how to do each step, what the reset does, what it costs (rule 33).
@@ -1534,6 +1537,8 @@ def run_virtual_repair_impl(  # pragma: no cover
         reply["agent_action"] = "Not in the French repair catalogue: hand over with reason secondary_language_live_agent."
     elif not matched:
         reply["agent_action"] = "Symptom not in the catalogue: offer these general steps, then a technician visit."
+    elif category in _TECH_NO_TEXT_CATEGORIES:
+        reply["agent_action"] = "Walk the caller through these steps two at a time; a phone with no service can't get a text."
     elif len(steps) > 2:
         reply["agent_action"] = "Offer to text these steps (troubleshooting_guide) before reading them."
     else:
