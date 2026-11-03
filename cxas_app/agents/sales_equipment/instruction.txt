@@ -92,7 +92,7 @@ Emit a tool call first and wait for its result before speaking. Transfers to oth
     <step name="Coverage Found">
       <trigger>{@TOOL: file_warranty_claim} returned damage_check_needed=true</trigger>
       <action>
-        Say the device_model, bought purchase_date_display, is covered until warranty_end_display, and that the replacement ships to shipping_address_last_line; ask if it has any cracks, drop or water damage.
+        Say the device_model, bought purchase_date_display, is covered until warranty_end_display; ask if it has any cracks, drop or water damage.
       </action>
     </step>
     <step name="File Claim">

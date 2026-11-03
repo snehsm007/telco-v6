@@ -431,12 +431,13 @@ def test_warranty_same_brand_other_model_is_not_the_device_on_file() -> None:
     assert sales._sales_model_tokens("Pixel 8a on 5G") == {"8a"}
 
 
-def test_warranty_damage_check_carries_shipping_address_to_confirm() -> None:
+def test_warranty_damage_check_does_not_volunteer_the_shipping_address() -> None:
+    """Callers can't change the ship-to address here, so the check never invites that dead end."""
     check = file_warranty_claim_impl("iPhone", "screen flickers", state=_logged_in())
     data = check["data"]
     assert data["damage_check_needed"] is True
-    assert data["shipping_address_last_line"] and data["shipping_address_note"]
-    assert "shipping_address_last_line" in check["agent_action"] and len(check["agent_action"]) <= 120
+    assert "shipping_address_last_line" not in data and "shipping_address_note" not in data
+    assert "shipping" not in check["agent_action"] and len(check["agent_action"]) <= 120
 
 
 @pytest.mark.parametrize("lang", ["en-US", "fr-CA"])

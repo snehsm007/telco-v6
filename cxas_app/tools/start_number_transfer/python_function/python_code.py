@@ -236,10 +236,6 @@ SALES_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "Some local and regional games can be blacked out when a local broadcaster holds the rights in your area; those games air on that broadcaster's channel instead. Blackouts depend on the league and the service address.",
         "fr-CA": "Certains matchs locaux et régionaux peuvent être interdits de diffusion quand un diffuseur local détient les droits dans votre région; ces matchs sont alors présentés sur la chaîne de ce diffuseur. Les interdictions dépendent de la ligue et de l'adresse de service.",
     },
-    "warranty_ship_to": {
-        "en-US": "The replacement ships to the service address on file.",
-        "fr-CA": "Le téléphone de remplacement est expédié à l'adresse de service au dossier.",
-    },
     "port_own_account": {
         "en-US": "your own Telco account",
         "fr-CA": "votre propre compte Telco",
