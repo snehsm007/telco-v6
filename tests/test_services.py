@@ -562,7 +562,8 @@ def test_lookup_by_email_identifies_the_default_account() -> None:
 def test_account_number_lookups_never_expose_a_derived_phone_ending() -> None:
     """The phone built from account digits is real but not the caller's words: never spoken."""
     state: dict = {}
-    assert lookup_account_impl("882940012", state=state)["data"]["phone_last4"] == ""
+    found = lookup_account_impl("882940012", state=state)["data"]
+    assert found["phone_last4"] == "" and found["mobile_on_file"] is True
     assert send_login_code_impl(state=state)["data"]["destination_last4"] == ""
     assert lookup_account_impl("ACC-992834", state={})["data"]["phone_last4"] == ""
 

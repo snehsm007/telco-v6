@@ -975,6 +975,7 @@ def lookup_account_impl(  # pragma: no cover
         "identification_status": "Pass",
         "account_id_last4": normalize_code(account["account_id"])[-4:] or account["account_id"][-4:],
         "phone_last4": "" if account.get("phone_derived") else account["phone"][-4:],
+        "mobile_on_file": bool(account.get("phone")),
         "caller_provided_phone_last4": state["caller_provided_phone_last4"],
         "business_flag": business,
         "customer_type": state["customer_type"],
