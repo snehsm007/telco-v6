@@ -297,6 +297,11 @@ SALES_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "This number is already on your Telco account, so it moves between your own lines: no account number or transfer PIN from another provider is needed.",
         "fr-CA": "Ce numéro est déjà à votre compte Telco, donc il passe d'une de vos lignes à l'autre : aucun numéro de compte ni NIP de transfert d'un autre fournisseur n'est requis.",
     },
+    # Neutral multi-line fact (prd.md has no family or multi-line discount).
+    "multi_line_pricing": {
+        "en-US": "Each added line is billed at the plan's listed price; there's no separate multi-line or family discount.",
+        "fr-CA": "Chaque ligne ajoutée est facturée au prix affiché du forfait; il n'y a pas de rabais multiligne ou familial distinct.",
+    },
     "new_line_pricing": {
         "en-US": "Added as an additional line, the plan adds its own price to the account and the current line keeps its plan; as a plan change, it replaces the current mobile plan.",
         "fr-CA": "Ajouté comme ligne supplémentaire, le forfait ajoute son propre prix au compte et la ligne actuelle garde son forfait; comme changement de forfait, il remplace le forfait mobile actuel.",
@@ -366,6 +371,7 @@ def _sales_port_facts(lang: str) -> dict[str, Any]:  # pragma: no cover
     return {
         "fees_note": _sales_text("port_fees", lang),
         "authorization_note": _sales_text("port_authorization", lang),
+        "multi_line_note": _sales_text("multi_line_pricing", lang),
         "account_number_alternatives": [_sales_text(k, lang) for k in ("port_account_alt_bill", "port_account_alt_imei")],
     }
 
@@ -1229,6 +1235,7 @@ def start_number_transfer_impl(  # pragma: no cover
         "keep_old_service_note": _sales_text("port_keep_active", lang),
         "fees_note": _sales_text("port_fees", lang),
         "authorization_note": _sales_text("port_authorization", lang),
+        "multi_line_note": _sales_text("multi_line_pricing", lang),
     }
     if internal_move:
         data["internal_move_note"] = _sales_text("port_internal_move", lang)

@@ -348,6 +348,11 @@ SALES_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "This number is already on your Telco account, so it moves between your own lines: no account number or transfer PIN from another provider is needed.",
         "fr-CA": "Ce numéro est déjà à votre compte Telco, donc il passe d'une de vos lignes à l'autre : aucun numéro de compte ni NIP de transfert d'un autre fournisseur n'est requis.",
     },
+    # Neutral multi-line fact (prd.md has no family or multi-line discount).
+    "multi_line_pricing": {
+        "en-US": "Each added line is billed at the plan's listed price; there's no separate multi-line or family discount.",
+        "fr-CA": "Chaque ligne ajoutée est facturée au prix affiché du forfait; il n'y a pas de rabais multiligne ou familial distinct.",
+    },
     "new_line_pricing": {
         "en-US": "Added as an additional line, the plan adds its own price to the account and the current line keeps its plan; as a plan change, it replaces the current mobile plan.",
         "fr-CA": "Ajouté comme ligne supplémentaire, le forfait ajoute son propre prix au compte et la ligne actuelle garde son forfait; comme changement de forfait, il remplace le forfait mobile actuel.",

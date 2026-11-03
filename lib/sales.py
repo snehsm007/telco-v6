@@ -414,6 +414,7 @@ def browse_plans_impl(
         data["gateway_delivery_eta_display"] = display_date(delivery, lang)
     if lob_key == "mobility":
         data["after_data_cap"] = _sales_text("after_data_cap", lang)
+        data["multi_line_note"] = _sales_text("multi_line_pricing", lang)
     if budget_amt is not None:
         data.update(money(budget_amt, "budget"))
         data["no_plan_within_budget"] = not chosen
@@ -497,6 +498,7 @@ def place_order_impl(
             quote.update(money(plan["price"], "new_line_monthly_price"))
             quote.update(money(_sales_account_total(state) + (to_decimal(plan["price"]) or Decimal("0")), "new_line_account_monthly_total"))
             quote["new_line_pricing_note"] = _sales_text("new_line_pricing", lang)
+            quote["multi_line_note"] = _sales_text("multi_line_pricing", lang)
 
     order_id = "ORD-" + tracking_id("place_order", account_id, plan["plan_id"])[1:]
     pending_key = f"place_order:{plan['plan_id']}"
@@ -698,6 +700,7 @@ def _sales_port_facts(lang: str) -> dict[str, Any]:
     return {
         "fees_note": _sales_text("port_fees", lang),
         "authorization_note": _sales_text("port_authorization", lang),
+        "multi_line_note": _sales_text("multi_line_pricing", lang),
         "account_number_alternatives": [_sales_text(k, lang) for k in ("port_account_alt_bill", "port_account_alt_imei")],
     }
 
@@ -847,6 +850,7 @@ def start_number_transfer_impl(
         "keep_old_service_note": _sales_text("port_keep_active", lang),
         "fees_note": _sales_text("port_fees", lang),
         "authorization_note": _sales_text("port_authorization", lang),
+        "multi_line_note": _sales_text("multi_line_pricing", lang),
     }
     if internal_move:
         data["internal_move_note"] = _sales_text("port_internal_move", lang)

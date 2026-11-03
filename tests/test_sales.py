@@ -637,3 +637,24 @@ def test_sports_pack_names_its_channels() -> None:
     sports = next(p for p in plans if p["plan_id"] == "TV-SPORTS")
     lineup = sports["channel_lineup"]
     assert 3 <= len(lineup) <= sports["channel_count"] and all(isinstance(c, str) and c for c in lineup)
+
+
+# --- fix/35 (b): multi-line / family pricing is a tool fact -----------------------------
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_mobile_plan_and_port_replies_carry_the_multi_line_note(lang: str) -> None:
+    """VE-66: "is $47 before or after the family discount?" had no tool fact to answer from."""
+    note = SALES_COPY["multi_line_pricing"][lang]
+    assert browse_plans_impl("mobility", state=_identified(), language=lang)["data"]["multi_line_note"] == note
+    mobile_plan = next(p["plan_id"] for p in PLANS if p["lob"] == "mobility" and not p.get("addon"))
+    quote = place_order_impl(mobile_plan, state=_logged_in(), language=lang)
+    assert quote["error"] == "CONFIRMATION_REQUIRED" and quote["data"]["multi_line_note"] == note
+    checklist = start_number_transfer_impl("", state=_identified(), language=lang)
+    assert checklist["data"]["multi_line_note"] == note
+    pending = start_number_transfer_impl("5145550123", state=_logged_in(), language=lang)
+    assert pending["data"]["status"] == "pending_details" and pending["data"]["multi_line_note"] == note
+
+
+def test_multi_line_note_only_on_mobile_plans() -> None:
+    assert "multi_line_note" not in browse_plans_impl("internet", state=_identified())["data"]
