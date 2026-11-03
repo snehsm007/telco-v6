@@ -1184,6 +1184,8 @@ def file_warranty_claim_impl(  # pragma: no cover
         "replacement_eta_date": eta_iso,
         "replacement_eta_display": display_date(eta_iso, lang),
         "return_instructions": _sales_text("return_urgent" if urgent else "return_standard", lang),
+        # Where it ships, read before the caller agrees, so a wrong address surfaces before filing.
+        "shipping_address_last_line": account_record(state).get("service_address_last_line", ""),
     }
     if not urgent:
         return_by = relative_date(SALES_RETURN_WINDOW_DAYS + ship_days)
@@ -1197,7 +1199,7 @@ def file_warranty_claim_impl(  # pragma: no cover
         return error_reply(
             "CONFIRMATION_REQUIRED",
             "Read the claim terms and get the caller's yes before filing.",
-            "Say safety_advice if urgent, then the replacement terms and fees_note; ask to file; then confirmed=true.",
+            "Say safety_advice if urgent, the terms, fees_note and ship-to address; ask to file; then confirmed=true.",
             reference,
             language=lang,
             data={**terms, "claim_filed": False},
@@ -1206,7 +1208,6 @@ def file_warranty_claim_impl(  # pragma: no cover
         **terms,
         "claim_id": claim_id,
         "claim_filed": True,
-        "shipping_address_last_line": account_record(state).get("service_address_last_line", ""),
         "already_filed": already,
     }
     if not already:
