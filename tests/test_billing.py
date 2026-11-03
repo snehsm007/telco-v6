@@ -29,6 +29,7 @@ from lib.fakes import (
     PAST_DUE_AMOUNT,
     PAST_DUE_FALLBACK_LABEL,
     PAST_DUE_ITEMS,
+    PAYMENT_POSTING_NOTE,
     RECONNECT_MINUTES,
     RECONNECT_NOTE,
     REFUND_WINDOW_BUSINESS_DAYS,
@@ -896,6 +897,17 @@ def test_every_restore_path_says_when_service_returns_and_what_to_restart(lang):
         data = call(logged_in())["data"]
         assert data["service_restored"] is True
         assert data["reconnect_note"] == note
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_summary_and_payment_say_when_a_payment_posts(lang):
+    # "When does my payment post?" was answered from nothing (VE-18 r3, full-3cd4d6b).
+    note = PAYMENT_POSTING_NOTE[1] if lang == "fr-CA" else PAYMENT_POSTING_NOTE[0]
+    assert "right away" in PAYMENT_POSTING_NOTE[0] and "immédiatement" in PAYMENT_POSTING_NOTE[1]
+    assert get_billing_summary_impl(state=logged_in(), language=lang)["data"]["posting_note"] == note
+    for state in (logged_in(), logged_in(fx_service_status="active")):
+        paid = process_bill_payment_impl("10", "card_on_file", state=state, language=lang)["data"]
+        assert paid["posting_note"] == note
 
 
 def test_no_reconnect_note_without_a_restore():

@@ -60,6 +60,7 @@ from lib.fakes import (
     PAST_DUE_ITEMS,
     PAST_DUE_LATE_FEE,
     RECENT_PAYMENT_DAYS_AGO,
+    PAYMENT_POSTING_NOTE,
     RECONNECT_MINUTES,
     RECONNECT_NOTE,
     REFUND_WINDOW_BUSINESS_DAYS,
@@ -584,6 +585,7 @@ def get_billing_summary_impl(
         ],
         "recent_payments": _bill_payments(st, lang, live["past_due"]),
         "self_serve_adjustment_limit_display": display_amount(SELF_SERVE_ADJUSTMENT_LIMIT),
+        "posting_note": _bill_text(lang, *PAYMENT_POSTING_NOTE),
     }
     if live["past_due"] > _BILL_ZERO:
         data["past_due_breakdown"] = _bill_past_due_breakdown(st, lang, live["past_due"])
@@ -705,6 +707,7 @@ def process_bill_payment_impl(
         "autopay_enrolled": _bill_flag(st, "autopay_enrolled"),
         "service_restored": False,
         "service_status": status_before,
+        "posting_note": _bill_text(lang, *PAYMENT_POSTING_NOTE),
     }
     summary = _bill_text(
         lang,

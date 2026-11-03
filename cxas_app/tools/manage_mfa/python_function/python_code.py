@@ -875,6 +875,16 @@ def manage_mfa_impl(  # pragma: no cover
                 "Two-step verification is free; turning it on or off never adds a charge to the bill.",
                 "La vérification en deux étapes est gratuite; l'activer ou la désactiver n'ajoute jamais de frais à la facture.",
             ),
+            "sms_cost_note": _acct_text(
+                lang,
+                "Sign-in codes by text are free from us; your mobile carrier's standard messaging rates may apply.",
+                "Les codes de connexion par texto sont gratuits de notre part; les frais de messagerie habituels de votre fournisseur cellulaire peuvent s'appliquer.",
+            ) if now_on else "",
+            "setup_note": _acct_text(
+                lang,
+                "Setup is complete on this call and works right away; the next sign-in asks for a text code.",
+                "La configuration est terminée pendant cet appel et fonctionne immédiatement; la prochaine connexion demandera un code par texto.",
+            ) if now_on else "",
             "re_enable_note": "" if now_on else _acct_text(
                 lang,
                 f"It can be turned back on at any time on a call with us after you verify; codes then go by text to the mobile number on file, ending in {dest}, or to a new mobile number once it is updated on the account.",

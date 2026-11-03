@@ -582,6 +582,11 @@ RECONNECT_NOTE = (
     "Service comes back within [minutes] minutes; if it doesn't, restart the modem or phone.",
     "Le service revient d'ici [minutes] minutes; sinon, redémarrez le modem ou le téléphone.",
 )
+# When a payment shows on the balance (DESIGN_RULES rule 33: "when does it post?"), (en-US, fr-CA).
+PAYMENT_POSTING_NOTE = (
+    "A payment made with us posts to the account right away, so the balance given already includes it.",
+    "Un paiement fait chez nous est porté au compte immédiatement; le solde indiqué en tient donc déjà compte.",
+)
 CARD_BRANDS_BY_PREFIX: dict[str, str] = {"4": "Visa", "5": "Mastercard", "2": "Mastercard", "3": "American Express"}
 # Autopay follow-up facts (DESIGN_RULES rule 33), (en-US, fr-CA). [days] = bill date to due date.
 AUTOPAY_WITHDRAWAL_NOTE = (

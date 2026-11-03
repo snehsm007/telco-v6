@@ -57,6 +57,11 @@ BILL_DUE_IN_DAYS = 18  # pragma: no cover
 
 NEXT_BILL_CYCLE_DAYS = 30  # pragma: no cover
 
+PAYMENT_POSTING_NOTE = (  # pragma: no cover
+    "A payment made with us posts to the account right away, so the balance given already includes it.",
+    "Un paiement fait chez nous est porté au compte immédiatement; le solde indiqué en tient donc déjà compte.",
+)
+
 _BILL_ZERO = Decimal("0.00")  # pragma: no cover
 
 def display_amount(value: Any) -> str:  # pragma: no cover
@@ -1333,6 +1338,7 @@ def process_bill_payment_impl(  # pragma: no cover
         "autopay_enrolled": _bill_flag(st, "autopay_enrolled"),
         "service_restored": False,
         "service_status": status_before,
+        "posting_note": _bill_text(lang, *PAYMENT_POSTING_NOTE),
     }
     summary = _bill_text(
         lang,

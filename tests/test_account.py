@@ -591,3 +591,17 @@ def test_mfa_change_carries_fee_and_re_enable_notes(lang: str) -> None:
     assert off["mfa_enabled"] is False and off["fee_note"]
     assert "0147" in off["re_enable_note"]
     assert ("frais" in off["fee_note"]) == (lang == "fr-CA")
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_mfa_enable_carries_sms_cost_and_setup_notes(lang: str) -> None:
+    """VE-14 r2 (full-3cd4d6b) invented "standard messaging rates apply" and "setup takes a moment"."""
+    state = _logged_in(language=lang)
+    on = manage_mfa_impl("enable", state=state, language=lang)["data"]
+    en = lang == "en-US"
+    assert ("free from us" in on["sms_cost_note"]) == en and ("carrier" in on["sms_cost_note"]) == en
+    assert ("gratuits" in on["sms_cost_note"]) == (not en)
+    assert ("right away" in on["setup_note"]) == en and ("immédiatement" in on["setup_note"]) == (not en)
+    state["step_up_verified"] = True
+    off = manage_mfa_impl("disable", state=state, language=lang)["data"]
+    assert off["sms_cost_note"] == "" and off["setup_note"] == ""

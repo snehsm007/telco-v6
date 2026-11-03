@@ -46,6 +46,11 @@ BILL_CYCLE_DAYS_AGO = 3  # pragma: no cover
 
 BILL_DUE_IN_DAYS = 18  # pragma: no cover
 
+PAYMENT_POSTING_NOTE = (  # pragma: no cover
+    "A payment made with us posts to the account right away, so the balance given already includes it.",
+    "Un paiement fait chez nous est porté au compte immédiatement; le solde indiqué en tient donc déjà compte.",
+)
+
 SELF_SERVE_ADJUSTMENT_LIMIT = "25.00"  # pragma: no cover
 
 _BILL_SUSPENSION_REASONS = {  # pragma: no cover
@@ -1147,6 +1152,7 @@ def get_billing_summary_impl(  # pragma: no cover
         ],
         "recent_payments": _bill_payments(st, lang, live["past_due"]),
         "self_serve_adjustment_limit_display": display_amount(SELF_SERVE_ADJUSTMENT_LIMIT),
+        "posting_note": _bill_text(lang, *PAYMENT_POSTING_NOTE),
     }
     if live["past_due"] > _BILL_ZERO:
         data["past_due_breakdown"] = _bill_past_due_breakdown(st, lang, live["past_due"])
