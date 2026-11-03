@@ -154,7 +154,7 @@ def test_mfa_enable_when_fixture_says_on() -> None:
 
 
 def test_mfa_disable_when_already_off() -> None:
-    state = _logged_in()
+    state = _logged_in(fx_mfa_enabled="false")
     reply = manage_mfa_impl("disable", state=state)
     assert reply["error"] == "ALREADY_APPLIED"
     assert reply["data"]["mfa_enabled"] is False
@@ -183,6 +183,30 @@ def test_mfa_disable_needs_email_step_up_then_applies_once() -> None:
     # Turning it back on needs no step-up; turning it off again needs a new one.
     assert manage_mfa_impl("enable", state=state)["status"] == "ok"
     assert manage_mfa_impl("disable", state=state)["error"] == "STEP_UP_REQUIRED"
+
+
+def test_mfa_default_is_opposite_of_the_request_then_fixed_for_the_call() -> None:
+    """No fixture, no live state: disable finds MFA on, enable finds it off (fix 16)."""
+    off = _logged_in()
+    first = manage_mfa_impl("disable", state=off)
+    assert first["error"] == "STEP_UP_REQUIRED" and first["data"]["mfa_enabled"] is True
+    assert off["mfa_state"] == "enabled"
+    # The resolved state holds for the rest of the call: enabling now is already done.
+    assert manage_mfa_impl("enable", state=off)["error"] == "ALREADY_APPLIED"
+    off["step_up_verified"] = True
+    assert manage_mfa_impl("disable", state=off)["data"]["mfa_enabled"] is False
+
+    on = _logged_in()
+    reply = manage_mfa_impl("enable", state=on)
+    assert reply["status"] == "ok" and reply["data"]["mfa_enabled"] is True
+
+
+def test_mfa_fixture_and_live_state_beat_the_default() -> None:
+    assert manage_mfa_impl("enable", state=_logged_in(fx_mfa_enabled="true"))["error"] == "ALREADY_APPLIED"
+    assert manage_mfa_impl("disable", state=_logged_in(fx_mfa_enabled="false"))["error"] == "ALREADY_APPLIED"
+    assert manage_mfa_impl("enable", state=_logged_in(mfa_state="enabled"))["error"] == "ALREADY_APPLIED"
+    live_off = _logged_in(fx_mfa_enabled="true", mfa_state="disabled")
+    assert manage_mfa_impl("disable", state=live_off)["error"] == "ALREADY_APPLIED"
 
 
 def test_mfa_login_alone_is_not_a_step_up() -> None:

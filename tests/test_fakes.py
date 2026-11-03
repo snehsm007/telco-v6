@@ -199,3 +199,4 @@ def test_default_world_serves_scenarios_without_overrides() -> None:
     from lib.fakes import FIXTURE_DEFAULTS
 
     assert FIXTURE_DEFAULTS["fx_duplicate_payment"] == "true"
+    assert FIXTURE_DEFAULTS["fx_mfa_enabled"] == ""  # manage_mfa: opposite of the request

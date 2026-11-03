@@ -117,12 +117,22 @@ def _acct_lob(value: Any) -> str:
     return ""
 
 
-def _acct_mfa_on(state: dict[str, Any]) -> bool:
-    """MFA state: what a tool set this call, else the backend fixture."""
+def _acct_mfa_on(state: dict[str, Any], requested: str = "") -> bool:
+    """MFA state: what a tool set this call, else the backend fixture.
+
+    With no fixture value (FIXTURE_DEFAULTS "": a synthetic caller has no MFA record),
+    the account is in the state opposite to the caller's first request (enable ->
+    currently off, disable -> currently on). The resolved state is stored in
+    `mfa_state` so it stays the same for the rest of the call.
+    """
     live = str(state.get("mfa_state") or "").strip().lower()
     if live in ("enabled", "disabled"):
         return live == "enabled"
-    return fixture_flag(state, "fx_mfa_enabled")
+    if fixture(state, "fx_mfa_enabled"):
+        return fixture_flag(state, "fx_mfa_enabled")
+    on = requested == "disable"
+    state["mfa_state"] = "enabled" if on else "disabled"
+    return on
 
 
 def send_password_reset_link_impl(
@@ -216,7 +226,7 @@ def manage_mfa_impl(
             reference,
             lang,
         )
-    currently_on = _acct_mfa_on(state)
+    currently_on = _acct_mfa_on(state, act)
     if currently_on == (act == "enable"):
         return error_reply(
             "ALREADY_APPLIED",

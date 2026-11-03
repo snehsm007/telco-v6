@@ -219,7 +219,9 @@ FIXTURE_DEFAULTS: dict[str, str] = {  # pragma: no cover
     "fx_duplicate_payment": "true",  # the ledger holds a duplicate payment; refunded only when a caller claims it
     "fx_extra_bill_line": "",
     "fx_device_warranty": "in_warranty",
-    "fx_mfa_enabled": "false",
+    # "" = no MFA record for a synthetic caller: the account is in the state opposite
+    # to the caller's request (manage_mfa), then fixed for the rest of the call.
+    "fx_mfa_enabled": "",
     "fx_sms_delivery": "delivered",
 }
 
