@@ -330,6 +330,8 @@ SALES_GENERIC_DEVICE_WORDS: frozenset[str] = frozenset({
     "mobile", "device", "handset", "mon", "ma", "le", "la", "un", "une", "ce", "téléphone", "telephone",
     "cellulaire", "appareil", "portable", "intelligent",
 })
+# Model variant words: a caller's "iPhone 15 Pro" is not the "Apple iPhone 15" on file.
+SALES_DEVICE_VARIANT_WORDS: frozenset[str] = frozenset({"pro", "max", "plus", "ultra", "mini", "fe", "lite"})
 # Words in target_line / current_provider meaning the number is a home phone (landline).
 SALES_LANDLINE_WORDS: tuple[str, ...] = ("landline", "home phone", "house phone", "fixe", "résidentiel", "maison")
 # Words in target_line meaning the number goes on a new line on the account.

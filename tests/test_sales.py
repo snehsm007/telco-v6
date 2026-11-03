@@ -432,7 +432,7 @@ def test_warranty_same_brand_other_model_is_not_the_device_on_file() -> None:
     assert data["device_model"] == "Samsung Galaxy S22" and data["device_matched"] is False
     assert "S24" not in str(check)
     # The on-file model, with or without its model number or a storage size, still matches.
-    for named in ("Samsung Galaxy S24", "Galaxy S24 256GB", "my samsung", "iPhone 15 Pro"):
+    for named in ("Samsung Galaxy S24", "Galaxy S24 256GB", "my samsung", "iPhone 15 128GB"):
         assert file_warranty_claim_impl(named, "won't charge", state=_logged_in())["data"]["device_matched"] is True, named
     assert sales._sales_model_tokens("iPhone 13 Pro 128GB 2023") == {"13"}
     assert sales._sales_model_tokens("Pixel 8a on 5G") == {"8a"}
@@ -579,3 +579,12 @@ def test_mobility_plans_carry_reduced_speed_and_hotspot_facts(lang: str) -> None
     assert quote["reduced_speed_display"] and quote["hotspot_note"]
     internet = browse_plans_impl("internet", state=_identified(), language=lang)["data"]["plans"]
     assert all("reduced_speed_display" not in p and "hotspot_note" not in p for p in internet)
+
+
+def test_warranty_named_variant_is_not_the_base_model_on_file() -> None:
+    """VE-48 r1: "iPhone 15 Pro" was matched to the Apple iPhone 15 on file and that model shipped."""
+    for named in ("iPhone 15 Pro", "iphone 15 pro max", "Galaxy S24 Ultra", "Pixel 8 Pro", "Galaxy S24 FE"):
+        data = file_warranty_claim_impl(named, "screen flickers", state=_logged_in())["data"]
+        assert data["device_matched"] is False and data["device_model"] == named, named
+    for named in ("Apple iPhone 15", "my pixel", "Galaxy S24"):
+        assert file_warranty_claim_impl(named, "screen flickers", state=_logged_in())["data"]["device_matched"] is True

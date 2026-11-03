@@ -46,6 +46,7 @@ from lib.fakes import (
     SALES_CAPACITY_WORDS,
     SALES_COPY,
     SALES_COVERAGE_MAX_MBPS,
+    SALES_DEVICE_VARIANT_WORDS,
     SALES_EQUIPMENT_DELIVERY_DAYS,
     SALES_FEATURES_FR,
     SALES_GENERIC_DEVICE_WORDS,
@@ -313,11 +314,15 @@ def _sales_device(device: Any, issue: Any) -> tuple[dict[str, Any], bool]:
     """
     text = f"{device or ''} {issue or ''}".lower()
     named_tokens = _sales_model_tokens(device)
+    named_variants = set(re.findall(r"[^\W_]+", str(device or "").lower())) & SALES_DEVICE_VARIANT_WORDS
     for dev in DEVICES_ON_FILE:
         if not (any(k in text for k in dev.get("keywords", [])) or str(dev["model"]).lower() in text):
             continue
         # Same brand, different model ("Galaxy S22" vs the S24 on file): not this device.
         if named_tokens - _sales_model_tokens(dev["model"]):
+            continue
+        # Same model number, other variant ("iPhone 15 Pro" vs the iPhone 15 on file): not this device.
+        if named_variants - set(re.findall(r"[^\W_]+", str(dev["model"]).lower())):
             continue
         return dev, True
     newest = min(DEVICES_ON_FILE, key=lambda d: int(d["purchased_days_ago"]))
