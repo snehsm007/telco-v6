@@ -34,3 +34,11 @@ def test_lookup_account_mock_error(monkeypatch) -> None:
     reply = tool.lookup_account("202 555 0186")
     assert reply["status"] == "error"
     assert reply["error"] == "SYSTEM_UNAVAILABLE"
+
+
+def test_lookup_account_uses_the_session_caller_id(monkeypatch) -> None:
+    session = SimpleNamespace(state={"clid": "202 555 0186"})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.lookup_account("")
+    assert reply["status"] == "ok" and reply["data"]["used_caller_id"] is True
+    assert session.state["account_id"] == "A1001"

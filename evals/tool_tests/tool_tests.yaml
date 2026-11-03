@@ -86,7 +86,7 @@ tests:
   requirements:
   - REQ-10
   args:
-    phone_or_account: ''
+    phone_or_account: ACC-12
   initial_state:
     global_err_count: 2
   expected_status: error

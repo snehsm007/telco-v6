@@ -93,7 +93,7 @@ def test_lookup_implausible_numbers_are_not_found(raw: str) -> None:
 
 def test_lookup_validation_errors_end_in_too_many_errors() -> None:
     state: dict = {}
-    assert lookup_account_impl("", state=state)["error"] == "INVALID_INPUT"
+    assert lookup_account_impl("ACC-12", state=state)["error"] == "NOT_FOUND"
     assert lookup_account_impl("123", state=state)["error"] == "NOT_FOUND"
     third = lookup_account_impl("1234567890", state=state)
     assert third["error"] == "TOO_MANY_ERRORS"
@@ -112,6 +112,47 @@ def test_lookup_by_name_or_address_is_not_a_strike(raw: str) -> None:
     assert "check_secret_pin" in reply["agent_action"] and len(reply["agent_action"]) <= 120
     fr = lookup_account_impl(raw, state={"language": "fr-CA"})
     assert fr["data"]["spoken_message"] == SPOKEN_LINES["account_lookup_options"]["fr-CA"]
+
+
+@pytest.mark.parametrize("raw", ["", "clid", "CLID", None])
+@pytest.mark.parametrize("clid", ["", "12345", "5555555555", "1234567890", "not a number"])
+def test_lookup_without_a_number_and_no_usable_caller_id_offers_options(raw, clid: str) -> None:
+    """prd.md §5 `clid`: no number given and no valid caller ID -> INVALID_INPUT, the options line, no strike."""
+    state: dict = {"clid": clid}
+    for _ in range(4):
+        reply = lookup_account_impl(raw, state=state)
+        assert reply["error"] == "INVALID_INPUT" and reply["data"]["counted"] is False
+    assert reply["data"]["caller_id_available"] is False
+    assert reply["data"]["spoken_message"] == SPOKEN_LINES["account_lookup_options"]["en-US"]
+    assert read_count(state, "global_err_count") == 0 and "account_id" not in state
+    assert len(reply["agent_action"]) <= 120
+    fr = lookup_account_impl(raw, state={"clid": clid, "language": "fr-CA"})
+    assert fr["data"]["spoken_message"] == SPOKEN_LINES["account_lookup_options"]["fr-CA"]
+
+
+@pytest.mark.parametrize("clid", ["2025550186", "+1 (202) 555-0186", "1-202-555-0186", 2025550186.0])
+def test_lookup_without_a_number_uses_a_valid_caller_id(clid) -> None:
+    """prd.md §5 `clid`: "use the number I'm calling from" (empty or "clid") looks up the caller ID."""
+    for raw in ("", "clid"):
+        state: dict = {"clid": clid}
+        reply = lookup_account_impl(raw, state=state)
+        assert reply["status"] == "ok" and reply["data"]["used_caller_id"] is True
+        assert state["account_id"] == ACCOUNTS[0]["account_id"]
+        assert reply["data"]["phone_last4"] == "0186"
+        assert state["caller_provided_phone_last4"] == "0186"
+
+
+def test_lookup_caller_id_unknown_number_and_blocked_caller() -> None:
+    synthetic = lookup_account_impl("", state={"clid": "4165550123"})
+    assert synthetic["status"] == "ok" and synthetic["data"]["phone_last4"] == "0123"
+    state: dict = {"clid": "9005550199"}
+    blocked = lookup_account_impl("", state=state)
+    assert blocked["error"] == "PERMISSION_DENIED" and state["is_blocked"] is True
+
+
+def test_lookup_a_stated_number_wins_over_the_caller_id() -> None:
+    reply = lookup_account_impl("416 555 0123", state={"clid": "2025550186"})
+    assert reply["data"]["phone_last4"] == "0123" and reply["data"]["used_caller_id"] is False
 
 
 @pytest.mark.parametrize("raw", ["123", "ACC-12", "not-an-email@", "555-01"])

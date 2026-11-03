@@ -72,6 +72,15 @@
       }
     },
     {
+      "name": "clid",
+      "description": "10-digit caller ID from telephony (prd.md section 5). lookup_account uses it when the caller gives no number. Empty in text chats.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
       "name": "auth_status",
       "description": "Login progress: none, code_sent, pass or locked. Only check_login_code or check_secret_pin sets pass.",
       "schema": {
