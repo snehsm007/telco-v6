@@ -114,3 +114,24 @@ def test_seven_and_eight_digit_numbers_keep_only_their_last_4_digits() -> None:
 def test_dates_and_money_under_nine_digits_are_kept() -> None:
     text = "Due 2026-10-08 or 2026/10/08; balance 12345.67; six digits 123456."
     assert mask_long_numbers(text) == text
+
+
+def test_pin_and_login_code_are_never_spoken_back() -> None:
+    # BR-TV-009: the caller's PIN or code, echoed by the model, is dropped.
+    assert clean_speech("Thanks, your PIN 7316 is verified.") == "Thanks, your PIN is verified."
+    assert clean_speech("I'll check the code 615203 now.") == "I'll check the code now."
+    assert clean_speech("Your code is 615 203.") == "Your code."
+    assert clean_speech("Merci, votre NIP est 7316.") == "Merci, votre NIP."
+    assert clean_speech("Je vérifie le code 615203.") == "Je vérifie le code."
+
+
+def test_error_codes_area_codes_and_references_are_kept() -> None:
+    for text in (
+        "Error code 1002 means the dish lost signal.",
+        "Le code d'erreur 1002 indique une perte de signal.",
+        "The area code 514 is in Region-A.",
+        "I sent a 6-digit code to the number ending in 0199.",
+        "Your confirmation code is R790315.",
+        "Your PIN was verified.",
+    ):
+        assert clean_speech(text) == text

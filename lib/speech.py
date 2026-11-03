@@ -36,6 +36,33 @@ def mask_long_numbers(text: str, min_digits: int = MIN_MASKED_DIGITS) -> str:
     return NUMBER_RUN_RE.sub(_mask, text)
 
 
+# A PIN or login code said right after its name ("PIN 7316", "le code 615203",
+# "votre NIP est 7316"). BR-TV-009: PINs and codes are never spoken back.
+SECRET_CODE_RE = re.compile(
+    r"\b(?P<word>pin|nip|passcode|code)\b(?P<gap>(?:\s+(?:is|was|est|of|de|:)|\s*:)*\s*)"
+    r"(?P<digits>\d(?:[\s-]?\d){3,7})(?![\d-])",
+    re.IGNORECASE,
+)
+_SECRET_CODE_SKIP_BEFORE = ("error", "erreur", "area", "régional", "postal")
+
+
+def mask_secret_codes(text: str) -> str:
+    """Drop the digits of a PIN (4-8 digits) or login code (6-8 digits) said after its name.
+
+    "Error code 1002" (a TV error code) and "area code 514" are kept.
+    """
+
+    def _drop(match: re.Match[str]) -> str:
+        digits = re.sub(r"\D", "", match.group("digits"))
+        word = match.group("word").lower()
+        before = text[max(0, match.start() - 10) : match.start()].lower()
+        if word == "code" and (len(digits) < 6 or any(w in before for w in _SECRET_CODE_SKIP_BEFORE)):
+            return match.group(0)
+        return match.group("word")
+
+    return SECRET_CODE_RE.sub(_drop, text)
+
+
 def strip_markdown(text: str) -> str:
     """Drop the markdown symbols a voice would read out: asterisks, backticks, headings."""
     return MARKDOWN_RE.sub("", text)
@@ -49,7 +76,7 @@ _PAYMENT_OR_ACCOUNT_WORDS: tuple[str, ...] = (
 
 def clean_speech(text: str) -> str:
     """Everything the speech_hygiene callback does to one piece of reply text."""
-    return mask_long_numbers(strip_markdown(text))
+    return mask_long_numbers(mask_secret_codes(strip_markdown(text)))
 
 
 def clean_agent_speech(

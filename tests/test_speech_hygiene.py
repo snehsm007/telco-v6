@@ -63,3 +63,10 @@ def test_bundled_callback_keeps_tool_endings_and_fixes_profile_phone(callback) -
     response = make_response("I sent the code to the number ending in 0186.")
     assert callback.after_model_callback(SimpleNamespace(state=state), response) is response
     assert response.content.parts[0].text == "I sent the code to the number ending in 0199."
+
+
+@pytest.mark.parametrize("callback", CALLBACKS)
+def test_bundled_callback_never_speaks_back_a_pin(callback) -> None:
+    response = make_response("Thanks, your PIN 7316 is verified.")
+    assert callback.after_model_callback(SimpleNamespace(state={}), response) is response
+    assert response.content.parts[0].text == "Thanks, your PIN is verified."
