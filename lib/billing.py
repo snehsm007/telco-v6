@@ -46,6 +46,7 @@ from lib.fakes import (
     BILL_DUE_IN_DAYS,
     BILL_EXTRA_LINE_FR,
     BILL_EXTRA_LINE_KEYWORDS,
+    BILL_EXTRA_LINE_NOTES,
     BILL_EXTRA_LINES,
     CARD_BRANDS_BY_PREFIX,
     DECLINED_CARD_LAST4,
@@ -55,7 +56,12 @@ from lib.fakes import (
     LAST_PAYMENT,
     NEXT_BILL_CYCLE_DAYS,
     PAST_DUE_AMOUNT,
+    PAST_DUE_FALLBACK_LABEL,
+    PAST_DUE_ITEMS,
+    PAST_DUE_LATE_FEE,
     RECENT_PAYMENT_DAYS_AGO,
+    RECONNECT_MINUTES,
+    RECONNECT_NOTE,
     REFUND_WINDOW_BUSINESS_DAYS,
     SELF_SERVE_ADJUSTMENT_LIMIT,
     SERVICE_KEYWORDS,
@@ -194,6 +200,7 @@ def _bill_lines(state: dict[str, Any], lang: str) -> list[dict[str, Any]]:
                 "date_display": when["display"],
                 "keywords": BILL_EXTRA_LINE_KEYWORDS.get(extra["charge_id"], ()),
                 **money(extra["amount"]),
+                **{key: _bill_text(lang, *pair) for key, pair in BILL_EXTRA_LINE_NOTES.get(extra["charge_id"], {}).items()},
             }
         )
     raw = fixture(state, "fx_extra_bill_line")
@@ -246,11 +253,22 @@ def _bill_flag(state: dict[str, Any], key: str) -> bool:
     return value is True or str(value).strip().lower() == "true"
 
 
-def _bill_restore(state: dict[str, Any]) -> dict[str, Any]:
+def _bill_reconnect_note(lang: str) -> str:
+    """How soon a restored service comes back and what to do if it doesn't (DESIGN_RULES rule 33)."""
+    return _bill_text(lang, *RECONNECT_NOTE).replace("[minutes]", str(RECONNECT_MINUTES))
+
+
+def _bill_restore(state: dict[str, Any], lang: str) -> dict[str, Any]:
     """Lift a non-payment suspension and text the confirmation."""
     state["service_status"] = "active"
     sms = dispatch_sms(state, "service_restored")
-    return {"service_restored": True, "new_service_status": "active", "restore_sms_sent": True, "sms_destination_last4": sms["destination_last4"]}
+    return {
+        "service_restored": True,
+        "new_service_status": "active",
+        "restore_sms_sent": True,
+        "sms_destination_last4": sms["destination_last4"],
+        "reconnect_note": _bill_reconnect_note(lang),
+    }
 
 
 def _bill_card_on_file(state: dict[str, Any]) -> dict[str, str]:
@@ -501,6 +519,30 @@ def _bill_payments(state: dict[str, Any], lang: str, past_due: Decimal) -> list[
     return payments
 
 
+def _bill_past_due_breakdown(state: dict[str, Any], lang: str, past_due: Decimal) -> dict[str, Any]:
+    """What the past-due amount is made of: the previous statement's unpaid items (Turn N+1, rule 33)."""
+    record = account_record(state)
+    lobs = set(record.get("lines_of_business", []))
+    statement = _bill_date(-(BILL_CYCLE_DAYS_AGO + NEXT_BILL_CYCLE_DAYS), lang)
+    items_total = sum((Decimal(item["amount"]) for item in PAST_DUE_ITEMS), _BILL_ZERO)
+    if all(item["lob"] in lobs for item in PAST_DUE_ITEMS) and past_due <= items_total:
+        items = [{"description": _bill_text(lang, *item["label"]), **money(item["amount"])} for item in PAST_DUE_ITEMS]
+        paid_since = _bill_q(items_total - past_due)
+    else:
+        items = [{"description": _bill_text(lang, *PAST_DUE_FALLBACK_LABEL), **money(past_due)}]
+        paid_since = _BILL_ZERO
+    breakdown: dict[str, Any] = {
+        "statement_date": statement["iso"],
+        "statement_date_display": statement["display"],
+        "items": items,
+        **money(PAST_DUE_LATE_FEE, "late_fees"),
+        **money(past_due, "past_due_amount"),
+    }
+    if paid_since > _BILL_ZERO:
+        breakdown.update(money(paid_since, "paid_since"))
+    return breakdown
+
+
 def get_billing_summary_impl(
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
@@ -543,9 +585,12 @@ def get_billing_summary_impl(
         "recent_payments": _bill_payments(st, lang, live["past_due"]),
         "self_serve_adjustment_limit_display": display_amount(SELF_SERVE_ADJUSTMENT_LIMIT),
     }
+    if live["past_due"] > _BILL_ZERO:
+        data["past_due_breakdown"] = _bill_past_due_breakdown(st, lang, live["past_due"])
     if status == "suspended_nonpayment":
         data["amount_to_restore_display"] = display_amount(live["past_due"])
         data["restore_options"] = ["pay_past_due", "verify_recent_payment", "payment_arrangement"]
+        data["reconnect_note"] = _bill_reconnect_note(lang)
     elif status in ("suspended_lost_stolen", "suspended_travel"):
         data["restore_handled_by"] = "account"
     if live["balance"] > _BILL_ZERO and not arrangement:
@@ -672,7 +717,7 @@ def process_bill_payment_impl(
     # cut-off (the default account is suspended; docs/tdd.md §5): no unprompted
     # "suspended", and "fully active" confirms a restore.
     if status_before == "suspended_nonpayment" and new_past_due == _BILL_ZERO:
-        data.update(_bill_restore(st))
+        data.update(_bill_restore(st, lang))
         data["service_status"] = "active"
         data["suspension_risk_cleared"] = True
         summary += _bill_text(
@@ -924,6 +969,10 @@ def apply_bill_adjustment_impl(
         )
 
     def _over_limit(value: Decimal) -> dict[str, Any]:
+        # The agent speaks in the same turn as handover_to_person, before it returns, so
+        # this reply carries the full transfer sentence: why (the limit) + the verbatim line.
+        limit_text = display_amount(limit)
+        spoken = spoken_line("refund_over_limit", lang, limit=limit_text) + " " + spoken_line("transfer_to_specialist", lang)
         return _bill_finish(
             st,
             error_reply(
@@ -932,7 +981,12 @@ def apply_bill_adjustment_impl(
                 "Hand over with reason refund_threshold_exceeded.",
                 reference,
                 language=lang,
-                data={**money(value), "limit_display": display_amount(limit), "handover_reason": "refund_threshold_exceeded"},
+                data={
+                    **money(value),
+                    "limit_display": limit_text,
+                    "handover_reason": "refund_threshold_exceeded",
+                    "spoken_message": spoken,
+                },
             ),
         )
 
@@ -999,7 +1053,13 @@ def apply_bill_adjustment_impl(
             kind if kind != "duplicate_payment" else "incorrect_charge",
             credit,
             key,
-            {"charge_id": line["charge_id"], "charge_description": line["description"], "charge_date_display": line["date_display"]},
+            {
+                "charge_id": line["charge_id"],
+                "charge_description": line["description"],
+                "charge_date_display": line["date_display"],
+                # Turn N+1 "how did this get on my bill / how do I stop it" (DESIGN_RULES rule 33).
+                **{f"charge_{key}": line[key] for key in ("origin", "prevention_tip") if line.get(key)},
+            },
         )
     # (5) Nothing matched: open a dispute case for the billing team.
     key = "dispute:" + tracking_id("dispute", kind, asked, desc)
@@ -1143,7 +1203,7 @@ def setup_payment_arrangement_impl(
         f"puis {_bill_amount_text(lang, Decimal(str(two['amount'])))} d'ici le {two['due_date_display']}.",
     )
     if status_before == "suspended_nonpayment":
-        data.update(_bill_restore(st))
+        data.update(_bill_restore(st, lang))
         data["service_status"] = "active"
         summary += _bill_text(lang, " Your service is restored.", " Votre service est rétabli.")
     if sms["sms_sent"]:
@@ -1218,7 +1278,7 @@ def verify_payment_and_restore_impl(
     st["recent_payment_applied"] = True
     new_balance = _bill_q(max(live["balance"] - posted, _BILL_ZERO))
     _bill_save(st, new_balance, _BILL_ZERO)
-    restored = _bill_restore(st)
+    restored = _bill_restore(st, lang)
     data = {
         "payment_verified": True,
         "verified_payment_date": when["iso"],

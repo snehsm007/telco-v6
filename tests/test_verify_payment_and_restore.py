@@ -34,6 +34,7 @@ def test_verify_payment_and_restore_with_posted_payment(monkeypatch) -> None:
     reply = tool.verify_payment_and_restore()
     assert reply["data"]["service_restored"] is True
     assert session.state["service_status"] == "active"
+    assert "restart the modem" in reply["data"]["reconnect_note"]
 
 
 def test_verify_payment_and_restore_without_payment(monkeypatch) -> None:

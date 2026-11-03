@@ -333,6 +333,29 @@ BILL_EXTRA_LINE_KEYWORDS: dict[str, tuple[str, ...]] = {  # pragma: no cover
     "CH-LD-01": ("long distance", "long-distance", "longue distance", "interurbain", "international", "calls", "appels"),
 }
 
+BILL_EXTRA_LINE_NOTES: dict[str, dict[str, tuple[str, str]]] = {  # pragma: no cover
+    "CH-STR-01": {
+        "origin": (
+            "A purchase made through a connected TV app on the account.",
+            "Un achat fait au moyen d'une application télé connectée au compte.",
+        ),
+        "prevention_tip": (
+            "Purchases can be protected with a purchase PIN on the TV service.",
+            "Les achats peuvent être protégés par un NIP d'achat sur le service télé.",
+        ),
+    },
+    "CH-LD-01": {
+        "origin": (
+            "Calls from the mobility line to numbers outside its local calling area.",
+            "Des appels faits depuis la ligne mobile vers des numéros hors de sa zone d'appel locale.",
+        ),
+        "prevention_tip": (
+            "A plan that includes long distance calling avoids these per-call charges.",
+            "Un forfait qui inclut les appels interurbains évite ces frais par appel.",
+        ),
+    },
+}
+
 EXTRA_FIXTURE_LINE_DAYS_AGO = 4  # pragma: no cover
 
 SERVICE_KEYWORDS: dict[str, tuple[str, ...]] = {  # pragma: no cover
@@ -390,6 +413,7 @@ def _bill_lines(state: dict[str, Any], lang: str) -> list[dict[str, Any]]:  # pr
                 "date_display": when["display"],
                 "keywords": BILL_EXTRA_LINE_KEYWORDS.get(extra["charge_id"], ()),
                 **money(extra["amount"]),
+                **{key: _bill_text(lang, *pair) for key, pair in BILL_EXTRA_LINE_NOTES.get(extra["charge_id"], {}).items()},
             }
         )
     raw = fixture(state, "fx_extra_bill_line")
@@ -423,6 +447,40 @@ def _bill_live(state: dict[str, Any], lang: str) -> dict[str, Decimal]:  # pragm
     if balance is None:
         balance = past_due + _bill_charges_total(_bill_lines(state, lang))
     return {"balance": _bill_q(max(balance, _BILL_ZERO)), "past_due": _bill_q(max(min(past_due, balance), _BILL_ZERO))}
+
+NEXT_BILL_CYCLE_DAYS = 30  # pragma: no cover
+
+PAST_DUE_FALLBACK_LABEL = ("Unpaid charges from the previous statement", "Frais impayés du relevé précédent")  # pragma: no cover
+
+PAST_DUE_ITEMS: tuple[dict[str, Any], ...] = (  # pragma: no cover
+    {"lob": "mobility", "label": ("Mobility monthly service", "Service mobilité mensuel"), "amount": "65.00"},
+    {"lob": "mobility", "label": ("Long distance calls", "Appels interurbains"), "amount": "22.65"},
+)
+
+PAST_DUE_LATE_FEE = "0.00"  # pragma: no cover
+
+def _bill_past_due_breakdown(state: dict[str, Any], lang: str, past_due: Decimal) -> dict[str, Any]:  # pragma: no cover
+    """What the past-due amount is made of: the previous statement's unpaid items (Turn N+1, rule 33)."""
+    record = account_record(state)
+    lobs = set(record.get("lines_of_business", []))
+    statement = _bill_date(-(BILL_CYCLE_DAYS_AGO + NEXT_BILL_CYCLE_DAYS), lang)
+    items_total = sum((Decimal(item["amount"]) for item in PAST_DUE_ITEMS), _BILL_ZERO)
+    if all(item["lob"] in lobs for item in PAST_DUE_ITEMS) and past_due <= items_total:
+        items = [{"description": _bill_text(lang, *item["label"]), **money(item["amount"])} for item in PAST_DUE_ITEMS]
+        paid_since = _bill_q(items_total - past_due)
+    else:
+        items = [{"description": _bill_text(lang, *PAST_DUE_FALLBACK_LABEL), **money(past_due)}]
+        paid_since = _BILL_ZERO
+    breakdown: dict[str, Any] = {
+        "statement_date": statement["iso"],
+        "statement_date_display": statement["display"],
+        "items": items,
+        **money(PAST_DUE_LATE_FEE, "late_fees"),
+        **money(past_due, "past_due_amount"),
+    }
+    if paid_since > _BILL_ZERO:
+        breakdown.update(money(paid_since, "paid_since"))
+    return breakdown
 
 DUPLICATE_PAYMENT = {"amount": "140.00", "days_ago": 5, "method": "card_on_file"}  # pragma: no cover
 
@@ -466,6 +524,17 @@ def _bill_payments(state: dict[str, Any], lang: str, past_due: Decimal) -> list[
 
 def _bill_public_line(line: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover
     return {k: v for k, v in line.items() if k not in ("keywords", "kind")}
+
+RECONNECT_MINUTES = 15  # pragma: no cover
+
+RECONNECT_NOTE = (  # pragma: no cover
+    "Service comes back within [minutes] minutes; if it doesn't, restart the modem or phone.",
+    "Le service revient d'ici [minutes] minutes; sinon, redémarrez le modem ou le téléphone.",
+)
+
+def _bill_reconnect_note(lang: str) -> str:  # pragma: no cover
+    """How soon a restored service comes back and what to do if it doesn't (DESIGN_RULES rule 33)."""
+    return _bill_text(lang, *RECONNECT_NOTE).replace("[minutes]", str(RECONNECT_MINUTES))
 
 MOCK_ERROR_OFF: frozenset[str] = frozenset({"false", "none", "0", "off", "no", "null"})  # pragma: no cover
 
@@ -1079,9 +1148,12 @@ def get_billing_summary_impl(  # pragma: no cover
         "recent_payments": _bill_payments(st, lang, live["past_due"]),
         "self_serve_adjustment_limit_display": display_amount(SELF_SERVE_ADJUSTMENT_LIMIT),
     }
+    if live["past_due"] > _BILL_ZERO:
+        data["past_due_breakdown"] = _bill_past_due_breakdown(st, lang, live["past_due"])
     if status == "suspended_nonpayment":
         data["amount_to_restore_display"] = display_amount(live["past_due"])
         data["restore_options"] = ["pay_past_due", "verify_recent_payment", "payment_arrangement"]
+        data["reconnect_note"] = _bill_reconnect_note(lang)
     elif status in ("suspended_lost_stolen", "suspended_travel"):
         data["restore_handled_by"] = "account"
     if live["balance"] > _BILL_ZERO and not arrangement:

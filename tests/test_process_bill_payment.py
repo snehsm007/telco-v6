@@ -33,6 +33,7 @@ def test_process_bill_payment_writes_session_state(monkeypatch) -> None:
     monkeypatch.setattr(tool, "context", session, raising=False)
     reply = tool.process_bill_payment(amount="past due", payment_method="card_on_file")
     assert reply["data"]["service_restored"] is True
+    assert "restart the modem" in reply["data"]["reconnect_note"]
     assert session.state["service_status"] == "active"
     assert session.state["last_payment_method"] == "card_on_file"
 

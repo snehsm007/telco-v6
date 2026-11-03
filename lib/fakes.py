@@ -213,6 +213,14 @@ BILL_EXTRA_LINES: tuple[dict[str, Any], ...] = (
 BILL_CYCLE_DAYS_AGO = 3      # latest bill issued 3 days ago
 BILL_DUE_IN_DAYS = 18        # due 18 days from today
 PAST_DUE_AMOUNT = "87.65"    # unpaid from the previous cycle
+# What the past-due amount is made of: the unpaid charges of the previous statement
+# (one cycle before the latest bill). Sums to PAST_DUE_AMOUNT; no late fee is charged.
+PAST_DUE_ITEMS: tuple[dict[str, Any], ...] = (
+    {"lob": "mobility", "label": ("Mobility monthly service", "Service mobilité mensuel"), "amount": "65.00"},
+    {"lob": "mobility", "label": ("Long distance calls", "Appels interurbains"), "amount": "22.65"},
+)
+PAST_DUE_FALLBACK_LABEL = ("Unpaid charges from the previous statement", "Frais impayés du relevé précédent")
+PAST_DUE_LATE_FEE = "0.00"
 LAST_PAYMENT = {"amount": "140.00", "days_ago": 32, "method": "card_on_file"}
 DUPLICATE_PAYMENT = {"amount": "140.00", "days_ago": 5, "method": "card_on_file"}
 
@@ -509,12 +517,43 @@ BILL_EXTRA_LINE_KEYWORDS: dict[str, tuple[str, ...]] = {
     "CH-STR-01": ("stream", "apple", "diffusion", "en continu", "purchase", "achat", "subscription", "abonnement"),
     "CH-LD-01": ("long distance", "long-distance", "longue distance", "interurbain", "international", "calls", "appels"),
 }
+# Where each extra line came from and how to prevent it (DESIGN_RULES rule 33: the
+# "where did this come from / how do I stop it" follow-up), (en-US, fr-CA).
+BILL_EXTRA_LINE_NOTES: dict[str, dict[str, tuple[str, str]]] = {
+    "CH-STR-01": {
+        "origin": (
+            "A purchase made through a connected TV app on the account.",
+            "Un achat fait au moyen d'une application télé connectée au compte.",
+        ),
+        "prevention_tip": (
+            "Purchases can be protected with a purchase PIN on the TV service.",
+            "Les achats peuvent être protégés par un NIP d'achat sur le service télé.",
+        ),
+    },
+    "CH-LD-01": {
+        "origin": (
+            "Calls from the mobility line to numbers outside its local calling area.",
+            "Des appels faits depuis la ligne mobile vers des numéros hors de sa zone d'appel locale.",
+        ),
+        "prevention_tip": (
+            "A plan that includes long distance calling avoids these per-call charges.",
+            "Un forfait qui inclut les appels interurbains évite ces frais par appel.",
+        ),
+    },
+}
 EXTRA_FIXTURE_LINE_DAYS_AGO = 4      # fx_extra_bill_line posts on the latest bill
 BANK_ON_FILE_ENDING = "6083"
 ARRANGEMENT_FIRST_DUE_DAYS = 7       # first instalment within 7 days
 NEXT_BILL_CYCLE_DAYS = 30
 DISPUTE_ETA_BUSINESS_DAYS = 10
 RECENT_PAYMENT_DAYS_AGO = 1          # fx_recent_payment=posted_yesterday
+# After a non-payment restore (DESIGN_RULES rule 33: "when is it back / do I restart
+# anything?"), (en-US, fr-CA). [minutes] = RECONNECT_MINUTES.
+RECONNECT_MINUTES = 15
+RECONNECT_NOTE = (
+    "Service comes back within [minutes] minutes; if it doesn't, restart the modem or phone.",
+    "Le service revient d'ici [minutes] minutes; sinon, redémarrez le modem ou le téléphone.",
+)
 CARD_BRANDS_BY_PREFIX: dict[str, str] = {"4": "Visa", "5": "Mastercard", "2": "Mastercard", "3": "American Express"}
 # Autopay follow-up facts (DESIGN_RULES rule 33), (en-US, fr-CA). [days] = bill date to due date.
 AUTOPAY_WITHDRAWAL_NOTE = (

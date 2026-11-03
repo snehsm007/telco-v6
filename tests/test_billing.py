@@ -23,11 +23,19 @@ from lib.fakes import (
     BILL_DATE_CHANGE_NOTE,
     BILL_DUE_IN_DAYS,
     BILL_EXTRA_LINES,
+    BILL_EXTRA_LINE_NOTES,
     DUPLICATE_PAYMENT,
+    NEXT_BILL_CYCLE_DAYS,
     PAST_DUE_AMOUNT,
+    PAST_DUE_FALLBACK_LABEL,
+    PAST_DUE_ITEMS,
+    RECONNECT_MINUTES,
+    RECONNECT_NOTE,
     REFUND_WINDOW_BUSINESS_DAYS,
     SELF_SERVE_ADJUSTMENT_LIMIT,
     SERVICE_PRICES,
+    relative_date,
+    spoken_line,
 )
 
 DEFAULT = ACCOUNTS[0]
@@ -445,6 +453,28 @@ def test_unrecognized_charge_is_credited_with_refund_pattern():
     assert again["error"] == "ALREADY_APPLIED"
 
 
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_extra_charges_say_where_they_came_from_and_how_to_prevent_them(lang):
+    # "Where did this charge come from / how do I stop it" must be grounded in a payload.
+    items = get_billing_summary_impl(state=logged_in(), language=lang)["data"]["recent_bills"][0]["line_items"]
+    for charge_id, notes in BILL_EXTRA_LINE_NOTES.items():
+        item = next(i for i in items if i["charge_id"] == charge_id)
+        for key, (en, fr) in notes.items():
+            assert item[key] == (fr if lang == "fr-CA" else en)
+    streaming = next(i for i in items if i["charge_id"] == STREAMING["charge_id"])
+    assert "connected TV app" in BILL_EXTRA_LINE_NOTES["CH-STR-01"]["origin"][0]
+    assert "purchase PIN" in BILL_EXTRA_LINE_NOTES["CH-STR-01"]["prevention_tip"][0]
+    assert streaming["origin"] and streaming["prevention_tip"]
+    service = next(i for i in items if i["charge_id"] == "CH-SVC-TV")
+    assert "origin" not in service and "prevention_tip" not in service
+
+
+def test_credit_for_a_charge_carries_its_origin_and_prevention_tip():
+    data = apply_bill_adjustment_impl("unrecognized_charge", "", "", charge_id=STREAMING["charge_id"], state=logged_in())["data"]
+    assert data["charge_origin"] == BILL_EXTRA_LINE_NOTES["CH-STR-01"]["origin"][0]
+    assert data["charge_prevention_tip"] == BILL_EXTRA_LINE_NOTES["CH-STR-01"]["prevention_tip"][0]
+
+
 def test_charge_found_by_whole_dollar_amount():
     reply = apply_bill_adjustment_impl("unrecognized_charge", str(int(Decimal(STREAMING["amount"]))), "", state=logged_in())
     assert reply["data"]["charge_id"] == STREAMING["charge_id"]
@@ -524,6 +554,17 @@ def test_over_limit_amount_goes_to_specialist():
     assert reply["agent_action"] == "Hand over with reason refund_threshold_exceeded."
     assert reply["data"]["limit_display"] == SELF_SERVE_ADJUSTMENT_LIMIT
     assert not state.get("applied_adjustments")
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_over_limit_reply_carries_the_why_and_the_verbatim_transfer_line(lang):
+    # The agent speaks before handover_to_person returns, so the over-limit reply itself
+    # carries the refund_over_limit line (with the limit) then transfer_to_specialist.
+    reply = apply_bill_adjustment_impl("incorrect_charge", "150.00", "modem already returned", state=logged_in(language=lang), language=lang)
+    expected = spoken_line("refund_over_limit", lang, limit=SELF_SERVE_ADJUSTMENT_LIMIT) + " " + spoken_line("transfer_to_specialist", lang)
+    assert reply["data"]["spoken_message"] == expected
+    assert reply["spoken_message"] == expected
+    assert reply["agent_action"] == "Hand over with reason refund_threshold_exceeded."
 
 
 def test_whole_service_line_over_limit_goes_to_specialist():
@@ -836,3 +877,89 @@ def test_default_world_unrelated_billing_lines_never_mention_the_suspension():
     assert autopay["status"] == "ok" and "suspen" not in str(autopay["data"].get("spoken_summary", ""))
     credit = apply_bill_adjustment_impl("unrecognized_charge", STREAMING["amount"], "streaming", state=logged_in())
     assert credit["data"]["approved"] is True and "suspen" not in str(credit)
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_every_restore_path_says_when_service_returns_and_what_to_restart(lang):
+    # "How long until it's back / do I restart my modem?" must come from a payload.
+    en, fr = RECONNECT_NOTE
+    note = (fr if lang == "fr-CA" else en).replace("[minutes]", str(RECONNECT_MINUTES))
+    assert "modem" in en and str(RECONNECT_MINUTES) in note
+    summary = get_billing_summary_impl(state=logged_in(), language=lang)["data"]
+    assert summary["reconnect_note"] == note
+    restores = (
+        lambda s: process_bill_payment_impl("past due", "card_on_file", state=s, language=lang),
+        lambda s: setup_payment_arrangement_impl(state=s, language=lang),
+        lambda s: verify_payment_and_restore_impl(state=s, language=lang),
+    )
+    for call in restores:
+        data = call(logged_in())["data"]
+        assert data["service_restored"] is True
+        assert data["reconnect_note"] == note
+
+
+def test_no_reconnect_note_without_a_restore():
+    state = logged_in(fx_service_status="active")
+    assert "reconnect_note" not in get_billing_summary_impl(state=state)["data"]
+    assert "reconnect_note" not in process_bill_payment_impl("50", "card_on_file", state=state)["data"]
+    partial = process_bill_payment_impl("10", "card_on_file", state=logged_in(fx_recent_payment="none"))["data"]
+    assert partial["service_restored"] is False and "reconnect_note" not in partial
+
+
+def test_past_due_items_add_up_to_the_past_due_amount():
+    assert sum(Decimal(item["amount"]) for item in PAST_DUE_ITEMS) == Decimal(PAST_DUE_AMOUNT)
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_summary_breaks_down_the_past_due_amount(lang):
+    # "What is the past-due amount for?" is answered from the summary, not by a handoff.
+    data = get_billing_summary_impl(state=logged_in(), language=lang)["data"]
+    breakdown = data["past_due_breakdown"]
+    assert breakdown["past_due_amount_display"] == data["past_due_amount_display"] == PAST_DUE_AMOUNT
+    assert [i["description"] for i in breakdown["items"]] == [i["label"][1 if lang == "fr-CA" else 0] for i in PAST_DUE_ITEMS]
+    assert sum(Decimal(i["amount_display"]) for i in breakdown["items"]) == Decimal(PAST_DUE_AMOUNT)
+    assert breakdown["late_fees_display"] == "0.00"
+    statement_days_ago = BILL_CYCLE_DAYS_AGO + NEXT_BILL_CYCLE_DAYS
+    assert breakdown["statement_date"] == relative_date(-statement_days_ago)
+    assert breakdown["statement_date_display"]
+    assert "paid_since_display" not in breakdown
+
+
+def test_past_due_breakdown_after_a_partial_payment_and_once_cleared():
+    state = logged_in(fx_recent_payment="none")
+    process_bill_payment_impl("20", "card_on_file", state=state)
+    breakdown = get_billing_summary_impl(state=state)["data"]["past_due_breakdown"]
+    assert breakdown["past_due_amount_display"] == str(Decimal(PAST_DUE_AMOUNT) - 20)
+    assert breakdown["paid_since_display"] == "20.00"
+    process_bill_payment_impl("past due", "card_on_file", state=state)
+    assert "past_due_breakdown" not in get_billing_summary_impl(state=state)["data"]
+
+
+def test_past_due_breakdown_falls_back_to_one_line_when_items_do_not_fit():
+    # An account without the itemized service, or a past-due amount larger than the items.
+    data = get_billing_summary_impl(state=logged_in(past_due_amount="300.00", balance_due="400.00"))["data"]
+    items = data["past_due_breakdown"]["items"]
+    assert len(items) == 1 and items[0]["amount_display"] == "300.00"
+    assert items[0]["description"] == PAST_DUE_FALLBACK_LABEL[0]
+
+
+def _billing_prompt_block(tag: str, name: str) -> str:
+    import re
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[1] / "cxas_app" / "agents" / "billing" / "instruction.txt").read_text(encoding="utf-8")
+    match = re.search(rf'<{tag} name="{name}">(.*?)</{tag}>', text, re.S)
+    assert match, name
+    return " ".join(match.group(1).split())
+
+
+def test_billing_prompt_keeps_balance_disagreement_a_dispute_and_takeover_fraud():
+    # VE-16: a caller disputing their balance was escalated as fraud. Fraud is takeover only.
+    rule = _billing_prompt_block("constraint", "Fraud Versus Dispute")
+    assert "only account takeover or unauthorized access" in rule
+    assert "hacked" in rule and "global fraud step" in rule  # sim__report_fraud_mid_call_switch
+    assert "disagrees with the balance" in rule and "apply_bill_adjustment" in rule
+    assert "never a fraud handover" in rule
+    assert "pay any amount they choose" in rule
+    assert "disagrees with their balance" in _billing_prompt_block("step", "Find Charge")
+    assert "any amount the caller chooses" in _billing_prompt_block("step", "Payment Preamble")

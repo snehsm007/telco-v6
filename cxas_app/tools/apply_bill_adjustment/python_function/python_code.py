@@ -249,6 +249,29 @@ BILL_EXTRA_LINE_KEYWORDS: dict[str, tuple[str, ...]] = {  # pragma: no cover
     "CH-LD-01": ("long distance", "long-distance", "longue distance", "interurbain", "international", "calls", "appels"),
 }
 
+BILL_EXTRA_LINE_NOTES: dict[str, dict[str, tuple[str, str]]] = {  # pragma: no cover
+    "CH-STR-01": {
+        "origin": (
+            "A purchase made through a connected TV app on the account.",
+            "Un achat fait au moyen d'une application télé connectée au compte.",
+        ),
+        "prevention_tip": (
+            "Purchases can be protected with a purchase PIN on the TV service.",
+            "Les achats peuvent être protégés par un NIP d'achat sur le service télé.",
+        ),
+    },
+    "CH-LD-01": {
+        "origin": (
+            "Calls from the mobility line to numbers outside its local calling area.",
+            "Des appels faits depuis la ligne mobile vers des numéros hors de sa zone d'appel locale.",
+        ),
+        "prevention_tip": (
+            "A plan that includes long distance calling avoids these per-call charges.",
+            "Un forfait qui inclut les appels interurbains évite ces frais par appel.",
+        ),
+    },
+}
+
 EXTRA_FIXTURE_LINE_DAYS_AGO = 4  # pragma: no cover
 
 SERVICE_KEYWORDS: dict[str, tuple[str, ...]] = {  # pragma: no cover
@@ -385,6 +408,7 @@ def _bill_lines(state: dict[str, Any], lang: str) -> list[dict[str, Any]]:  # pr
                 "date_display": when["display"],
                 "keywords": BILL_EXTRA_LINE_KEYWORDS.get(extra["charge_id"], ()),
                 **money(extra["amount"]),
+                **{key: _bill_text(lang, *pair) for key, pair in BILL_EXTRA_LINE_NOTES.get(extra["charge_id"], {}).items()},
             }
         )
     raw = fixture(state, "fx_extra_bill_line")
@@ -1188,6 +1212,10 @@ def apply_bill_adjustment_impl(  # pragma: no cover
         )
 
     def _over_limit(value: Decimal) -> dict[str, Any]:
+        # The agent speaks in the same turn as handover_to_person, before it returns, so
+        # this reply carries the full transfer sentence: why (the limit) + the verbatim line.
+        limit_text = display_amount(limit)
+        spoken = spoken_line("refund_over_limit", lang, limit=limit_text) + " " + spoken_line("transfer_to_specialist", lang)
         return _bill_finish(
             st,
             error_reply(
@@ -1196,7 +1224,12 @@ def apply_bill_adjustment_impl(  # pragma: no cover
                 "Hand over with reason refund_threshold_exceeded.",
                 reference,
                 language=lang,
-                data={**money(value), "limit_display": display_amount(limit), "handover_reason": "refund_threshold_exceeded"},
+                data={
+                    **money(value),
+                    "limit_display": limit_text,
+                    "handover_reason": "refund_threshold_exceeded",
+                    "spoken_message": spoken,
+                },
             ),
         )
 
@@ -1263,7 +1296,13 @@ def apply_bill_adjustment_impl(  # pragma: no cover
             kind if kind != "duplicate_payment" else "incorrect_charge",
             credit,
             key,
-            {"charge_id": line["charge_id"], "charge_description": line["description"], "charge_date_display": line["date_display"]},
+            {
+                "charge_id": line["charge_id"],
+                "charge_description": line["description"],
+                "charge_date_display": line["date_display"],
+                # Turn N+1 "how did this get on my bill / how do I stop it" (DESIGN_RULES rule 33).
+                **{f"charge_{key}": line[key] for key in ("origin", "prevention_tip") if line.get(key)},
+            },
         )
     # (5) Nothing matched: open a dispute case for the billing team.
     key = "dispute:" + tracking_id("dispute", kind, asked, desc)

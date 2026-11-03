@@ -42,3 +42,5 @@ def test_apply_bill_adjustment_over_limit(monkeypatch) -> None:
     monkeypatch.setattr(tool, "context", _session(), raising=False)
     reply = tool.apply_bill_adjustment(adjustment_type="incorrect_charge", amount=150, description="modem")
     assert reply["error"] == "REFUND_THRESHOLD_EXCEEDED"
+    assert reply["spoken_message"].startswith("That amount is above our $25.00 self-serve limit")
+    assert reply["spoken_message"].endswith("they'll have everything we've already discussed.")
