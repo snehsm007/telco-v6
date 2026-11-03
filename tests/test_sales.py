@@ -245,7 +245,7 @@ def test_warranty_claim_filed_once() -> None:
     first = _file_claim("iPhone", "screen flickering", "no", "no", state=state)
     data = first["data"]
     assert data["claim_id"].startswith("WC-") and data["shipping"] == "standard"
-    assert data["shipping_address_last_line"]
+    assert "shipping_address_last_line" not in data
     assert data["return_instructions"] and data["return_by_display"]
     second = file_warranty_claim_impl("iPhone", "screen flickering", "no", "no", state=state)
     assert second["data"]["claim_id"] == data["claim_id"] and second["data"]["already_filed"] is True
@@ -491,7 +491,8 @@ def test_warranty_claim_needs_the_callers_yes_after_the_terms(lang: str) -> None
     assert len(early["agent_action"]) <= 120
     filed = file_warranty_claim_impl("iPhone", "screen flickers", False, False, confirmed=True, state=state)
     assert filed["status"] == "ok" and filed["data"]["claim_filed"] is True
-    assert filed["data"]["replacement_cost_display"] == "0.00" and filed["data"]["shipping_address_last_line"]
+    assert filed["data"]["replacement_cost_display"] == "0.00"
+    assert "shipping_address_last_line" not in filed["data"]
     assert state["pending_confirmation"] == "" and state["sms_sent"].count("warranty_claim") == 1
 
 
@@ -588,3 +589,51 @@ def test_warranty_named_variant_is_not_the_base_model_on_file() -> None:
         assert data["device_matched"] is False and data["device_model"] == named, named
     for named in ("Apple iPhone 15", "my pixel", "Galaxy S24"):
         assert file_warranty_claim_impl(named, "screen flickers", state=_logged_in())["data"]["device_matched"] is True
+
+
+# ----------------------------------------------------------------------------- fix/28 (no ship-to, product facts)
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_warranty_claim_never_carries_an_address_and_answers_card_hold(lang: str) -> None:
+    """Owner rule: the ship-to address is never read. Hold / non-return questions are grounded."""
+    state = _logged_in(language=lang)
+    file_warranty_claim_impl("iPhone", "screen flickers", state=state)
+    terms = file_warranty_claim_impl("iPhone", "screen flickers", False, False, state=state)["data"]
+    assert terms["card_hold"] is False
+    assert terms["card_hold_note"] == SALES_COPY["warranty_no_card_hold"][lang]
+    assert terms["data_transfer_note"] == SALES_COPY["data_transfer_standard"][lang]
+    filed = file_warranty_claim_impl("iPhone", "screen flickers", False, False, confirmed=True, state=state)
+    assert filed["data"]["claim_filed"] is True
+    record = sales.account_record(state)
+    for value in (record.get("service_address_last_line"), record.get("postal_code")):
+        if value:
+            assert str(value) not in str(filed), value
+    assert "$" not in terms["card_hold_note"]
+    text = open("cxas_app/agents/sales_equipment/instruction.txt", encoding="utf-8").read()
+    assert "shipping_address_last_line" not in text
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_urgent_claim_has_data_transfer_and_no_non_return_fee(lang: str) -> None:
+    state = _logged_in(language=lang)
+    terms = file_warranty_claim_impl("", "battery is swollen", state=state)["data"]
+    assert terms["urgent"] is True
+    assert terms["data_transfer_note"] == SALES_COPY["data_transfer_urgent"][lang]
+    assert terms["card_hold_note"] == SALES_COPY["warranty_no_card_hold_urgent"][lang]
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_internet_plans_carry_usage_note(lang: str) -> None:
+    plans = browse_plans_impl("internet", state=_identified(), language=lang)["data"]["plans"]
+    assert plans
+    assert all(p["usage_note"] == SALES_COPY["usage_unlimited"][lang] for p in plans)
+    mobile = browse_plans_impl("mobility", state=_identified(), language=lang)["data"]["plans"]
+    assert all("usage_note" not in p for p in mobile)
+
+
+def test_sports_pack_names_its_channels() -> None:
+    plans = browse_plans_impl("tv", need="sports", state=_identified())["data"]["plans"]
+    sports = next(p for p in plans if p["plan_id"] == "TV-SPORTS")
+    lineup = sports["channel_lineup"]
+    assert 3 <= len(lineup) <= sports["channel_count"] and all(isinstance(c, str) and c for c in lineup)
