@@ -645,6 +645,7 @@ PUBLIC_SMS_PURPOSES: frozenset[str] = frozenset({"outage_updates", "troubleshoot
 SMS_CONFIRMATION_LINES: dict[str, str] = {
     "outage_updates": "sms_outage_updates_confirmed",
     "slot_available_callback": "sms_slot_callback_confirmed",
+    "troubleshooting_guide": "sms_guide_sent_confirmed",
 }
 
 

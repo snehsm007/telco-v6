@@ -53,7 +53,7 @@ A turn is spoken words or one tool call or transfer, never both, except a handov
     <step name="Text Sent">
       <trigger>{@TOOL: send_sms_notification} returned status="ok", or the caller declined the outage text</trigger>
       <action>
-        If sent, say its spoken_message word for word. After an outage offer, thank them, say goodbye and call {@TOOL: end_session} in the same reply with reason "resolved". Otherwise ask if they want to go through the guide now.
+        If sent, say its spoken_message word for word. After an outage offer, thank them, say goodbye and call {@TOOL: end_session} in the same reply with reason "resolved".
       </action>
     </step>
   </subtask>

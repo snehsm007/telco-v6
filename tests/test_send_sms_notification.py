@@ -87,3 +87,17 @@ def test_send_sms_notification_mock_error(monkeypatch) -> None:
     session = SimpleNamespace(state={"account_id": "A1001", "mock_error": "SYSTEM_DOWN"})
     monkeypatch.setattr(tool, "context", session, raising=False)
     assert tool.send_sms_notification("outage_updates")["error"] == "SYSTEM_UNAVAILABLE"
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_troubleshooting_guide_confirmation_carries_the_follow_up_question(monkeypatch, lang: str) -> None:
+    """VE-42 / VE-43: the agent appended its own question (or the steps) to the verbatim sent line."""
+    session = SimpleNamespace(state={"account_id": "A1001", "phone_last4": "0186", "language": lang})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.send_sms_notification("troubleshooting_guide", language=lang)
+    expected = SPOKEN_LINES["sms_guide_sent_confirmed"][lang].replace("[last4]", "0186")
+    assert reply["data"]["spoken_message"] == expected == reply["spoken_message"]
+    assert expected.endswith("?")
+    # Other purposes keep their own confirmation lines.
+    other = tool.send_sms_notification("registration_link", language=lang)
+    assert other["data"]["spoken_message"] == SPOKEN_LINES["sms_sent_confirmed"][lang].replace("[last4]", "0186")

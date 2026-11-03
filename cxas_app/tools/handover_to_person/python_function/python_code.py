@@ -765,6 +765,12 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "Done. I've sent the text to the number ending in [last4].",
         "fr-CA": "C'est fait. J'ai envoyé le texto au numéro se terminant par [last4].",
     },
+    # Troubleshooting guide texted: the confirmation carries the follow-up question, so the
+    # agent never appends an ungrounded one to a verbatim spoken_message.
+    "sms_guide_sent_confirmed": {
+        "en-US": "Done. I've sent the guide to the number ending in [last4]. Would you like to go through the steps together now?",
+        "fr-CA": "C'est fait. J'ai envoyé le guide au numéro se terminant par [last4]. Voulez-vous qu'on fasse les étapes ensemble maintenant?",
+    },
     "transfer_to_specialist": {
         "en-US": "I'll connect you to a billing specialist now — they'll have everything we've already discussed.",
         "fr-CA": "Je vais vous mettre en relation avec un spécialiste de la facturation — il aura tout ce dont nous avons déjà discuté.",

@@ -51,6 +51,7 @@ PUBLIC_SMS_PURPOSES: frozenset[str] = frozenset({"outage_updates", "troubleshoot
 SMS_CONFIRMATION_LINES: dict[str, str] = {  # pragma: no cover
     "outage_updates": "sms_outage_updates_confirmed",
     "slot_available_callback": "sms_slot_callback_confirmed",
+    "troubleshooting_guide": "sms_guide_sent_confirmed",
 }
 
 SMS_PURPOSES = ("outage_updates", "troubleshooting_guide", "slot_available_callback", "registration_link")  # pragma: no cover
@@ -867,6 +868,12 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
     "sms_sent_confirmed": {
         "en-US": "Done. I've sent the text to the number ending in [last4].",
         "fr-CA": "C'est fait. J'ai envoyé le texto au numéro se terminant par [last4].",
+    },
+    # Troubleshooting guide texted: the confirmation carries the follow-up question, so the
+    # agent never appends an ungrounded one to a verbatim spoken_message.
+    "sms_guide_sent_confirmed": {
+        "en-US": "Done. I've sent the guide to the number ending in [last4]. Would you like to go through the steps together now?",
+        "fr-CA": "C'est fait. J'ai envoyé le guide au numéro se terminant par [last4]. Voulez-vous qu'on fasse les étapes ensemble maintenant?",
     },
     "transfer_to_specialist": {
         "en-US": "I'll connect you to a billing specialist now — they'll have everything we've already discussed.",
