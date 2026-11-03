@@ -89,3 +89,37 @@ def test_language_prompt_filter_mappingproxy_and_adk_state_with_digits(
         res = callback_mod.before_model_callback(SimpleNamespace(state=st), req)
         assert res is None
         assert '<active_language_sheet locale="fr-CA"' in req.config.system_instruction
+
+
+def _req(*turns: tuple[str, str]) -> SimpleNamespace:
+    return SimpleNamespace(
+        config=SimpleNamespace(system_instruction="Base."),
+        contents=[SimpleNamespace(role=role, parts=[SimpleNamespace(text=text)]) for role, text in turns],
+    )
+
+
+@pytest.mark.parametrize("agent_name, callback_mod", AGENT_CALLBACKS)
+def test_language_prompt_filter_captures_dtmf_and_resets_it(agent_name: str, callback_mod: Any) -> None:
+    """prd.md §6.1: keypad digits land in dtmf_digits on their turn and clear on the next turn."""
+    state: dict = {}
+    keyed = _req(("user", "<event>session start</event>"), ("model", "Welcome."), ("user", "<context>user pressed 1234 on keypad.</context>"))
+    callback_mod.before_model_callback(SimpleNamespace(state=state), keyed)
+    assert state["dtmf_digits"] == "1234" and state["call_channel"] == "voice"
+    spoken = _req(("user", "<event>session start</event>"), ("user", "<context>user pressed 1234 on keypad.</context>"), ("model", "Verified."), ("user", "What's my balance?"))
+    callback_mod.before_model_callback(SimpleNamespace(state=state), spoken)
+    assert state["dtmf_digits"] == "" and state["call_channel"] == "voice"
+
+
+def test_dtmf_capture_prefers_the_current_user_content_and_native_parts() -> None:
+    callback_mod = AGENT_CALLBACKS[0][1]
+    state: dict = {}
+    ctx = SimpleNamespace(state=state, user_content=SimpleNamespace(parts=[SimpleNamespace(text=None, dtmf="5 9 2 1#")]))
+    callback_mod.before_model_callback(ctx, _req(("user", "My PIN?")))
+    assert state == {"dtmf_digits": "5921", "call_channel": "voice"}
+
+
+def test_text_chat_never_marks_a_phone_call() -> None:
+    callback_mod = AGENT_CALLBACKS[0][1]
+    state: dict = {"dtmf_digits": "4829"}
+    callback_mod.before_model_callback(SimpleNamespace(state=state), _req(("user", "My PIN is 4829")))
+    assert state == {"dtmf_digits": ""}

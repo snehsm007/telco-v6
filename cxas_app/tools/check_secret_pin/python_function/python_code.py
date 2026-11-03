@@ -37,6 +37,7 @@ import contextvars
 import hashlib
 import json
 import re
+import unicodedata
 
 MAX_LOGIN_ATTEMPTS = 3  # pragma: no cover
 
@@ -187,6 +188,7 @@ ERROR_CODES = (  # pragma: no cover
     "CARD_EXPIRED",
     "NOT_SUSPENDED",
     "DELIVERY_FAILED",
+    "PIN_KEYPAD_REQUIRED",
 )
 
 ERROR_CODE_DEFAULTS: dict[str, tuple[str, str]] = {  # pragma: no cover
@@ -342,6 +344,10 @@ ERROR_CODE_DEFAULTS: dict[str, tuple[str, str]] = {  # pragma: no cover
         "The text message could not be delivered.",
         "Apologize and offer a transfer to a representative.",
     ),
+    "PIN_KEYPAD_REQUIRED": (
+        "On a phone call the PIN can only be keyed in.",
+        "Say spoken_message word for word, then check the 6-digit code the caller says.",
+    ),
 }
 
 ERROR_MESSAGES_FR: dict[str, str] = {  # pragma: no cover
@@ -383,6 +389,7 @@ ERROR_MESSAGES_FR: dict[str, str] = {  # pragma: no cover
     "CARD_EXPIRED": "La carte au dossier est expirée.",
     "NOT_SUSPENDED": "Le service n'est pas suspendu.",
     "DELIVERY_FAILED": "Le texto n'a pas pu être livré.",
+    "PIN_KEYPAD_REQUIRED": "Au téléphone, le NIP ne peut être entré qu'au clavier.",
 }
 
 class _StatusStr(str):  # pragma: no cover
@@ -486,44 +493,7 @@ def _locked_reply(state: dict[str, Any], reference: str, lang: str) -> dict[str,
         data={"attempts_remaining": 0, "lockout_triggered": True, "auth_status": "locked"},
     )
 
-def _record_failure(state: dict[str, Any], reference: str, lang: str, kind: str) -> dict[str, Any]:  # pragma: no cover
-    """Count one wrong code or PIN; the third locks the caller out."""
-    failures = _failures(state) + 1
-    state["auth_failure_count"] = failures
-    state["login_attempts"] = failures
-    if kind == "pin":
-        state["pin_failure_count"] = read_count(state, "pin_failure_count") + 1
-    if failures >= MAX_LOGIN_ATTEMPTS:
-        return _locked_reply(state, reference, lang)
-    remaining = MAX_LOGIN_ATTEMPTS - failures
-    return error_reply(
-        "WRONG_CODE" if kind == "code" else "WRONG_PIN",
-        "That code does not match." if kind == "code" else "That PIN does not match.",
-        "Say it didn't match and ask the caller to try again.",
-        reference,
-        language=lang,
-        data={"attempts_remaining": remaining, "lockout_triggered": False},
-    )
-
-MOCK_ERROR_OFF: frozenset[str] = frozenset({"false", "none", "0", "off", "no", "null"})  # pragma: no cover
-
-def check_mock_error(state: dict[str, Any], lang: str = "en-US", tool_name: str = "tool") -> dict[str, Any] | None:  # pragma: no cover
-    """Fault injection: `mock_error` set in session state makes every tool return a system error.
-
-    "false", "none", "0", "off", "no" and "null" mean no fault, like an empty value.
-    """
-    if str(state.get("mock_error") or "").strip():
-        if str(state.get("mock_error")).strip().lower() in MOCK_ERROR_OFF:
-            return None
-        ref = tracking_id(tool_name, "mock_error", state.get("account_id", ""))
-        state["last_tracking_id"] = ref
-        return error_reply(
-            "SYSTEM_UNAVAILABLE",
-            agent_action="Hand over with reason system_unavailable.",
-            reference=ref,
-            language=lang,
-        )
-    return None
+OTP_EXPIRES_IN_SEC = 300  # pragma: no cover
 
 ACCOUNTS: tuple[dict[str, Any], ...] = (  # pragma: no cover
     {
@@ -557,6 +527,37 @@ ACCOUNTS: tuple[dict[str, Any], ...] = (  # pragma: no cover
         "business_flag": False,
     },
 )
+
+def account_record(state: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover
+    """The active account record, falling back to the default account."""
+    account_id = str(state.get("account_id") or "")
+    for record in ACCOUNTS:
+        if record["account_id"] == account_id:
+            return dict(record)
+    base = dict(ACCOUNTS[0])
+    if account_id:
+        base["account_id"] = account_id
+    return base
+
+MOCK_ERROR_OFF: frozenset[str] = frozenset({"false", "none", "0", "off", "no", "null"})  # pragma: no cover
+
+def check_mock_error(state: dict[str, Any], lang: str = "en-US", tool_name: str = "tool") -> dict[str, Any] | None:  # pragma: no cover
+    """Fault injection: `mock_error` set in session state makes every tool return a system error.
+
+    "false", "none", "0", "off", "no" and "null" mean no fault, like an empty value.
+    """
+    if str(state.get("mock_error") or "").strip():
+        if str(state.get("mock_error")).strip().lower() in MOCK_ERROR_OFF:
+            return None
+        ref = tracking_id(tool_name, "mock_error", state.get("account_id", ""))
+        state["last_tracking_id"] = ref
+        return error_reply(
+            "SYSTEM_UNAVAILABLE",
+            agent_action="Hand over with reason system_unavailable.",
+            reference=ref,
+            language=lang,
+        )
+    return None
 
 def ensure_account(state: dict[str, Any]) -> str:  # pragma: no cover
     """Make sure an account is active (login tools fill the default; DESIGN_RULES rule 21)."""
@@ -660,6 +661,353 @@ def session_language(state: dict[str, Any] | None, language: Any = "") -> str:  
         return arg_lang
     return "en-US"
 
+SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
+    "greeting_main": {
+        "en-US": "Welcome to Telco. I can help with billing, technical support, or managing your account. To get started, could you tell me the phone number or account number associated with your service?",
+        "fr-CA": "Bienvenue chez Telco. Je peux vous aider avec la facturation, le soutien technique ou la gestion de votre compte. Pour commencer, pourriez-vous me donner le numéro de téléphone ou le numéro de compte associé à votre service?",
+    },
+    "recording_notice": {
+        "en-US": "This call may be recorded for quality and training purposes.",
+        "fr-CA": "Cet appel peut être enregistré à des fins de qualité et de formation.",
+    },
+    "id_verification_otp": {
+        "en-US": "For your security, I just sent a 6-digit code to that number — please read it back to me.",
+        "fr-CA": "Pour votre sécurité, je viens d'envoyer un code à 6 chiffres à ce numéro — veuillez me le lire.",
+    },
+    "id_verification_pin": {
+        "en-US": "For your security, I'll need to verify your identity. Please enter the 4-digit PIN you set up.",
+        "fr-CA": "Pour votre sécurité, je dois vérifier votre identité. Veuillez entrer le NIP à 4 chiffres que vous avez configuré.",
+    },
+    "live_agent_handoff": {
+        "en-US": "I'll connect you to a representative who can help. Please hold.",
+        "fr-CA": "Je vais vous mettre en relation avec un représentant qui pourra vous aider. Veuillez patienter.",
+    },
+    "business_handoff": {
+        "en-US": "To get you the best support for your business account, I'll transfer you to an agent. You'll need to use your phone keypad instead of talking to the virtual assistant. Just a moment while I connect you.",
+        "fr-CA": "Pour vous offrir le meilleur soutien pour votre compte d'affaires, je vais vous transférer à un agent. Vous devrez utiliser le clavier de votre téléphone au lieu de parler à l'assistant virtuel. Un instant pendant que je vous mets en relation.",
+    },
+    "payment_method_preamble": {
+        "en-US": "Before we continue, please note that your payment details are protected and processed securely, and I will only ever refer to the last four digits of your card or account.",
+        "fr-CA": "Avant de continuer, sachez que vos renseignements de paiement sont protégés et traités de façon sécurisée, et que je ne mentionnerai jamais que les quatre derniers chiffres de votre carte ou de votre compte.",
+    },
+    "contract_cancellation_fee_disclosure": {
+        "en-US": "Please note that cancelling before the end of your contract term may result in an early termination fee and a final bill, as set out in your service agreement.",
+        "fr-CA": "Veuillez noter qu'une résiliation avant la fin de la durée de votre contrat peut entraîner des frais de résiliation anticipée et une facture finale, comme le prévoit votre entente de service.",
+    },
+    "refund_confirmation_pattern": {
+        "en-US": "Your refund of $[amount] will appear on your next statement within [days] business days.",
+        "fr-CA": "Votre remboursement de [amount] $ apparaîtra sur votre prochain relevé d'ici [days] jours ouvrables.",
+    },
+    "empathy_protocol": {
+        "en-US": "I'm very sorry to hear that you are facing challenges. I will ensure we handle your request with the utmost care.",
+        "fr-CA": "Je suis vraiment désolé d'apprendre que vous éprouvez des difficultés. Je veillerai à ce que votre demande soit traitée avec le plus grand soin.",
+    },
+    "outage_active": {
+        "en-US": "I see there's an active outage in your area. We're working on it. Would you like me to text you when it's restored?",
+        "fr-CA": "Je constate qu'il y a une panne active dans votre secteur. Nous y travaillons. Voulez-vous que je vous envoie un texto lorsque le service sera rétabli?",
+    },
+    "transfer_to_specialist": {
+        "en-US": "I'll connect you to a billing specialist now — they'll have everything we've already discussed.",
+        "fr-CA": "Je vais vous mettre en relation avec un spécialiste de la facturation — il aura tout ce dont nous avons déjà discuté.",
+    },
+    "refund_over_limit": {
+        "en-US": "That amount is above our $[limit] self-serve limit, so it needs a specialist's approval.",
+        "fr-CA": "Ce montant dépasse notre limite libre-service de [limit] $, il doit donc être approuvé par un spécialiste.",
+    },
+    "otp_callback_on_file": {
+        "en-US": "I'll send a 6-digit code to the mobile number on file. Ready?",
+        "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro de mobile au dossier. Êtes-vous prêt?",
+    },
+    "otp_callback_confirm": {
+        "en-US": "I'll send a 6-digit code to the number ending in [last4]. Ready?",
+        "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro se terminant par [last4]. Êtes-vous prêt?",
+    },
+    "pin_alternative": {
+        "en-US": "Or, if you prefer, you can use your 4-digit PIN instead.",
+        "fr-CA": "Ou, si vous préférez, vous pouvez plutôt utiliser votre NIP à 4 chiffres.",
+    },
+    # Texted and emailed codes may be spoken (appended after the PRD verbatim lines).
+    "say_code_aloud": {
+        "en-US": "Please say the 6 digits out loud.",
+        "fr-CA": "Dites les 6 chiffres à voix haute.",
+    },
+    # prd.md PIN flow: on a phone call the PIN is accepted from the keypad only
+    # (voice-spelled PINs are refused); check_secret_pin texts a code instead.
+    "pin_keypad_required": {
+        "en-US": "For your security, your PIN can only be entered on the keypad, so I just texted a 6-digit code to the mobile on file instead. Please say the 6 digits out loud.",
+        "fr-CA": "Pour votre sécurité, votre NIP ne peut être entré qu'au clavier; je viens donc d'envoyer un code à 6 chiffres par texto au mobile au dossier. Dites les 6 chiffres à voix haute.",
+    },
+    "pin_keypad_code_pending": {
+        "en-US": "For your security, your PIN can only be entered on the keypad. Please say the 6-digit code I texted you out loud instead.",
+        "fr-CA": "Pour votre sécurité, votre NIP ne peut être entré qu'au clavier. Dites plutôt à voix haute le code à 6 chiffres que je vous ai envoyé par texto.",
+    },
+    # Operational line (no account number at hand); interim wording PENDING LEGAL APPROVAL.
+    "account_lookup_options": {
+        "en-US": "To find your account, I can use its phone number or account number, your email on file, or your 4-digit PIN.",
+        "fr-CA": "Pour trouver votre compte, je peux utiliser son numéro de téléphone ou son numéro de compte, votre courriel au dossier ou votre NIP à 4 chiffres.",
+    },
+    "email_code_sent": {
+        "en-US": "For your security, I just sent a 6-digit code to your email on file — please read it back to me.",
+        "fr-CA": "Pour votre sécurité, je viens d'envoyer un code à 6 chiffres à votre adresse courriel au dossier — veuillez me le lire.",
+    },
+    "callback_next_business_day": {
+        "en-US": "That team is closed right now, so I've arranged for them to call you back on the next business day.",
+        "fr-CA": "Cette équipe est fermée en ce moment, alors j'ai demandé qu'elle vous rappelle le prochain jour ouvrable.",
+    },
+    "restricted_caller": {
+        "en-US": "We're unable to help with this call on this line. Please visit one of our stores for assistance. Goodbye.",
+        "fr-CA": "Nous ne pouvons pas traiter cet appel sur cette ligne. Veuillez vous rendre dans l'une de nos boutiques pour obtenir de l'aide. Au revoir.",
+    },
+    "ai_disclosure": {
+        "en-US": "I'm an artificial intelligence customer care assistant.",
+        "fr-CA": "Je suis un assistant de service à la clientèle basé sur l'intelligence artificielle.",
+    },
+    "closing_goodbye": {
+        "en-US": "Thank you for calling. Have a great day.",
+        "fr-CA": "Merci de votre appel. Bonne journée.",
+    },
+    "malicious_closing": {
+        "en-US": "I am unable to continue this conversation. Thank you for calling and have a good day.",
+        "fr-CA": "Je ne peux pas poursuivre cette conversation. Merci de votre appel et bonne journée.",
+    },
+}
+
+def spoken_line(key: str, language: str | None = "en-US", **slots: object) -> str:  # pragma: no cover
+    """Return the fixed spoken line for `key` and `language`, filling any `[slot]` placeholders."""
+    locale = resolve_locale(language)
+    table = SPOKEN_LINES.get(key, {})
+    template = table.get(locale) or table.get("en-US") or ""
+    for slot_name, slot_val in slots.items():
+        template = template.replace(f"[{slot_name}]", str(slot_val))
+    return template
+
+def send_login_code_impl(  # pragma: no cover
+    channel: str = "sms",
+    state: dict[str, Any] | None = None,
+    session_state: dict[str, Any] | None = None,
+    language: str = "",
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Send a 6-digit code by text (login) or to the email on file (MFA step-up). Never returns the code."""
+    state = get_state(state, session_state)
+    lang = session_language(state, language)
+    err = check_mock_error(state, lang, "send_login_code")
+    if err:
+        return err
+    account_id = ensure_account(state)
+    chan = "email" if str(channel or "").strip().lower().startswith("e") else "sms"
+    reference = tracking_id("send_login_code", account_id, chan)
+    state["last_tracking_id"] = reference
+    if state.get("auth_status") == "locked" or _failures(state) >= MAX_LOGIN_ATTEMPTS:
+        return _locked_reply(state, reference, lang)
+    logged_in = state.get("auth_status") == "pass"
+    purpose = "step_up" if logged_in and (chan == "email" or state.get("step_up_pending")) else "login"
+    if logged_in and purpose == "login":
+        return ok_reply({"sent": False, "already_verified": True}, reference, language=lang)
+    if not logged_in:
+        state["auth_status"] = "code_sent"
+    state["login_code_sent"] = True
+    state["login_channel"] = chan
+    state["code_purpose"] = purpose
+    record = account_record(state)
+    data: dict[str, Any] = {
+        "sent": True,
+        "channel": chan,
+        "purpose": purpose,
+        "code_length": 6,
+        "expires_in_sec": OTP_EXPIRES_IN_SEC,
+    }
+    if chan == "email":
+        email = str(record.get("email", ""))
+        user, _, domain = email.partition("@")
+        data["email_masked"] = (user[:1] + "***@" + domain) if domain else "on file"
+        data["spoken_message"] = spoken_line("email_code_sent", lang) + " " + spoken_line("say_code_aloud", lang)
+    else:
+        data["destination_last4"] = str(
+            state.get("caller_provided_phone_last4")
+            or ("" if state.get("phone_derived") else (state.get("phone_last4") or record["phone"][-4:]))
+        )
+        data["spoken_message"] = spoken_line("id_verification_otp", lang) + " " + spoken_line("say_code_aloud", lang)
+    reply = ok_reply(data, reference, language=lang)
+    if chan == "email" and purpose == "login":
+        # The login code went to the email on file (the caller can't get a text).
+        reply["agent_action"] = "Say a 6-digit code was sent to the email on file and ask the caller to read it back."
+    return reply
+
+def _pin_keypad_required(state: dict[str, Any], reference: str, lang: str) -> dict[str, Any]:  # pragma: no cover
+    """Refuse a spoken PIN on a phone call and text a login code instead (one agent turn)."""
+    data: dict[str, Any] = {"keypad_only": True, "code_length": 6}
+    if state.get("login_code_sent") and state.get("login_channel") == "sms":
+        data["sent"] = False
+        data["spoken_message"] = spoken_line("pin_keypad_code_pending", lang)
+    else:
+        sent = send_login_code_impl("sms", state=state, language=lang)
+        if sent.get("status") != "ok":
+            return sent
+        data["sent"] = True
+        data["destination_last4"] = sent["data"].get("destination_last4", "")
+        data["spoken_message"] = spoken_line("pin_keypad_required", lang)
+    state["last_tracking_id"] = reference
+    return error_reply(
+        "PIN_KEYPAD_REQUIRED",
+        "On a phone call the PIN can only be keyed in; a login code was texted instead.",
+        "Say spoken_message word for word, then check the 6-digit code the caller says. Never ask for the PIN again.",
+        reference,
+        language=lang,
+        data=data,
+    )
+
+def _record_failure(state: dict[str, Any], reference: str, lang: str, kind: str) -> dict[str, Any]:  # pragma: no cover
+    """Count one wrong code or PIN; the third locks the caller out."""
+    failures = _failures(state) + 1
+    state["auth_failure_count"] = failures
+    state["login_attempts"] = failures
+    if kind == "pin":
+        state["pin_failure_count"] = read_count(state, "pin_failure_count") + 1
+    if failures >= MAX_LOGIN_ATTEMPTS:
+        return _locked_reply(state, reference, lang)
+    remaining = MAX_LOGIN_ATTEMPTS - failures
+    return error_reply(
+        "WRONG_CODE" if kind == "code" else "WRONG_PIN",
+        "That code does not match." if kind == "code" else "That PIN does not match.",
+        "Say it didn't match and ask the caller to try again.",
+        reference,
+        language=lang,
+        data={"attempts_remaining": remaining, "lockout_triggered": False},
+    )
+
+_SPOKEN_SCALES: dict[str, int] = {"hundred": 100, "cent": 100, "cents": 100, "thousand": 1000, "mille": 1000}  # pragma: no cover
+
+_SPOKEN_TEENS: dict[str, int] = {  # pragma: no cover
+    "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15,
+    "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+    "dix": 10, "onze": 11, "douze": 12, "treize": 13, "quatorze": 14, "quinze": 15, "seize": 16,
+}
+
+_SPOKEN_TENS: dict[str, int] = {  # pragma: no cover
+    "twenty": 20, "thirty": 30, "forty": 40, "fourty": 40, "fifty": 50, "sixty": 60,
+    "seventy": 70, "eighty": 80, "ninety": 90,
+    "vingt": 20, "vingts": 20, "trente": 30, "quarante": 40, "cinquante": 50, "soixante": 60,
+}
+
+_SPOKEN_UNITS: dict[str, int] = {  # pragma: no cover
+    "zero": 0, "oh": 0, "o": 0, "nought": 0, "one": 1, "two": 2, "three": 3, "four": 4,
+    "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+    "un": 1, "une": 1, "deux": 2, "trois": 3, "quatre": 4, "cinq": 5, "sept": 7, "huit": 8, "neuf": 9,
+}
+
+def _cardinal_digits(run: list[str]) -> str:  # pragma: no cover
+    """'one thousand two hundred thirty four' -> '1234' (additive, French 'quatre vingt' = 80)."""
+    total = current = 0
+    prev = ""
+    for tok in run:
+        if tok in _SPOKEN_SCALES:
+            if _SPOKEN_SCALES[tok] == 1000:
+                total += (current or 1) * 1000
+                current = 0
+            else:
+                current = (current or 1) * 100
+        elif tok.startswith("vingt") and prev == "quatre":
+            current += 80 - 4
+        elif tok.isdigit():
+            current += int(tok)
+        else:
+            current += _SPOKEN_UNITS.get(tok, _SPOKEN_TEENS.get(tok, _SPOKEN_TENS.get(tok, 0)))
+        prev = tok
+    return str(total + current)
+
+_SPOKEN_JOINERS = frozenset({"and", "et"})  # pragma: no cover
+
+_SPOKEN_REPEATS: dict[str, int] = {"double": 2, "triple": 3}  # pragma: no cover
+
+def _grouped_digits(run: list[str]) -> str:  # pragma: no cover
+    """Digit-by-digit or grouped speech: 'one two three four', 'twelve thirty four', 'double five'."""
+    out: list[str] = []
+    i, n = 0, len(run)
+    while i < n:
+        tok = run[i]
+        nxt = run[i + 1] if i + 1 < n else ""
+        if tok.isdigit():
+            out.append(tok)
+        elif tok in _SPOKEN_REPEATS and (nxt in _SPOKEN_UNITS or (nxt.isdigit() and len(nxt) == 1)):
+            out.append((nxt if nxt.isdigit() else str(_SPOKEN_UNITS[nxt])) * _SPOKEN_REPEATS[tok])
+            i += 1
+        elif tok == "quatre" and nxt.startswith("vingt") or tok in _SPOKEN_TENS:
+            value = 80 if tok == "quatre" else _SPOKEN_TENS[tok]
+            i += 1 if tok == "quatre" else 0
+            rest = run[i + 1 : i + 4]
+            if rest[:1] and rest[0] in _SPOKEN_JOINERS and len(rest) > 1 and rest[1] in ("un", "une", "onze"):
+                value += 1 if rest[1] != "onze" else 11
+                i += 2
+            elif value in (60, 80) and rest[:1] and rest[0] in _SPOKEN_TEENS:
+                value += _SPOKEN_TEENS[rest[0]]
+                i += 1
+                if rest[0] == "dix" and len(rest) > 1 and rest[1] in ("sept", "huit", "neuf"):
+                    value += _SPOKEN_UNITS[rest[1]]
+                    i += 1
+            elif rest[:1] and rest[0] in _SPOKEN_UNITS and _SPOKEN_UNITS[rest[0]] > 0 and rest[0] not in ("oh", "o"):
+                value += _SPOKEN_UNITS[rest[0]]
+                i += 1
+            out.append(str(value))
+        elif tok == "dix" and nxt in ("sept", "huit", "neuf"):
+            out.append(str(10 + _SPOKEN_UNITS[nxt]))
+            i += 1
+        elif tok in _SPOKEN_TEENS:
+            out.append(str(_SPOKEN_TEENS[tok]))
+        elif tok in _SPOKEN_UNITS:
+            out.append(str(_SPOKEN_UNITS[tok]))
+        i += 1
+    return "".join(out)
+
+_SPOKEN_TOKEN_RE = re.compile(r"[a-z]+|[0-9]+")  # pragma: no cover
+
+def _is_number_token(tok: str) -> bool:  # pragma: no cover
+    return tok.isdigit() or tok in _SPOKEN_UNITS or tok in _SPOKEN_TEENS or tok in _SPOKEN_TENS or tok in _SPOKEN_SCALES or tok in _SPOKEN_REPEATS
+
+def _number_runs(text: str) -> tuple[list[list[str]], bool]:  # pragma: no cover
+    """Split text into runs of number tokens; also report whether any other word appeared."""
+    folded = unicodedata.normalize("NFKD", text.lower())
+    folded = "".join(ch for ch in folded if not unicodedata.combining(ch))
+    runs: list[list[str]] = [[]]
+    other_words = False
+    for tok in _SPOKEN_TOKEN_RE.findall(folded):
+        if _is_number_token(tok) or (tok in _SPOKEN_JOINERS and runs[-1]):
+            runs[-1].append(tok)
+        else:
+            other_words = True
+            if runs[-1]:
+                runs.append([])
+    cleaned = []
+    for run in runs:
+        while run and run[-1] in _SPOKEN_JOINERS:
+            run.pop()
+        if run:
+            cleaned.append(run)
+    return cleaned, other_words
+
+def spoken_digits(value: Any) -> str:  # pragma: no cover
+    """The digits a caller said, in any spoken or typed form (live speech-to-text).
+
+    "one two three four", "12 34", "1-2-3-4", "twelve thirty-four", "one thousand
+    two hundred thirty-four", "double five", "quatre quatre cinq deux" and
+    "my PIN is 5903" all give their digits. Ints/floats go through normalize_code.
+    Inside other words, a lone number word ("I have one PIN, ...") is ignored when
+    another number run exists. Tools still apply their strict length checks.
+    """
+    if not isinstance(value, str):
+        return normalize_code(value)
+    if not any(ch.isalpha() for ch in value):
+        return normalize_code(value)
+    runs, other_words = _number_runs(value)
+    if other_words and len(runs) > 1:
+        runs = [r for r in runs if len(r) > 1 or r[0].isdigit()] or runs
+    parts = []
+    for run in runs:
+        if run in (["oh"], ["o"]) and other_words:
+            continue
+        parts.append(_cardinal_digits(run) if any(t in _SPOKEN_SCALES for t in run) else _grouped_digits(run))
+    return "".join(parts)
+
 MAX_VALIDATION_ERRORS = 3  # pragma: no cover
 
 def validation_error(  # pragma: no cover
@@ -701,7 +1049,7 @@ def check_login_code_impl(  # pragma: no cover
     if err:
         return err
     account_id = ensure_account(state)
-    reference = tracking_id("check_login_code", account_id, normalize_code(code))
+    reference = tracking_id("check_login_code", account_id, spoken_digits(code))
     state["last_tracking_id"] = reference
     step_up = state.get("code_purpose") == "step_up" and state.get("auth_status") == "pass"
     if state.get("auth_status") == "pass" and not step_up:
@@ -709,7 +1057,7 @@ def check_login_code_impl(  # pragma: no cover
         return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
     if state.get("auth_status") == "locked" or _failures(state) >= MAX_LOGIN_ATTEMPTS:
         return _locked_reply(state, reference, lang)
-    digits = normalize_code(code) or normalize_code(state.get("dtmf_digits"))
+    digits = spoken_digits(code) or normalize_code(state.get("dtmf_digits"))
     if PIN_RE.fullmatch(digits) and not step_up:
         # The caller gave their 4-digit PIN instead of the texted code.
         return check_secret_pin_impl(digits, state=state, language=lang)
@@ -719,11 +1067,11 @@ def check_login_code_impl(  # pragma: no cover
             return validation_error(
                 state,
                 "The emailed code has 6 digits.",
-                "Say the code sent to their email has 6 digits, ask them to read all of them, and offer to resend it by email.",
+                "Say the code sent to their email has 6 digits, ask them to say all of them out loud, and offer to resend it by email.",
                 reference,
                 lang,
             )
-        return validation_error(state, "A verification code has 6 digits.", "Ask the caller to say or key in the 6-digit code again.", reference, lang)
+        return validation_error(state, "A verification code has 6 digits.", "Ask the caller to say the 6-digit code out loud again.", reference, lang)
     if not _credential_ok(state, digits, "code"):
         return _record_failure(state, reference, lang, "code")
     state["auth_failure_count"] = 0
@@ -736,6 +1084,10 @@ def check_login_code_impl(  # pragma: no cover
     state["auth_status"] = "pass"
     state["logged_in"] = True
     return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
+
+def is_voice_call(state: dict[str, Any]) -> bool:  # pragma: no cover
+    """True on a live phone call (the before-model callback sets call_channel; text chats stay "")."""
+    return str(state.get("call_channel") or "").strip().lower() == "voice"
 
 def check_secret_pin_impl(  # pragma: no cover
     pin: str | int | float = "",
@@ -751,7 +1103,7 @@ def check_secret_pin_impl(  # pragma: no cover
     if err:
         return err
     account_id = ensure_account(state)
-    reference = tracking_id("check_secret_pin", account_id, normalize_code(pin))
+    reference = tracking_id("check_secret_pin", account_id, spoken_digits(pin))
     state["last_tracking_id"] = reference
     if state.get("code_purpose") == "step_up" and state.get("auth_status") == "pass":
         # A step-up code is pending: digits given here are the emailed code.
@@ -761,10 +1113,17 @@ def check_secret_pin_impl(  # pragma: no cover
         return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
     if state.get("auth_status") == "locked" or _failures(state) >= MAX_LOGIN_ATTEMPTS:
         return _locked_reply(state, reference, lang)
-    digits = normalize_code(pin) or normalize_code(state.get("dtmf_digits"))
+    keyed = normalize_code(state.get("dtmf_digits"))
+    digits = spoken_digits(pin) or keyed
     if OTP_RE.fullmatch(digits) and state.get("login_code_sent"):
         # The caller read back the 6-digit texted code.
         return check_login_code_impl(digits, state=state, language=lang)
+    if is_voice_call(state):
+        # prd.md PIN flow: on a phone call only keypad digits count; a voice-spelled
+        # PIN is refused (never a strike) and a texted code is offered in the same turn.
+        if not PIN_RE.fullmatch(keyed):
+            return _pin_keypad_required(state, reference, lang)
+        digits = keyed
     if not PIN_RE.fullmatch(digits):
         return validation_error(state, "A PIN has 4 digits.", "Ask the caller to key in their 4-digit PIN again.", reference, lang)
     if not _credential_ok(state, digits, "pin"):

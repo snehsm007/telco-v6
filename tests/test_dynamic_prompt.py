@@ -302,3 +302,34 @@ def test_platform_session_event_is_not_a_caller_turn() -> None:
 
 def test_mangled_french_fraud_report_still_reads_as_french() -> None:
     assert detect_active_call_language({}, _req("Quelqu'un a peur de Montcalm mon compte")) == "fr-CA"
+
+
+@pytest.mark.parametrize(
+    ("text", "digits"),
+    [
+        ("<context>user pressed 1234 on keypad.</context>", "1234"),
+        ("user pressed 1234", "1234"),
+        ("User pressed 5 9 2 1 #", "5921"),
+        ("user pressed 4-8-2-9", "4829"),
+        ("My PIN is 4829", ""),
+        ("I pressed it already", ""),
+        ("", ""),
+        (None, ""),
+    ],
+)
+def test_parse_dtmf_digits(text, digits) -> None:
+    from lib.dynamic_prompt import parse_dtmf_digits
+
+    assert parse_dtmf_digits(text) == digits
+
+
+def test_capture_turn_input_without_state_or_contents() -> None:
+    from lib.dynamic_prompt import capture_turn_input
+
+    capture_turn_input(SimpleNamespace(), SimpleNamespace(contents=None))
+    state: dict = {}
+    capture_turn_input(SimpleNamespace(state=state), SimpleNamespace(contents=None))
+    assert state == {}
+    relay = SimpleNamespace(contents=[SimpleNamespace(role="user", parts=[SimpleNamespace(text="For context: [router] said: hi")]), SimpleNamespace(text="bare")])
+    capture_turn_input(SimpleNamespace(state=state), relay)
+    assert state == {}

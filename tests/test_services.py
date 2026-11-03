@@ -553,10 +553,12 @@ def test_login_prompts_carry_their_verbatim_lines() -> None:
     assert gate["data"]["spoken_message"].startswith(SPOKEN_LINES["otp_callback_confirm"]["en-US"].split("[")[0])
     assert gate["data"]["pin_prompt_message"] == SPOKEN_LINES["id_verification_pin"]["en-US"]
     sent = send_login_code_impl(state=state)
-    assert sent["data"]["spoken_message"] == SPOKEN_LINES["id_verification_otp"]["en-US"]
+    aloud = " " + SPOKEN_LINES["say_code_aloud"]["en-US"]
+    assert sent["data"]["spoken_message"] == SPOKEN_LINES["id_verification_otp"]["en-US"] + aloud
     fr: dict = {"language": "fr-CA"}
     lookup_account_impl("514-555-0199", state=fr)
-    assert send_login_code_impl(state=fr)["data"]["spoken_message"] == SPOKEN_LINES["id_verification_otp"]["fr-CA"]
+    fr_aloud = " " + SPOKEN_LINES["say_code_aloud"]["fr-CA"]
+    assert send_login_code_impl(state=fr)["data"]["spoken_message"] == SPOKEN_LINES["id_verification_otp"]["fr-CA"] + fr_aloud
 # --- callers without a number, codes that can't arrive (C2, C3, C10) ------------------
 
 

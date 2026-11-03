@@ -39,6 +39,7 @@ import contextvars
 import hashlib
 import json
 import re
+import unicodedata
 
 SMS_PURPOSES = ("outage_updates", "troubleshooting_guide", "slot_available_callback", "registration_link")  # pragma: no cover
 
@@ -83,6 +84,7 @@ ERROR_CODES = (  # pragma: no cover
     "CARD_EXPIRED",
     "NOT_SUSPENDED",
     "DELIVERY_FAILED",
+    "PIN_KEYPAD_REQUIRED",
 )
 
 ERROR_CODE_DEFAULTS: dict[str, tuple[str, str]] = {  # pragma: no cover
@@ -238,6 +240,10 @@ ERROR_CODE_DEFAULTS: dict[str, tuple[str, str]] = {  # pragma: no cover
         "The text message could not be delivered.",
         "Apologize and offer a transfer to a representative.",
     ),
+    "PIN_KEYPAD_REQUIRED": (
+        "On a phone call the PIN can only be keyed in.",
+        "Say spoken_message word for word, then check the 6-digit code the caller says.",
+    ),
 }
 
 ERROR_MESSAGES_FR: dict[str, str] = {  # pragma: no cover
@@ -279,6 +285,7 @@ ERROR_MESSAGES_FR: dict[str, str] = {  # pragma: no cover
     "CARD_EXPIRED": "La carte au dossier est expirée.",
     "NOT_SUSPENDED": "Le service n'est pas suspendu.",
     "DELIVERY_FAILED": "Le texto n'a pas pu être livré.",
+    "PIN_KEYPAD_REQUIRED": "Au téléphone, le NIP ne peut être entré qu'au clavier.",
 }
 
 class _StatusStr(str):  # pragma: no cover
