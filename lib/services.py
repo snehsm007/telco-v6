@@ -587,7 +587,8 @@ def handover_to_person_impl(
     limit = display_amount(SELF_SERVE_ADJUSTMENT_LIMIT)
     message = " ".join(spoken_line(k, lang, limit=limit) for k in keys)
     acknowledgement = spoken_line("distress_acknowledgement", lang) if distressed else ""
-    context_line = "" if code in NO_CONTEXT_LINE_REASONS and open_now else spoken_line("handoff_context_note", lang)
+    context_key = "business_context_note" if code == "business_handoff" and open_now else "handoff_context_note"
+    context_line = "" if code in NO_CONTEXT_LINE_REASONS and open_now else spoken_line(context_key, lang)
     context = {
         "reason": code,
         "summary": redact_pii(" ".join(str(summary or "").split()))[:300],

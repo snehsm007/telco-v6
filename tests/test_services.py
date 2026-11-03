@@ -421,7 +421,8 @@ def test_handover_speaks_the_verbatim_line_for_each_reason(reason: str, lang: st
     assert reply["status"] == "ok"
     assert reply["data"]["handoff_message"] == expected == reply["handoff_message"]
     assert state["handoff_message"] == expected
-    context = "" if reason in NO_CONTEXT_LINE else SPOKEN_LINES["handoff_context_note"][lang]
+    note = "business_context_note" if reason == "business_handoff" else "handoff_context_note"
+    context = "" if reason in NO_CONTEXT_LINE else SPOKEN_LINES[note][lang]
     assert reply["data"]["transfer_context_line"] == context
     assert reply["data"]["acknowledgement_line"] == ""
     assert state["handover_complete"] is True and state["handoff_reason"] == reason
@@ -789,3 +790,21 @@ def test_step_up_pass_also_carries_the_line() -> None:
     reply = check_login_code_impl(OTP, state=state)
     assert reply["data"]["step_up_verified"] is True
     assert reply["spoken_message"] == SPOKEN_LINES["login_verified"]["en-US"]
+
+
+# --- fix/35 (d): a business handoff says the business team takes the request ------------
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_business_handoff_context_line_says_the_team_handles_the_request(lang: str) -> None:
+    """VE-05 / VE-10: the caller's goal (technician status, a dispute) looked dropped at the transfer."""
+    reply = handover_to_person_impl("business_handoff", "technician status", state={}, language=lang)
+    data = reply["data"]
+    assert data["handoff_message"] == SPOKEN_LINES["business_handoff"][lang]  # PRD line untouched
+    assert data["transfer_context_line"] == SPOKEN_LINES["business_context_note"][lang]
+    assert SPOKEN_LINES["business_context_note"][lang] not in data["handoff_message"]
+
+
+def test_other_handoffs_keep_the_generic_context_line() -> None:
+    reply = handover_to_person_impl("user_requested_agent", "", state={})
+    assert reply["data"]["transfer_context_line"] == SPOKEN_LINES["handoff_context_note"]["en-US"]

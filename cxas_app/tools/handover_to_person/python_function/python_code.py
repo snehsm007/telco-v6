@@ -720,6 +720,11 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "I've passed along what we've discussed so you won't need to repeat it.",
         "fr-CA": "J'ai transmis ce dont nous avons discuté, vous n'aurez donc pas à le répéter.",
     },
+    # Context line for business_handoff: the business team takes over the caller's request.
+    "business_context_note": {
+        "en-US": "Our business team will take care of your request from here, and I've passed along what you've asked so you won't need to repeat it.",
+        "fr-CA": "Notre équipe Affaires s'occupera de votre demande à partir d'ici, et j'ai transmis ce que vous avez demandé, vous n'aurez donc pas à le répéter.",
+    },
     "distress_acknowledgement": {
         "en-US": "I understand this has been frustrating, and I'm sorry for the trouble.",
         "fr-CA": "Je comprends que la situation soit frustrante, et je suis désolé pour ces inconvénients.",
@@ -868,7 +873,8 @@ def handover_to_person_impl(  # pragma: no cover
     limit = display_amount(SELF_SERVE_ADJUSTMENT_LIMIT)
     message = " ".join(spoken_line(k, lang, limit=limit) for k in keys)
     acknowledgement = spoken_line("distress_acknowledgement", lang) if distressed else ""
-    context_line = "" if code in NO_CONTEXT_LINE_REASONS and open_now else spoken_line("handoff_context_note", lang)
+    context_key = "business_context_note" if code == "business_handoff" and open_now else "handoff_context_note"
+    context_line = "" if code in NO_CONTEXT_LINE_REASONS and open_now else spoken_line(context_key, lang)
     context = {
         "reason": code,
         "summary": redact_pii(" ".join(str(summary or "").split()))[:300],

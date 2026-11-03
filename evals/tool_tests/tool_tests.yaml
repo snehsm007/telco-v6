@@ -452,7 +452,7 @@ tests:
   expected_fields:
     queue: business
     handoff_message: To get you the best support for your business account, I'll transfer you to an agent. You'll need to use your phone keypad instead of talking to the virtual assistant. Just a moment while I connect you.
-    transfer_context_line: I've passed along what we've discussed so you won't need to repeat it.
+    transfer_context_line: Our business team will take care of your request from here, and I've passed along what you've asked so you won't need to repeat it.
   priority: P0
 - id: tt_handover_business_french
   tool: handover_to_person
@@ -465,7 +465,7 @@ tests:
   expected_status: ok
   expected_fields:
     handoff_message: Pour vous offrir le meilleur soutien pour votre compte d'affaires, je vais vous transférer à un agent. Vous devrez utiliser le clavier de votre téléphone au lieu de parler à l'assistant virtuel. Un instant pendant que je vous mets en relation.
-    transfer_context_line: J'ai transmis ce dont nous avons discuté, vous n'aurez donc pas à le répéter.
+    transfer_context_line: Notre équipe Affaires s'occupera de votre demande à partir d'ici, et j'ai transmis ce que vous avez demandé, vous n'aurez donc pas à le répéter.
   priority: P0
 - id: tt_handover_reason_text_is_normalized
   tool: handover_to_person

@@ -30,7 +30,7 @@ def test_handover_fraud_business_and_refund_lines(monkeypatch) -> None:
     monkeypatch.setattr(tool, "context", {}, raising=False)
     business = tool.handover_to_person(reason="business_handoff", language="fr-CA")
     assert business["handoff_message"] == SPOKEN_LINES["business_handoff"]["fr-CA"]
-    assert business["data"]["transfer_context_line"] == SPOKEN_LINES["handoff_context_note"]["fr-CA"]
+    assert business["data"]["transfer_context_line"] == SPOKEN_LINES["business_context_note"]["fr-CA"]
     monkeypatch.setattr(tool, "context", {}, raising=False)
     refund = tool.handover_to_person(reason="refund_threshold_exceeded", language="fr-CA")
     assert refund["handoff_message"] == (

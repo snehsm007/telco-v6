@@ -944,6 +944,11 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "I've passed along what we've discussed so you won't need to repeat it.",
         "fr-CA": "J'ai transmis ce dont nous avons discuté, vous n'aurez donc pas à le répéter.",
     },
+    # Context line for business_handoff: the business team takes over the caller's request.
+    "business_context_note": {
+        "en-US": "Our business team will take care of your request from here, and I've passed along what you've asked so you won't need to repeat it.",
+        "fr-CA": "Notre équipe Affaires s'occupera de votre demande à partir d'ici, et j'ai transmis ce que vous avez demandé, vous n'aurez donc pas à le répéter.",
+    },
     "distress_acknowledgement": {
         "en-US": "I understand this has been frustrating, and I'm sorry for the trouble.",
         "fr-CA": "Je comprends que la situation soit frustrante, et je suis désolé pour ces inconvénients.",
