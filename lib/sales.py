@@ -50,6 +50,7 @@ from lib.fakes import (
     SALES_GENERIC_DEVICE_WORDS,
     SALES_LANDLINE_WORDS,
     SALES_NEW_LINE_WORDS,
+    SALES_OWN_BRAND_WORDS,
     SALES_OUT_OF_WARRANTY_AGE_DAYS,
     SALES_PLACEHOLDERS,
     SALES_PORT_DAYS,
@@ -241,6 +242,12 @@ def _sales_plan_view(state: dict[str, Any], plan: dict[str, Any], current: dict[
     if plan.get("channel_examples"):
         view["channel_examples"] = [_sales_feature(c, lang) for c in plan["channel_examples"]]
         view["hd_included"] = bool(plan.get("hd_included"))
+        # Follow-up facts for a TV pack: size, where the full lineup is, blackouts (rule 33).
+        if plan.get("channel_count"):
+            view["channel_count"] = int(plan["channel_count"])
+        view["full_channel_list_note"] = _sales_text("full_channel_list", lang)
+        if plan.get("blackout_key"):
+            view["blackout_note"] = _sales_text(str(plan["blackout_key"]), lang)
     view.update(_sales_pricing(state, plan, current))
     return view
 
@@ -271,6 +278,20 @@ def _sales_rank(plans: list[dict[str, Any]], need: str) -> list[dict[str, Any]]:
     return by_price[:_SALES_MAX_OPTIONS]
 
 
+def _sales_model_tokens(text: Any) -> set[str]:
+    """Model-number tokens the caller named: letters+digits ("s22", "8a") or a short number ("13").
+
+    Storage sizes ("128gb") and long numbers (years, codes) are not model numbers.
+    """
+    tokens = re.findall(r"[^\W_]+", str(text or "").lower())
+    return {
+        t for t in tokens
+        if re.search(r"\d", t) and len(t) <= 6
+        and not re.fullmatch(r"\d+(?:gb|go|tb|to|g)", t)
+        and not (t.isdigit() and len(t) > 2)
+    }
+
+
 def _sales_device(device: Any, issue: Any) -> tuple[dict[str, Any], bool]:
     """Match the caller's words to a device on file.
 
@@ -279,9 +300,14 @@ def _sales_device(device: Any, issue: Any) -> tuple[dict[str, Any], bool]:
     own; only a generic "my phone" falls back to the most recent purchase.
     """
     text = f"{device or ''} {issue or ''}".lower()
+    named_tokens = _sales_model_tokens(device)
     for dev in DEVICES_ON_FILE:
-        if any(k in text for k in dev.get("keywords", [])) or str(dev["model"]).lower() in text:
-            return dev, True
+        if not (any(k in text for k in dev.get("keywords", [])) or str(dev["model"]).lower() in text):
+            continue
+        # Same brand, different model ("Galaxy S22" vs the S24 on file): not this device.
+        if named_tokens - _sales_model_tokens(dev["model"]):
+            continue
+        return dev, True
     newest = min(DEVICES_ON_FILE, key=lambda d: int(d["purchased_days_ago"]))
     named = " ".join(str(device or "").split())[:60]
     words = re.findall(r"[^\W_]+", named.lower())
@@ -570,8 +596,17 @@ def file_warranty_claim_impl(
         )
     if not urgent and (physical is None or water is None):
         missing = [name for name, val in (("physical_damage", physical), ("water_damage", water)) if val is None]
-        reply = ok_reply({**base, "claim_filed": False, "damage_check_needed": True, "missing": missing}, reference, language=lang)
-        reply["agent_action"] = "Confirm the device model and ask about physical or water damage, then call again."
+        check = {
+            **base,
+            "claim_filed": False,
+            "damage_check_needed": True,
+            "missing": missing,
+            # Turn N+1: the caller can confirm where the replacement goes before the claim is filed.
+            "shipping_address_last_line": account_record(state).get("service_address_last_line", ""),
+            "shipping_address_note": _sales_text("warranty_ship_to", lang),
+        }
+        reply = ok_reply(check, reference, language=lang)
+        reply["agent_action"] = "Confirm the device model and shipping_address_last_line, ask about cracks or water damage, then call again."
         return reply
     if not urgent and not str(issue or "").strip():
         return validation_error(state, "No fault described.", "Ask what is wrong with the device.", reference, lang)
@@ -614,6 +649,13 @@ def _sales_port_checklist(lang: str) -> list[str]:
 def _sales_port_eta(kind: str, lang: str) -> dict[str, str]:
     iso = _sales_business_date(SALES_PORT_DAYS.get(kind, 0))
     return {"date": iso, "display": display_date(iso, lang)}
+
+
+def _sales_own_number(state: dict[str, Any], number: str) -> bool:
+    """True when the number to transfer is the logged-in account's own phone number."""
+    own = {str(state.get(k) or "") for k in ("phone_last4", "caller_provided_phone_last4")} - {""}
+    record_phone = normalize_code(account_record(state).get("phone", ""))
+    return number == record_phone or number[-4:] in own
 
 
 def start_number_transfer_impl(
@@ -709,18 +751,31 @@ def start_number_transfer_impl(
     else:
         target = "existing_line"
 
-    missing = [name for name, val in (("current_account_number", account_number),) if not val]
+    # The caller's own Telco number (e.g. their landline onto their mobile) is an internal
+    # move: there is no losing provider, so no outside account number is needed.
+    internal_move = (
+        number_type == "landline"
+        and _sales_own_number(state, number)
+        and (provider_found_by_lookup or _sales_has(provider, SALES_OWN_BRAND_WORDS))
+    )
+    if internal_move:
+        provider = _sales_text("port_own_account", lang)
+    missing = [] if internal_move else [name for name, val in (("current_account_number", account_number),) if not val]
     eta = _sales_port_eta(number_type, lang)
     data: dict[str, Any] = {
         "number_last4": number[-4:],
         "number_type": number_type,
         "current_provider": provider,
-        "provider_found_by_lookup": provider_found_by_lookup,
+        "provider_found_by_lookup": provider_found_by_lookup and not internal_move,
+        "internal_move": internal_move,
         "current_account_number_last4": account_number[-4:] if account_number else "",
         "transfer_pin_received": bool(pin_digits),
         "target": target,
         "keep_old_service_note": _sales_text("port_keep_active", lang),
     }
+    if internal_move:
+        data["internal_move_note"] = _sales_text("port_internal_move", lang)
+        del data["keep_old_service_note"]
     if target_last4:
         data["target_line_last4"] = target_last4
     if missing:

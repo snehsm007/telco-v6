@@ -514,3 +514,19 @@ def test_mfa_step_up_falls_back_to_a_text_when_email_is_unavailable() -> None:
     assert sent["data"]["sent"] is True and sent["data"]["purpose"] == "step_up"
     assert check_login_code_impl("482913", state=state)["data"]["step_up_verified"] is True
     assert manage_mfa_impl(action="disable", state=state)["status"] == "ok"
+
+
+# --- manage_mfa follow-up facts (fix/14, cluster E) ---------------------------------
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_mfa_change_carries_fee_and_re_enable_notes(lang: str) -> None:
+    """VE-56 ('any fee?') and VE-13 ('how do I turn it back on?') were answered from nothing."""
+    state = _logged_in(language=lang)
+    on = manage_mfa_impl("enable", state=state, language=lang)["data"]
+    assert on["fee_note"] and on["re_enable_note"] == ""
+    state["step_up_verified"] = True
+    off = manage_mfa_impl("disable", state=state, language=lang)["data"]
+    assert off["mfa_enabled"] is False and off["fee_note"]
+    assert "0147" in off["re_enable_note"]
+    assert ("frais" in off["fee_note"]) == (lang == "fr-CA")

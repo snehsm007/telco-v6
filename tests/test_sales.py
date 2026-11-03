@@ -402,3 +402,60 @@ def test_warranty_unknown_named_model_is_not_swapped_for_a_device_on_file() -> N
     old = file_warranty_claim_impl("Orbit Z9 Max", "mic dead", state=_logged_in(fx_device_warranty="out_of_warranty"))
     assert old["error"] == "NOT_ELIGIBLE" and old["data"]["device_model"] == "Orbit Z9 Max"
     assert file_warranty_claim_impl("mon téléphone", "écran", False, False, state=_logged_in())["data"]["device_matched"] is False
+
+
+# ----------------------------------------------------------------------------- fix/14 (clusters E, G1, G2)
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_sports_pack_has_channel_count_full_list_and_blackout_notes(lang: str) -> None:
+    """VE-69: the caller wanted the full channel list and blackout rules."""
+    plans = browse_plans_impl("tv", need="sports", state=_identified(), language=lang)["data"]["plans"]
+    sports = plans[0]
+    assert sports["plan_id"] == "TV-SPORTS" and sports["channel_count"] > 0
+    assert sports["full_channel_list_note"] == SALES_COPY["full_channel_list"][lang]
+    assert sports["blackout_note"] == SALES_COPY["blackout_sports"][lang]
+    assert all("blackout_note" not in p for p in plans[1:] if p["plan_id"] != "TV-SPORTS")
+
+
+def test_warranty_same_brand_other_model_is_not_the_device_on_file() -> None:
+    """VE-49: 'Samsung Galaxy S22' matched the S24 on file by brand keyword."""
+    check = file_warranty_claim_impl("Samsung Galaxy S22", "ne charge plus", state=_logged_in(), language="fr-CA")
+    data = check["data"]
+    assert data["device_model"] == "Samsung Galaxy S22" and data["device_matched"] is False
+    assert "S24" not in str(check)
+    # The on-file model, with or without its model number or a storage size, still matches.
+    for named in ("Samsung Galaxy S24", "Galaxy S24 256GB", "my samsung", "iPhone 15 Pro"):
+        assert file_warranty_claim_impl(named, "won't charge", state=_logged_in())["data"]["device_matched"] is True, named
+    assert sales._sales_model_tokens("iPhone 13 Pro 128GB 2023") == {"13"}
+    assert sales._sales_model_tokens("Pixel 8a on 5G") == {"8a"}
+
+
+def test_warranty_damage_check_carries_shipping_address_to_confirm() -> None:
+    check = file_warranty_claim_impl("iPhone", "screen flickers", state=_logged_in())
+    data = check["data"]
+    assert data["damage_check_needed"] is True
+    assert data["shipping_address_last_line"] and data["shipping_address_note"]
+    assert "shipping_address_last_line" in check["agent_action"] and len(check["agent_action"]) <= 120
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_own_landline_to_own_mobile_needs_no_outside_account_number(lang: str) -> None:
+    """VE-38: the caller's own number (the one on the account) moving to their mobile."""
+    state = _logged_in(phone_last4="0199", caller_provided_phone_last4="0199", language=lang)
+    reply = start_number_transfer_impl("514-555-0199", "", "", "4829", "landline_to_mobile", state=state)
+    data = reply["data"]
+    assert data["status"] == "submitted" and data["transfer_started"] is True
+    assert data["internal_move"] is True and data["internal_move_note"] == SALES_COPY["port_internal_move"][lang]
+    assert "missing_details" not in data and "keep_old_service_note" not in data
+    assert data["current_provider"] == SALES_COPY["port_own_account"][lang]
+
+
+def test_own_number_with_another_provider_or_mobile_still_needs_account_number() -> None:
+    state = _logged_in(phone_last4="0199")
+    other = start_number_transfer_impl("5145550199", "Rogers", "", "", "landline_to_mobile", state=state)["data"]
+    assert other["internal_move"] is False and other["missing_details"] == ["current_account_number"]
+    mobile = start_number_transfer_impl("5145550199", "", "", "", "existing_line", state=_logged_in(phone_last4="0199"))["data"]
+    assert mobile["internal_move"] is False and mobile["missing_details"] == ["current_account_number"]
+    stranger = start_number_transfer_impl("5145550142", "", "", "", "home phone", state=_logged_in())["data"]
+    assert stranger["internal_move"] is False and stranger["missing_details"] == ["current_account_number"]

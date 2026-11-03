@@ -817,6 +817,17 @@ def manage_mfa_impl(  # pragma: no cover
                 "If this phone is lost or stolen, call us and verify with your secret PIN instead of a text code; we can then suspend the line and update the mobile number that sign-in codes go to.",
                 "Si ce téléphone est perdu ou volé, appelez-nous et vérifiez votre identité avec votre NIP secret plutôt qu'avec un code par texto; nous pourrons ensuite suspendre la ligne et mettre à jour le numéro de cellulaire qui reçoit les codes de connexion.",
             ) if now_on else "",
+            # Turn N+1 facts callers ask right after the change (DESIGN_RULES rule 33).
+            "fee_note": _acct_text(
+                lang,
+                "Two-step verification is free; turning it on or off never adds a charge to the bill.",
+                "La vérification en deux étapes est gratuite; l'activer ou la désactiver n'ajoute jamais de frais à la facture.",
+            ),
+            "re_enable_note": "" if now_on else _acct_text(
+                lang,
+                f"It can be turned back on at any time on a call with us after you verify; codes then go by text to the mobile number on file, ending in {dest}, or to a new mobile number once it is updated on the account.",
+                f"Elle peut être réactivée en tout temps lors d'un appel avec nous, après vérification; les codes sont alors envoyés par texto au numéro de cellulaire au dossier, se terminant par {dest}, ou à un nouveau numéro une fois celui-ci mis à jour au compte.",
+            ),
         },
         reference,
         language=lang,
