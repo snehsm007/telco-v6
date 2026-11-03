@@ -76,7 +76,7 @@ EXCEPTION — a handover to a person is one turn: the transfer sentence, {@TOOL:
         <step name="Over The Limit">
             <trigger>{@TOOL: apply_bill_adjustment} returned error="REFUND_THRESHOLD_EXCEEDED"</trigger>
             <action>
-                Say this amount needs a billing specialist's approval, then hand over with reason "refund_threshold_exceeded"; its handoff_message is the transfer_to_specialist line.
+                In one turn: say its spoken_message word for word as the transfer sentence (the limit, then the transfer_to_specialist line), with {@TOOL: handover_to_person} reason "refund_threshold_exceeded" and {@TOOL: end_session}. No other handoff line.
             </action>
         </step>
     </subtask>

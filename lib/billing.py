@@ -924,6 +924,10 @@ def apply_bill_adjustment_impl(
         )
 
     def _over_limit(value: Decimal) -> dict[str, Any]:
+        # The agent speaks in the same turn as handover_to_person, before it returns, so
+        # this reply carries the full transfer sentence: why (the limit) + the verbatim line.
+        limit_text = display_amount(limit)
+        spoken = spoken_line("refund_over_limit", lang, limit=limit_text) + " " + spoken_line("transfer_to_specialist", lang)
         return _bill_finish(
             st,
             error_reply(
@@ -932,7 +936,12 @@ def apply_bill_adjustment_impl(
                 "Hand over with reason refund_threshold_exceeded.",
                 reference,
                 language=lang,
-                data={**money(value), "limit_display": display_amount(limit), "handover_reason": "refund_threshold_exceeded"},
+                data={
+                    **money(value),
+                    "limit_display": limit_text,
+                    "handover_reason": "refund_threshold_exceeded",
+                    "spoken_message": spoken,
+                },
             ),
         )
 
