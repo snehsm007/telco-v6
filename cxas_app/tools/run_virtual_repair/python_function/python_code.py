@@ -21,7 +21,8 @@ def run_virtual_repair(
 
     Returns:
       status, data (session_id, symptom_category, catalogue_match, remote_reset_sent,
-        steps, step_count, sms_recommended, known_issue), error_message, tracking_id.
+        steps, step_count, sms_recommended, known_issue, step_details, app_data_note,
+        typical_duration_display), error_message, tracking_id.
         Errors add error (NOT_LOGGED_IN, TV_SUB_TYPE_REQUIRED, OUTAGE_ACTIVE,
         INVALID_INPUT) and agent_action.
     """
@@ -45,6 +46,13 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 import hashlib
 import re
+
+TECH_APP_GUIDE_MINUTES = 15  # pragma: no cover
+
+_TECH_APP_DATA_NOTE: dict[str, str] = {  # pragma: no cover
+    "en-US": "Clearing the app's cache or reinstalling the app doesn't delete anything saved to your Telco account: favourites, cloud recordings, profiles and watch history stay, because they are stored in the cloud. You only sign in again after a reinstall. Reinstalling takes a few minutes.",
+    "fr-CA": "Vider le cache de l'application ou la réinstaller ne supprime rien de ce qui est enregistré dans votre compte Telco : les favoris, les enregistrements infonuagiques, les profils et l'historique de visionnement sont conservés, car ils sont stockés dans le nuage. Il faut seulement vous reconnecter après une réinstallation. La réinstallation prend quelques minutes.",
+}
 
 _TECH_ERROR_CODE_RE = re.compile(r"(?:error|erreur|code)\s*(?:code\s*)?(?:#|no\.?|n°)?\s*(\d{2,4})\b", re.IGNORECASE)  # pragma: no cover
 
@@ -345,6 +353,13 @@ def _tech_lob(raw: Any, symptom: str = "") -> str:  # pragma: no cover
         if _tech_has(symptom, words):
             return hint_lob
     return ""
+
+def _tech_minutes(minutes: int, lang: str) -> str:  # pragma: no cover
+    if minutes % 60 == 0:
+        return _tech_hours(minutes // 60, lang)
+    if resolve_copy_locale(lang) == "fr-CA":
+        return f"environ {minutes} minutes"
+    return f"about {minutes} minutes"
 
 _TECH_DIGIT_FIXES = {"O": "0", "I": "1", "L": "1"}  # pragma: no cover
 
@@ -1424,6 +1439,9 @@ def run_virtual_repair_impl(  # pragma: no cover
     }
     if category == "mobile_slow_data":
         data.update(_tech_data_usage(lang))
+    if category == "tv_app_freezing" or sub_type == "streaming_only":
+        data["app_data_note"] = _tech_text(_TECH_APP_DATA_NOTE, lang)
+        data["typical_duration_display"] = _tech_minutes(TECH_APP_GUIDE_MINUTES, lang)
     reply = ok_reply(data, reference, language=lang)
     if not matched and resolve_copy_locale(lang) == "fr-CA":
         reply["agent_action"] = "Not in the French repair catalogue: hand over with reason secondary_language_live_agent."

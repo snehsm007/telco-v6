@@ -28,8 +28,8 @@ def start_number_transfer(
 
     Returns:
       status, data (status submitted or pending_details, transfer_id,
-        estimated_completion_display, number_type, target, temporary_number_last4,
-        target_line_last4, sms_updates, missing_details, required_port_checklist,
+        estimated_completion_display, typical_timeframe_display, number_type, target,
+        temporary_number_last4, target_line_last4, sms_updates, missing_details, required_port_checklist,
         keep_old_service_note), error_message, tracking_id. Errors add error
         (NOT_LOGGED_IN, INVALID_INPUT) and agent_action.
     """
@@ -176,6 +176,14 @@ SALES_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "Do not ship the damaged phone. Bring it to a Telco store or a certified battery recycling drop-off; no return label is needed.",
         "fr-CA": "N'expédiez pas le téléphone endommagé. Apportez-le dans une boutique Telco ou à un point de dépôt certifié pour le recyclage des batteries; aucune étiquette de retour n'est nécessaire.",
     },
+    "warranty_fees": {
+        "en-US": "An in-warranty replacement costs nothing: no fee or deductible, free shipping of the replacement, and a prepaid return label for the old phone.",
+        "fr-CA": "Un remplacement sous garantie ne coûte rien : aucuns frais ni franchise, livraison gratuite du téléphone de remplacement et étiquette de retour prépayée pour l'ancien téléphone.",
+    },
+    "warranty_fees_urgent": {
+        "en-US": "This safety replacement costs nothing: no fee or deductible, and free expedited shipping. The damaged phone is not mailed back.",
+        "fr-CA": "Ce remplacement pour raison de sécurité ne coûte rien : aucuns frais ni franchise, et livraison accélérée gratuite. Le téléphone endommagé n'est pas renvoyé par la poste.",
+    },
     "repair_paid": {
         "en-US": "Paid repair at a Telco repair centre",
         "fr-CA": "Réparation payante dans un centre de réparation Telco",
@@ -307,6 +315,16 @@ def display_date(iso_date: str, lang: str = "en-US") -> str:  # pragma: no cover
 def _sales_port_eta(kind: str, lang: str) -> dict[str, str]:  # pragma: no cover
     iso = _sales_business_date(SALES_PORT_DAYS.get(kind, 0))
     return {"date": iso, "display": display_date(iso, lang)}
+
+SALES_PORT_MAX_DAYS: dict[str, int] = {"mobile": 2, "landline": 5}  # pragma: no cover
+
+def _sales_port_timeframe(kind: str, lang: str) -> str:  # pragma: no cover
+    """Typical completion window for a transfer, so "how long does it take?" never waits for the details."""
+    low, high = SALES_PORT_DAYS.get(kind, 0), SALES_PORT_MAX_DAYS.get(kind, 0)
+    fr = resolve_copy_locale(lang) == "fr-CA"
+    if low == 0:
+        return f"le jour même, jusqu'à {high} jours ouvrables" if fr else f"the same day, up to {high} business days"
+    return f"{low} à {high} jours ouvrables" if fr else f"{low} to {high} business days"
 
 def append_list(state: dict[str, Any], key: str, value: str) -> list[str]:  # pragma: no cover
     """Append to a comma-separated list stored in one STRING session variable."""
@@ -980,6 +998,9 @@ def start_number_transfer_impl(  # pragma: no cover
                 "required_port_checklist": _sales_port_checklist(lang),
                 "mobile_completion_display": mobile_eta["display"],
                 "landline_completion_display": landline_eta["display"],
+                "typical_timeframe_display": _sales_port_timeframe(number_type, lang),
+                "mobile_typical_timeframe_display": _sales_port_timeframe("mobile", lang),
+                "landline_typical_timeframe_display": _sales_port_timeframe("landline", lang),
                 "keep_old_service_note": _sales_text("port_keep_active", lang),
                 "login_required_to_start": True,
             },
@@ -1061,6 +1082,7 @@ def start_number_transfer_impl(  # pragma: no cover
         "current_account_number_last4": account_number[-4:] if account_number else "",
         "transfer_pin_received": bool(pin_digits),
         "target": target,
+        "typical_timeframe_display": _sales_port_timeframe(number_type, lang),
         "keep_old_service_note": _sales_text("port_keep_active", lang),
     }
     if internal_move:

@@ -3,7 +3,8 @@
 browse_plans          catalogue + coverage, no login (Turn-N+1 fields: current plan,
                       price difference, contract terms, activation timing).
 place_order           login, two-step: quote (CONFIRMATION_REQUIRED) then order.
-file_warranty_claim   login, device on file, damage/warranty rules, urgent safety path.
+file_warranty_claim   login, device on file, damage/warranty rules, urgent safety path;
+                      two-step: claim terms (CONFIRMATION_REQUIRED) then filed.
 start_number_transfer port-in. Empty number = public checklist (decision A3);
                       starting a transfer needs login. Never returns any PIN.
 
@@ -54,11 +55,13 @@ from lib.fakes import (
     SALES_OUT_OF_WARRANTY_AGE_DAYS,
     SALES_PLACEHOLDERS,
     SALES_PORT_DAYS,
+    SALES_PORT_MAX_DAYS,
     SALES_PRICE_WORDS,
     SALES_REPAIR_FEE,
     SALES_RETURN_WINDOW_DAYS,
     SALES_SAFETY_WORDS,
     SALES_URGENT_SHIP_DAYS,
+    SALES_WARRANTY_REPLACEMENT_COST,
     SALES_WARRANTY_SHIP_DAYS,
     SERVICE_PRICES,
     is_plausible_phone,
@@ -525,12 +528,13 @@ def file_warranty_claim_impl(
     issue: str = "",
     physical_damage: str | bool = "",
     water_damage: str | bool = "",
+    confirmed: str | bool = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     language: str = "",
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Check warranty coverage for a device on file and file a replacement claim. Needs login."""
+    """Check coverage, read the claim terms (confirmed=false), then file (confirmed=true). Needs login."""
     state = get_state(state, session_state)
     lang = session_language(state, language)
     err = check_mock_error(state, lang, "file_warranty_claim")
@@ -565,6 +569,13 @@ def file_warranty_claim_impl(
         "warranty_end_display": display_date(end_iso, lang),
         "in_warranty": in_warranty,
         "urgent": urgent,
+    }
+    # What the replacement costs, for the fee question callers ask before agreeing (rule 33).
+    fees: dict[str, Any] = {
+        **money(SALES_WARRANTY_REPLACEMENT_COST, "replacement_cost"),
+        "replacement_shipping_free": True,
+        "return_shipping_prepaid": not urgent,
+        "fees_note": _sales_text("warranty_fees_urgent" if urgent else "warranty_fees", lang),
     }
     if urgent:
         base["safety_advice_key"] = "battery_safety"
@@ -601,6 +612,7 @@ def file_warranty_claim_impl(
             "claim_filed": False,
             "damage_check_needed": True,
             "missing": missing,
+            **fees,
             # Turn N+1: the caller can confirm where the replacement goes before the claim is filed.
         }
         reply = ok_reply(check, reference, language=lang)
@@ -612,23 +624,41 @@ def file_warranty_claim_impl(
     claim_id = "WC-" + tracking_id("warranty_claim", account_id, dev["device_id"])[1:]
     ship_days = SALES_URGENT_SHIP_DAYS if urgent else SALES_WARRANTY_SHIP_DAYS
     eta_iso = _sales_business_date(ship_days)
-    data: dict[str, Any] = {
+    terms: dict[str, Any] = {
         **base,
-        "claim_id": claim_id,
-        "claim_filed": True,
+        **fees,
         "shipping": "expedited" if urgent else "standard",
         "replacement_eta_date": eta_iso,
         "replacement_eta_display": display_date(eta_iso, lang),
-        "shipping_address_last_line": account_record(state).get("service_address_last_line", ""),
         "return_instructions": _sales_text("return_urgent" if urgent else "return_standard", lang),
     }
     if not urgent:
         return_by = relative_date(SALES_RETURN_WINDOW_DAYS + ship_days)
-        data["return_by_display"] = display_date(return_by, lang)
+        terms["return_by_display"] = display_date(return_by, lang)
     claims = [c for c in str(state.get("sales_claims") or "").split(",") if c]
-    data["already_filed"] = claim_id in claims
-    if not data["already_filed"]:
+    already = claim_id in claims
+    pending_key = f"file_warranty_claim:{dev['device_id']}"
+    if not already and (_sales_bool(confirmed) is not True or state.get("pending_confirmation") != pending_key):
+        # Two-step like a cancellation: the caller hears the terms and agrees before anything is filed.
+        state["pending_confirmation"] = pending_key
+        return error_reply(
+            "CONFIRMATION_REQUIRED",
+            "Read the claim terms and get the caller's yes before filing.",
+            "Say safety_advice if urgent, then the replacement terms and fees_note; ask to file; then confirmed=true.",
+            reference,
+            language=lang,
+            data={**terms, "claim_filed": False},
+        )
+    data: dict[str, Any] = {
+        **terms,
+        "claim_id": claim_id,
+        "claim_filed": True,
+        "shipping_address_last_line": account_record(state).get("service_address_last_line", ""),
+        "already_filed": already,
+    }
+    if not already:
         append_list(state, "sales_claims", claim_id)
+        state["pending_confirmation"] = ""
         data["sms_confirmation_sent"] = dispatch_sms(state, "warranty_claim")["sms_sent"]
     else:
         data["sms_confirmation_sent"] = True
@@ -647,6 +677,15 @@ def _sales_port_checklist(lang: str) -> list[str]:
 def _sales_port_eta(kind: str, lang: str) -> dict[str, str]:
     iso = _sales_business_date(SALES_PORT_DAYS.get(kind, 0))
     return {"date": iso, "display": display_date(iso, lang)}
+
+
+def _sales_port_timeframe(kind: str, lang: str) -> str:
+    """Typical completion window for a transfer, so "how long does it take?" never waits for the details."""
+    low, high = SALES_PORT_DAYS.get(kind, 0), SALES_PORT_MAX_DAYS.get(kind, 0)
+    fr = resolve_copy_locale(lang) == "fr-CA"
+    if low == 0:
+        return f"le jour même, jusqu'à {high} jours ouvrables" if fr else f"the same day, up to {high} business days"
+    return f"{low} à {high} jours ouvrables" if fr else f"{low} to {high} business days"
 
 
 def _sales_own_number(state: dict[str, Any], number: str) -> bool:
@@ -688,6 +727,9 @@ def start_number_transfer_impl(
                 "required_port_checklist": _sales_port_checklist(lang),
                 "mobile_completion_display": mobile_eta["display"],
                 "landline_completion_display": landline_eta["display"],
+                "typical_timeframe_display": _sales_port_timeframe(number_type, lang),
+                "mobile_typical_timeframe_display": _sales_port_timeframe("mobile", lang),
+                "landline_typical_timeframe_display": _sales_port_timeframe("landline", lang),
                 "keep_old_service_note": _sales_text("port_keep_active", lang),
                 "login_required_to_start": True,
             },
@@ -769,6 +811,7 @@ def start_number_transfer_impl(
         "current_account_number_last4": account_number[-4:] if account_number else "",
         "transfer_pin_received": bool(pin_digits),
         "target": target,
+        "typical_timeframe_display": _sales_port_timeframe(number_type, lang),
         "keep_old_service_note": _sales_text("port_keep_active", lang),
     }
     if internal_move:

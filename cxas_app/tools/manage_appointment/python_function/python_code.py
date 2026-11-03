@@ -23,8 +23,10 @@ def manage_appointment(
       language: Active language code (en-US or fr-CA).
 
     Returns:
-      status, data (appointment_id, new_date_display, new_window_display, cancelled,
-        note_added, sms_confirmation_sent, available_slots), error_message, tracking_id.
+      status, data (appointment_id, confirmation_id (same as appointment_id),
+        new_date_display, new_window_display, cancelled, note_added,
+        sms_confirmation_sent, available_slots, visit_prep, visit_length_display),
+        error_message, tracking_id.
         Errors add error (CONFIRMATION_REQUIRED, TECHNICIAN_EN_ROUTE, NOT_ELIGIBLE,
         INVALID_INPUT, NOT_FOUND, NOT_LOGGED_IN) and agent_action.
     """
@@ -740,9 +742,37 @@ def _tech_find_slot(raw: Any, lang: str) -> dict[str, Any] | None:  # pragma: no
             return slot
     return None
 
+TECH_VISIT_LENGTH_HOURS: tuple[int, int] = (1, 2)  # pragma: no cover
+
+_TECH_VISIT_PREP: dict[str, tuple[str, ...]] = {  # pragma: no cover
+    "en-US": (
+        "An adult needs to be home for the whole arrival window.",
+        "Keep clear access to the equipment: the modem, receiver or phone jack, and the satellite dish for satellite TV.",
+        "No documents or paperwork are needed.",
+        "You'll get a text when the technician is on the way.",
+    ),
+    "fr-CA": (
+        "Un adulte doit être à la maison pendant toute la plage d'arrivée.",
+        "Gardez un accès dégagé à l'équipement : le modem, le récepteur ou la prise téléphonique, et l'antenne parabolique pour la télé par satellite.",
+        "Aucun document n'est requis.",
+        "Vous recevrez un texto quand le technicien sera en route.",
+    ),
+}
+
+def _tech_visit_facts(lang: str) -> dict[str, Any]:  # pragma: no cover
+    """What to prepare and how long a visit takes, so a booking follow-up stays grounded."""
+    low, high = TECH_VISIT_LENGTH_HOURS
+    if resolve_copy_locale(lang) == "fr-CA":
+        length = f"environ {low} à {high} heures"
+    else:
+        length = f"about {low} to {high} hours"
+    prep = _TECH_VISIT_PREP.get(resolve_copy_locale(lang)) or _TECH_VISIT_PREP["en-US"]
+    return {"visit_prep": list(prep), "visit_length_display": length, "documents_needed": False}
+
 def _tech_slot_required(appt_id: str, reference: str, lang: str) -> dict[str, Any]:  # pragma: no cover
     reply = ok_reply(
-        {"appointment_id": appt_id, "slot_required": True, "available_slots": _tech_public_slots(lang)},
+        {"appointment_id": appt_id, "slot_required": True, "available_slots": _tech_public_slots(lang),
+         **_tech_visit_facts(lang)},
         reference, language=lang,
     )
     reply["agent_action"] = "Offer these slots and ask which one suits the caller."
@@ -816,7 +846,7 @@ def _tech_book(state: dict[str, Any], slot_id: Any, reference: str, lang: str) -
         return _tech_bad_slot(state, reference, lang)
     state["booked_slot_id"] = slot["slot_id"]
     sms = _tech_sms_once(state, f"appointment_booked_{slot['slot_id'].lower()}")
-    confirmation = tracking_id("book", state.get("account_id", ""), slot["slot_id"])
+    confirmation = new_id  # one reference per visit
     state["last_tracking_id"] = confirmation
     service = str(state.get("lob") or TECH_DEFAULT_BOOKING_SERVICE)
     return ok_reply(
@@ -831,6 +861,7 @@ def _tech_book(state: dict[str, Any], slot_id: Any, reference: str, lang: str) -
             "confirmation_id": confirmation,
             "sms_confirmation_sent": True,
             "destination_last4": sms["destination_last4"],
+            **_tech_visit_facts(lang),
         },
         confirmation,
         language=lang,
@@ -909,7 +940,8 @@ def _tech_reschedule(  # pragma: no cover
         state["appt_slot_id"] = slot["slot_id"]
     state["pending_confirmation"] = ""
     sms = _tech_sms_once(state, f"appointment_rescheduled_{slot['slot_id'].lower()}")
-    confirmation = tracking_id("reschedule", state.get("account_id", ""), appt["appointment_id"], slot["slot_id"])
+    # One reference per visit: the confirmation number is the appointment id.
+    confirmation = appt["appointment_id"]
     state["last_tracking_id"] = confirmation
     return ok_reply(
         {
@@ -922,6 +954,7 @@ def _tech_reschedule(  # pragma: no cover
             "confirmation_id": confirmation,
             "sms_confirmation_sent": True,
             "destination_last4": sms["destination_last4"],
+            **_tech_visit_facts(lang),
         },
         confirmation,
         language=lang,

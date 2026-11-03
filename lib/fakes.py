@@ -262,7 +262,10 @@ SALES_URGENT_SHIP_DAYS = 1               # expedited safety replacement
 SALES_RETURN_WINDOW_DAYS = 15
 SALES_OUT_OF_WARRANTY_AGE_DAYS = 430     # device age reported when fx_device_warranty=out_of_warranty
 SALES_REPAIR_FEE = "139.00"
+SALES_WARRANTY_REPLACEMENT_COST = "0.00"  # in-warranty replacement: no fee, no deductible, free shipping
 SALES_PORT_DAYS: dict[str, int] = {"mobile": 0, "landline": 3}
+# Longest a transfer usually takes, in business days (SALES_PORT_DAYS is the usual completion).
+SALES_PORT_MAX_DAYS: dict[str, int] = {"mobile": 2, "landline": 5}
 
 # French wording of the plan features in PLANS (English is the catalogue text).
 SALES_FEATURES_FR: dict[str, str] = {
@@ -371,6 +374,14 @@ SALES_COPY: dict[str, dict[str, str]] = {
         "en-US": "Do not ship the damaged phone. Bring it to a Telco store or a certified battery recycling drop-off; no return label is needed.",
         "fr-CA": "N'expédiez pas le téléphone endommagé. Apportez-le dans une boutique Telco ou à un point de dépôt certifié pour le recyclage des batteries; aucune étiquette de retour n'est nécessaire.",
     },
+    "warranty_fees": {
+        "en-US": "An in-warranty replacement costs nothing: no fee or deductible, free shipping of the replacement, and a prepaid return label for the old phone.",
+        "fr-CA": "Un remplacement sous garantie ne coûte rien : aucuns frais ni franchise, livraison gratuite du téléphone de remplacement et étiquette de retour prépayée pour l'ancien téléphone.",
+    },
+    "warranty_fees_urgent": {
+        "en-US": "This safety replacement costs nothing: no fee or deductible, and free expedited shipping. The damaged phone is not mailed back.",
+        "fr-CA": "Ce remplacement pour raison de sécurité ne coûte rien : aucuns frais ni franchise, et livraison accélérée gratuite. Le téléphone endommagé n'est pas renvoyé par la poste.",
+    },
     "repair_paid": {
         "en-US": "Paid repair at a Telco repair centre",
         "fr-CA": "Réparation payante dans un centre de réparation Telco",
@@ -468,6 +479,10 @@ TECH_EN_ROUTE_ETA_MINUTES = 25
 TECH_DEFAULT_BOOKING_SERVICE = "repair"
 # Price of a technician repair visit for Telco service or equipment (remote troubleshooting is always free).
 TECH_REPAIR_VISIT_FEE = "0.00"
+# Typical length of a technician visit once the technician arrives, in hours (low, high).
+TECH_VISIT_LENGTH_HOURS: tuple[int, int] = (1, 2)
+# Typical time to go through the TV app troubleshooting guide, in minutes.
+TECH_APP_GUIDE_MINUTES = 15
 # --- end tech fixtures ---
 
 # Outage regions (BR-TV-003, DESIGN_RULES rule 40: classes, not literals).

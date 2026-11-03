@@ -13,7 +13,8 @@ def get_appointment_and_ticket_status(
       language: Active language code (en-US or fr-CA).
 
     Returns:
-      status, data (appointments, tickets, available_slots), error_message, tracking_id.
+      status, data (appointments, tickets, available_slots, visit_prep,
+        visit_length_display), error_message, tracking_id.
         Errors add error (NOT_LOGGED_IN) and agent_action.
     """
     ctx = globals().get("context")
@@ -337,6 +338,33 @@ def _tech_tickets(lang: str) -> list[dict[str, Any]]:  # pragma: no cover
             "next_step": _tech_text(_TECH_TICKET_NEXT.get(t["next_step"], {"en-US": ""}), lang),
         })
     return tickets
+
+TECH_VISIT_LENGTH_HOURS: tuple[int, int] = (1, 2)  # pragma: no cover
+
+_TECH_VISIT_PREP: dict[str, tuple[str, ...]] = {  # pragma: no cover
+    "en-US": (
+        "An adult needs to be home for the whole arrival window.",
+        "Keep clear access to the equipment: the modem, receiver or phone jack, and the satellite dish for satellite TV.",
+        "No documents or paperwork are needed.",
+        "You'll get a text when the technician is on the way.",
+    ),
+    "fr-CA": (
+        "Un adulte doit être à la maison pendant toute la plage d'arrivée.",
+        "Gardez un accès dégagé à l'équipement : le modem, le récepteur ou la prise téléphonique, et l'antenne parabolique pour la télé par satellite.",
+        "Aucun document n'est requis.",
+        "Vous recevrez un texto quand le technicien sera en route.",
+    ),
+}
+
+def _tech_visit_facts(lang: str) -> dict[str, Any]:  # pragma: no cover
+    """What to prepare and how long a visit takes, so a booking follow-up stays grounded."""
+    low, high = TECH_VISIT_LENGTH_HOURS
+    if resolve_copy_locale(lang) == "fr-CA":
+        length = f"environ {low} à {high} heures"
+    else:
+        length = f"about {low} to {high} hours"
+    prep = _TECH_VISIT_PREP.get(resolve_copy_locale(lang)) or _TECH_VISIT_PREP["en-US"]
+    return {"visit_prep": list(prep), "visit_length_display": length, "documents_needed": False}
 
 MOCK_ERROR_OFF: frozenset[str] = frozenset({"false", "none", "0", "off", "no", "null"})  # pragma: no cover
 
@@ -898,6 +926,7 @@ def get_appointment_and_ticket_status_impl(  # pragma: no cover
         "tickets": tickets,
         "ticket_count": len(tickets),
         "available_slots": _tech_public_slots(lang),
+        **_tech_visit_facts(lang),
     }
     return ok_reply(data, reference, language=lang)
 # --- END GENERATED SHARED BUNDLE ---

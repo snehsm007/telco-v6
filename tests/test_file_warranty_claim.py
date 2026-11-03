@@ -16,7 +16,12 @@ def test_file_warranty_claim_checks_then_files(monkeypatch) -> None:
     assert check["status"] == "ok"
     assert check["data"]["claim_filed"] is False
     assert check["data"]["device_model"]
-    claim = tool.file_warranty_claim(device="Pixel", issue="microphone dead", physical_damage=False, water_damage="false")
+    terms = tool.file_warranty_claim(device="Pixel", issue="microphone dead", physical_damage=False, water_damage="false")
+    assert terms["error"] == "CONFIRMATION_REQUIRED" and terms["data"]["claim_filed"] is False
+    assert terms["data"]["replacement_cost_display"] == "0.00" and "sales_claims" not in session.state
+    claim = tool.file_warranty_claim(
+        device="Pixel", issue="microphone dead", physical_damage=False, water_damage="false", confirmed="true"
+    )
     assert claim["status"] == "ok"
     assert claim["data"]["claim_id"].startswith("WC-")
     assert claim["data"]["replacement_eta_display"]

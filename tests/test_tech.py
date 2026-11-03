@@ -544,3 +544,47 @@ def test_app_only_tv_has_no_remote_reset_note(monkeypatch) -> None:
     monkeypatch.setattr(tech, "TECH_REPAIR_VISIT_FEE", "49.95")
     paid = run_virtual_repair_impl("internet", "slow", state=_logged_in())["data"]
     assert paid["technician_visit_fee_display"] == "49.95" and "49.95" in paid["fee_note"]
+
+
+# --- fix/20: visit prep facts and one reference per booking --------------------
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_slots_and_bookings_carry_visit_prep_and_length(lang: str) -> None:
+    """VE-42 r1: the agent invented 'clear access to the dish' and 'no documentation needed'."""
+    state = _logged_in(language=lang)
+    replies = [
+        get_appointment_and_ticket_status_impl(state=state),
+        manage_appointment_impl("book", state=state),
+        manage_appointment_impl("book", slot_id="SLOT-3", state=state),
+        manage_appointment_impl("reschedule", slot_id="SLOT-1", state=_logged_in(language=lang)),
+    ]
+    low, high = tech.TECH_VISIT_LENGTH_HOURS
+    for reply in replies:
+        data = reply["data"]
+        assert reply["status"] == "ok", reply
+        assert len(data["visit_prep"]) == 4 and data["documents_needed"] is False
+        assert f"{low} " in data["visit_length_display"] and f"{high} " in data["visit_length_display"]
+    prep = " ".join(replies[0]["data"]["visit_prep"]).lower()
+    assert ("adult" in prep or "adulte" in prep) and ("dish" in prep or "parabolique" in prep)
+
+
+def test_booking_and_reschedule_expose_one_reference() -> None:
+    """VE-40 r1: the judge wanted the confirmation number; it differed from the appointment id."""
+    state = _logged_in()
+    booked = manage_appointment_impl("book", slot_id="SLOT-1", state=state)
+    assert booked["data"]["confirmation_id"] == booked["data"]["appointment_id"] == booked["tracking_id"]
+    moved = manage_appointment_impl("reschedule", slot_id="SLOT-2", state=_logged_in(fx_technician_status="delayed"))
+    assert moved["data"]["confirmation_id"] == moved["data"]["appointment_id"] == APPOINTMENT["appointment_id"]
+    assert moved["tracking_id"] == APPOINTMENT["appointment_id"]
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_tv_app_guide_says_what_a_cache_clear_keeps_and_how_long_it_takes(lang: str) -> None:
+    """VE-43 r1: 'will clearing the cache delete my favourites?' was answered with no tool fact."""
+    data = run_virtual_repair_impl("tv", "the app keeps freezing", "streaming_only", state=_logged_in(language=lang))["data"]
+    note = data["app_data_note"].lower()
+    assert ("favourites" in note or "favoris" in note) and ("cloud" in note or "nuage" in note)
+    assert str(tech.TECH_APP_GUIDE_MINUTES) in data["typical_duration_display"]
+    receiver = run_virtual_repair_impl("internet", "slow", state=_logged_in(language=lang))["data"]
+    assert "app_data_note" not in receiver and "typical_duration_display" not in receiver

@@ -36,3 +36,12 @@ def test_manage_appointment_mock_error(monkeypatch) -> None:
     session = SimpleNamespace(state={**LOGGED_IN, "mock_error": "SYSTEM_DOWN"})
     monkeypatch.setattr(tool, "context", session, raising=False)
     assert tool.manage_appointment("cancel")["error"] == "SYSTEM_UNAVAILABLE"
+
+
+def test_manage_appointment_book_returns_prep_and_one_reference(monkeypatch) -> None:
+    session = SimpleNamespace(state=dict(LOGGED_IN))
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.manage_appointment("book", slot_id="SLOT-2")
+    assert reply["data"]["booked"] is True
+    assert reply["data"]["confirmation_id"] == reply["data"]["appointment_id"]
+    assert reply["data"]["visit_prep"] and reply["data"]["visit_length_display"]
