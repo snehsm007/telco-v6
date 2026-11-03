@@ -29,3 +29,10 @@ def test_run_virtual_repair_mock_error(monkeypatch) -> None:
     session = SimpleNamespace(state={**LOGGED_IN, "mock_error": "SYSTEM_DOWN"})
     monkeypatch.setattr(tool, "context", session, raising=False)
     assert tool.run_virtual_repair("internet", "down")["error"] == "SYSTEM_UNAVAILABLE"
+
+
+def test_run_virtual_repair_tv_app_guide_has_cache_faq(monkeypatch) -> None:
+    session = SimpleNamespace(state=dict(LOGGED_IN))
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.run_virtual_repair("tv", "TV app freezing on my streaming stick", "streaming_only")
+    assert reply["data"]["app_data_note"] and reply["data"]["typical_duration_display"]

@@ -90,7 +90,7 @@ Transfers to other agents are silent.
     <step name="Read Steps Aloud">
       <trigger>The caller declines the text guide, or {@TOOL: run_virtual_repair} returned status="ok" and sms_recommended=false</trigger>
       <action>
-        Read the steps two at a time, asking if that helped before giving more.
+        Read the steps two at a time, asking if that helped before giving more. Answer how-to, cost, saved-data and duration questions from step_details, fee_note, app_data_note and typical_duration_display.
       </action>
     </step>
     <step name="Problem Not Fixed">

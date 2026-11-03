@@ -577,3 +577,14 @@ def test_booking_and_reschedule_expose_one_reference() -> None:
     moved = manage_appointment_impl("reschedule", slot_id="SLOT-2", state=_logged_in(fx_technician_status="delayed"))
     assert moved["data"]["confirmation_id"] == moved["data"]["appointment_id"] == APPOINTMENT["appointment_id"]
     assert moved["tracking_id"] == APPOINTMENT["appointment_id"]
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_tv_app_guide_says_what_a_cache_clear_keeps_and_how_long_it_takes(lang: str) -> None:
+    """VE-43 r1: 'will clearing the cache delete my favourites?' was answered with no tool fact."""
+    data = run_virtual_repair_impl("tv", "the app keeps freezing", "streaming_only", state=_logged_in(language=lang))["data"]
+    note = data["app_data_note"].lower()
+    assert ("favourites" in note or "favoris" in note) and ("cloud" in note or "nuage" in note)
+    assert str(tech.TECH_APP_GUIDE_MINUTES) in data["typical_duration_display"]
+    receiver = run_virtual_repair_impl("internet", "slow", state=_logged_in(language=lang))["data"]
+    assert "app_data_note" not in receiver and "typical_duration_display" not in receiver

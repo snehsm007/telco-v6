@@ -455,6 +455,8 @@ TECH_DEFAULT_BOOKING_SERVICE = "repair"
 TECH_REPAIR_VISIT_FEE = "0.00"
 # Typical length of a technician visit once the technician arrives, in hours (low, high).
 TECH_VISIT_LENGTH_HOURS: tuple[int, int] = (1, 2)
+# Typical time to go through the TV app troubleshooting guide, in minutes.
+TECH_APP_GUIDE_MINUTES = 15
 # --- end tech fixtures ---
 
 # Outage regions (BR-TV-003, DESIGN_RULES rule 40: classes, not literals).

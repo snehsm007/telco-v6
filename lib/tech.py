@@ -35,6 +35,7 @@ from lib.fakes import (
     REGION_BY_POSTAL_LETTER,
     SLOT_OFFSETS_DAYS,
     SLOT_WINDOWS,
+    TECH_APP_GUIDE_MINUTES,
     TECH_DEFAULT_BOOKING_SERVICE,
     TECH_EN_ROUTE_ETA_MINUTES,
     TECH_REPAIR_VISIT_FEE,
@@ -594,6 +595,11 @@ _TECH_RESET_NOTES: dict[str, dict[str, str]] = {
         "fr-CA": "La réinitialisation à distance redémarre le concentrateur de maison intelligente de notre côté. Elle prend quelques minutes; les appareils jumelés, les horaires et les réglages sont conservés.",
     },
 }
+# TV app follow-ups: what a cache clear or reinstall keeps (Turn N+1 facts, rule 33).
+_TECH_APP_DATA_NOTE: dict[str, str] = {
+    "en-US": "Clearing the app's cache or reinstalling the app doesn't delete anything saved to your Telco account: favourites, cloud recordings, profiles and watch history stay, because they are stored in the cloud. You only sign in again after a reinstall. Reinstalling takes a few minutes.",
+    "fr-CA": "Vider le cache de l'application ou la réinstaller ne supprime rien de ce qui est enregistré dans votre compte Telco : les favoris, les enregistrements infonuagiques, les profils et l'historique de visionnement sont conservés, car ils sont stockés dans le nuage. Il faut seulement vous reconnecter après une réinstallation. La réinstallation prend quelques minutes.",
+}
 _TECH_FEE_NOTES: dict[str, dict[str, str]] = {
     "free_visit": {
         "en-US": "Troubleshooting with us and the remote reset are free. A technician repair visit for Telco service or equipment is also free of charge.",
@@ -795,6 +801,9 @@ def run_virtual_repair_impl(
     }
     if category == "mobile_slow_data":
         data.update(_tech_data_usage(lang))
+    if category == "tv_app_freezing" or sub_type == "streaming_only":
+        data["app_data_note"] = _tech_text(_TECH_APP_DATA_NOTE, lang)
+        data["typical_duration_display"] = _tech_minutes(TECH_APP_GUIDE_MINUTES, lang)
     reply = ok_reply(data, reference, language=lang)
     if not matched and resolve_copy_locale(lang) == "fr-CA":
         reply["agent_action"] = "Not in the French repair catalogue: hand over with reason secondary_language_live_agent."
