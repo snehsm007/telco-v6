@@ -22,7 +22,7 @@ def test_manage_appointment_rejects_unknown_slot(monkeypatch) -> None:
 
 
 def test_manage_appointment_same_day_cancel_needs_second_call(monkeypatch) -> None:
-    session = SimpleNamespace(state=dict(LOGGED_IN))
+    session = SimpleNamespace(state={**LOGGED_IN, "fx_technician_status": "scheduled"})
     monkeypatch.setattr(tool, "context", session, raising=False)
     assert tool.manage_appointment("cancel", confirmed=True)["error"] == "CONFIRMATION_REQUIRED"
     assert tool.manage_appointment("cancel", confirmed=True)["data"]["cancelled"] is True
