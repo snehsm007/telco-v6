@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, timezone
 import re
 from typing import Any
 
+from lib.fakes import spoken_line
+
 # Numbers the PRD wants said in full, such as a support line. Every other
 # number with 7 or more digits (a local phone number, a 7- or 8-digit account
 # number, a card) is cut to its last 4 digits (BR-TV-009).
@@ -136,3 +138,40 @@ def enforce_handover_utterance(
         return text
     handoff_msg = str(session_params.get("handoff_message") or "").strip()
     return handoff_msg or text
+
+
+# Closing line for an end_session turn the model left silent, by end_session reason.
+END_SESSION_LINES: dict[str, str] = {
+    "malicious_input": "malicious_closing",
+    "blocked_caller": "restricted_caller",
+}
+
+
+def _truthy(value: Any) -> bool:
+    return value is True or str(value).strip().lower() in ("true", "1", "yes")
+
+
+def silent_turn_line(
+    session_params: dict[str, Any] | None,
+    end_session_args: dict[str, Any] | None = None,
+) -> str:
+    """The line to speak when a reply has no text: never end a call in silence.
+
+    After a handover it is handoff_message (as before). Otherwise, only when
+    the reply calls end_session: malicious_closing for malicious_input,
+    restricted_caller for blocked_caller, live_agent_handoff when the session
+    is escalated, and a short localized goodbye for any other reason.
+    A silent turn without end_session (a transfer to another agent) stays silent.
+    """
+    params = session_params if isinstance(session_params, dict) else {}
+    handoff = enforce_handover_utterance("", params).strip()
+    if handoff:
+        return handoff
+    if end_session_args is None:
+        return ""
+    args = end_session_args if isinstance(end_session_args, dict) else {}
+    reason = str(args.get("reason") or "").strip().lower()
+    key = END_SESSION_LINES.get(reason)
+    if key is None:
+        key = "live_agent_handoff" if _truthy(args.get("session_escalated")) else "closing_goodbye"
+    return spoken_line(key, str(params.get("language") or params.get("preferred_language") or "en-US"))

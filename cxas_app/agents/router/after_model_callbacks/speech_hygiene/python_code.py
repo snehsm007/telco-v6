@@ -15,7 +15,8 @@ def after_model_callback(
     prefers caller_provided_phone_last4. After a handover it adds
     handoff_message only when the reply has no spoken text at all; it never
     replaces words the model said, so a step-specific or PRD-exact transfer
-    line survives. Returns None when nothing changed, so the reply goes out
+    line survives. A reply that ends the session with no text at all gets a
+    closing line (silent_turn_line), so no call ends in dead air. Returns None when nothing changed, so the reply goes out
     untouched.
     """
     state = getattr(callback_context, "state", None)
@@ -38,7 +39,12 @@ def after_model_callback(
             changed = True
 
     if not has_spoken_text:
-        handoff_msg = enforce_handover_utterance("", state_dict).strip()
+        end_session_args = None
+        for part in parts:
+            call = getattr(part, "function_call", None)
+            if call is not None and getattr(call, "name", "") == "end_session":
+                end_session_args = dict(getattr(call, "args", None) or {})
+        handoff_msg = silent_turn_line(state_dict, end_session_args).strip()
         if handoff_msg and isinstance(parts, list):
             cleaned_msg = clean_agent_speech(clean_speech(handoff_msg), state_dict)
             if parts and getattr(parts[0], "text", None) in (None, "") and not getattr(parts[0], "function_call", None):
@@ -51,7 +57,7 @@ def after_model_callback(
 
 
 # --- BEGIN GENERATED SHARED BUNDLE (edit lib/, then run `make bundle`) ---
-# uses: from lib.speech import clean_agent_speech, clean_speech, enforce_handover_utterance
+# uses: from lib.speech import clean_agent_speech, clean_speech, silent_turn_line
 from datetime import datetime, timedelta, timezone
 from typing import Any
 import re
@@ -156,6 +162,14 @@ def clean_agent_speech(  # pragma: no cover
 
     return re.sub(rf"\b{re.escape(profile_last4)}\b", _swap_profile_last4, cleaned)
 
+END_SESSION_LINES: dict[str, str] = {  # pragma: no cover
+    "malicious_input": "malicious_closing",
+    "blocked_caller": "restricted_caller",
+}
+
+def _truthy(value: Any) -> bool:  # pragma: no cover
+    return value is True or str(value).strip().lower() in ("true", "1", "yes")
+
 def enforce_handover_utterance(  # pragma: no cover
     text: str,
     session_params: dict[str, Any] | None = None,
@@ -172,4 +186,128 @@ def enforce_handover_utterance(  # pragma: no cover
         return text
     handoff_msg = str(session_params.get("handoff_message") or "").strip()
     return handoff_msg or text
+
+SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
+    "greeting_main": {
+        "en-US": "Welcome to Telco. I can help with billing, technical support, or managing your account. To get started, could you tell me the phone number or account number associated with your service?",
+        "fr-CA": "Bienvenue chez Telco. Je peux vous aider avec la facturation, le soutien technique ou la gestion de votre compte. Pour commencer, pourriez-vous me donner le numéro de téléphone ou le numéro de compte associé à votre service?",
+    },
+    "recording_notice": {
+        "en-US": "This call may be recorded for quality and training purposes.",
+        "fr-CA": "Cet appel peut être enregistré à des fins de qualité et de formation.",
+    },
+    "id_verification_otp": {
+        "en-US": "For your security, I just sent a 6-digit code to that number — please read it back to me.",
+        "fr-CA": "Pour votre sécurité, je viens d'envoyer un code à 6 chiffres à ce numéro — veuillez me le lire.",
+    },
+    "id_verification_pin": {
+        "en-US": "For your security, I'll need to verify your identity. Please enter the 4-digit PIN you set up.",
+        "fr-CA": "Pour votre sécurité, je dois vérifier votre identité. Veuillez entrer le NIP à 4 chiffres que vous avez configuré.",
+    },
+    "live_agent_handoff": {
+        "en-US": "I'll connect you to a representative who can help. Please hold.",
+        "fr-CA": "Je vais vous mettre en relation avec un représentant qui pourra vous aider. Veuillez patienter.",
+    },
+    "business_handoff": {
+        "en-US": "To get you the best support for your business account, I'll transfer you to an agent. You'll need to use your phone keypad instead of talking to the virtual assistant. Just a moment while I connect you.",
+        "fr-CA": "Pour vous offrir le meilleur soutien pour votre compte d'affaires, je vais vous transférer à un agent. Vous devrez utiliser le clavier de votre téléphone au lieu de parler à l'assistant virtuel. Un instant pendant que je vous mets en relation.",
+    },
+    "payment_method_preamble": {
+        "en-US": "Before we continue, please note that your payment details are protected and processed securely, and I will only ever refer to the last four digits of your card or account.",
+        "fr-CA": "Avant de continuer, sachez que vos renseignements de paiement sont protégés et traités de façon sécurisée, et que je ne mentionnerai jamais que les quatre derniers chiffres de votre carte ou de votre compte.",
+    },
+    "contract_cancellation_fee_disclosure": {
+        "en-US": "Please note that cancelling before the end of your contract term may result in an early termination fee and a final bill, as set out in your service agreement.",
+        "fr-CA": "Veuillez noter qu'une résiliation avant la fin de la durée de votre contrat peut entraîner des frais de résiliation anticipée et une facture finale, comme le prévoit votre entente de service.",
+    },
+    "refund_confirmation_pattern": {
+        "en-US": "Your refund of $[amount] will appear on your next statement within [days] business days.",
+        "fr-CA": "Votre remboursement de [amount] $ apparaîtra sur votre prochain relevé d'ici [days] jours ouvrables.",
+    },
+    "empathy_protocol": {
+        "en-US": "I'm very sorry to hear that you are facing challenges. I will ensure we handle your request with the utmost care.",
+        "fr-CA": "Je suis vraiment désolé d'apprendre que vous éprouvez des difficultés. Je veillerai à ce que votre demande soit traitée avec le plus grand soin.",
+    },
+    "outage_active": {
+        "en-US": "I see there's an active outage in your area. We're working on it. Would you like me to text you when it's restored?",
+        "fr-CA": "Je constate qu'il y a une panne active dans votre secteur. Nous y travaillons. Voulez-vous que je vous envoie un texto lorsque le service sera rétabli?",
+    },
+    "transfer_to_specialist": {
+        "en-US": "I'll connect you to a billing specialist now — they'll have everything we've already discussed.",
+        "fr-CA": "Je vais vous mettre en relation avec un spécialiste de la facturation — il aura tout ce dont nous avons déjà discuté.",
+    },
+    "refund_over_limit": {
+        "en-US": "That amount is above our $[limit] self-serve limit, so it needs a specialist's approval.",
+        "fr-CA": "Ce montant dépasse notre limite libre-service de [limit] $, il doit donc être approuvé par un spécialiste.",
+    },
+    "otp_callback_confirm": {
+        "en-US": "I'll send a 6-digit code to the number ending in [last4]. Ready?",
+        "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro se terminant par [last4]. Êtes-vous prêt?",
+    },
+    "pin_alternative": {
+        "en-US": "Or, if you prefer, you can use your 4-digit PIN instead.",
+        "fr-CA": "Ou, si vous préférez, vous pouvez plutôt utiliser votre NIP à 4 chiffres.",
+    },
+    "email_code_sent": {
+        "en-US": "For your security, I just sent a 6-digit code to your email on file — please read it back to me.",
+        "fr-CA": "Pour votre sécurité, je viens d'envoyer un code à 6 chiffres à votre adresse courriel au dossier — veuillez me le lire.",
+    },
+    "restricted_caller": {
+        "en-US": "We're unable to help with this call on this line. Please visit one of our stores for assistance. Goodbye.",
+        "fr-CA": "Nous ne pouvons pas traiter cet appel sur cette ligne. Veuillez vous rendre dans l'une de nos boutiques pour obtenir de l'aide. Au revoir.",
+    },
+    "ai_disclosure": {
+        "en-US": "I'm an artificial intelligence customer care assistant.",
+        "fr-CA": "Je suis un assistant de service à la clientèle basé sur l'intelligence artificielle.",
+    },
+    "closing_goodbye": {
+        "en-US": "Thank you for calling Telco. Goodbye.",
+        "fr-CA": "Merci d'avoir appelé Telco. Au revoir.",
+    },
+    "malicious_closing": {
+        "en-US": "I am unable to continue this conversation. Thank you for calling and have a good day.",
+        "fr-CA": "Je ne peux pas poursuivre cette conversation. Merci de votre appel et bonne journée.",
+    },
+}
+
+def resolve_locale(language: str | None) -> str:  # pragma: no cover
+    """Normalize a language tag or prefix to a supported locale (en-US or fr-CA)."""
+    low = str(language or "").strip().lower().replace("_", "-")
+    if low.startswith("fr"):
+        return "fr-CA"
+    return "en-US"
+
+def spoken_line(key: str, language: str | None = "en-US", **slots: object) -> str:  # pragma: no cover
+    """Return the fixed spoken line for `key` and `language`, filling any `[slot]` placeholders."""
+    locale = resolve_locale(language)
+    table = SPOKEN_LINES.get(key, {})
+    template = table.get(locale) or table.get("en-US") or ""
+    for slot_name, slot_val in slots.items():
+        template = template.replace(f"[{slot_name}]", str(slot_val))
+    return template
+
+def silent_turn_line(  # pragma: no cover
+    session_params: dict[str, Any] | None,
+    end_session_args: dict[str, Any] | None = None,
+) -> str:
+    """The line to speak when a reply has no text: never end a call in silence.
+
+    After a handover it is handoff_message (as before). Otherwise, only when
+    the reply calls end_session: malicious_closing for malicious_input,
+    restricted_caller for blocked_caller, live_agent_handoff when the session
+    is escalated, and a short localized goodbye for any other reason.
+    A silent turn without end_session (a transfer to another agent) stays silent.
+    """
+    params = session_params if isinstance(session_params, dict) else {}
+    handoff = enforce_handover_utterance("", params).strip()
+    if handoff:
+        return handoff
+    if end_session_args is None:
+        return ""
+    args = end_session_args if isinstance(end_session_args, dict) else {}
+    reason = str(args.get("reason") or "").strip().lower()
+    key = END_SESSION_LINES.get(reason)
+    if key is None:
+        key = "live_agent_handoff" if _truthy(args.get("session_escalated")) else "closing_goodbye"
+    return spoken_line(key, str(params.get("language") or params.get("preferred_language") or "en-US"))
 # --- END GENERATED SHARED BUNDLE ---

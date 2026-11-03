@@ -135,3 +135,10 @@ def test_error_codes_area_codes_and_references_are_kept() -> None:
         "Your PIN was verified.",
     ):
         assert clean_speech(text) == text
+
+
+def test_silent_turn_line_language_falls_back_to_preferred_language() -> None:
+    from lib.speech import silent_turn_line
+
+    assert silent_turn_line({"preferred_language": "fr-CA"}, {"reason": "resolved"}).startswith("Merci")
+    assert silent_turn_line({}, None) == ""
