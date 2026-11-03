@@ -576,6 +576,57 @@ def queue_open(queue: str, now: datetime | None = None) -> bool:  # pragma: no c
         return False
     return hours[0] <= current.hour < hours[1]
 
+EMAIL_MASK_RE = re.compile(r"\b([A-Za-z0-9])[A-Za-z0-9._%+-]*@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)")  # pragma: no cover
+
+MIN_MASKED_DIGITS = 7  # pragma: no cover
+
+NUMBER_RUN_RE = re.compile(r"\(?\d+\)?(?:[-.]\(?\d+\)?|\s\(?\d{3,}\)?)*")  # pragma: no cover
+
+SHORT_NUMBER_KEEP_RE = re.compile(r"\d{4}-\d{2}-\d{2}|\d{4}/\d{2}/\d{2}|\d+\.\d{2}")  # pragma: no cover
+
+SPEAKABLE_NUMBERS: frozenset[str] = frozenset()  # pragma: no cover
+
+def mask_long_numbers(text: str, min_digits: int = MIN_MASKED_DIGITS) -> str:  # pragma: no cover
+    """Replace every number of `min_digits` or more digits by its last 4 digits."""
+
+    def _mask(match: re.Match[str]) -> str:
+        digits = re.sub(r"\D", "", match.group(0))
+        if len(digits) < min_digits or digits in SPEAKABLE_NUMBERS:
+            return match.group(0)
+        if len(digits) < 9 and SHORT_NUMBER_KEEP_RE.fullmatch(match.group(0)):
+            return match.group(0)
+        return digits[-4:]
+
+    return NUMBER_RUN_RE.sub(_mask, text)
+
+SECRET_CODE_RE = re.compile(  # pragma: no cover
+    r"\b(?P<word>pin|nip|passcode|code)\b(?P<gap>(?:\s+(?:is|was|est|of|de|:)|\s*:)*\s*)"
+    r"(?P<digits>\d(?:[\s-]?\d){3,7})(?![\d-])",
+    re.IGNORECASE,
+)
+
+_SECRET_CODE_SKIP_BEFORE = ("error", "erreur", "area", "régional", "postal")  # pragma: no cover
+
+def mask_secret_codes(text: str) -> str:  # pragma: no cover
+    """Drop the digits of a PIN (4-8 digits) or login code (6-8 digits) said after its name.
+
+    "Error code 1002" (a TV error code) and "area code 514" are kept.
+    """
+
+    def _drop(match: re.Match[str]) -> str:
+        digits = re.sub(r"\D", "", match.group("digits"))
+        word = match.group("word").lower()
+        before = text[max(0, match.start() - 10) : match.start()].lower()
+        if word == "code" and (len(digits) < 6 or any(w in before for w in _SECRET_CODE_SKIP_BEFORE)):
+            return match.group(0)
+        return match.group("word")
+
+    return SECRET_CODE_RE.sub(_drop, text)
+
+def redact_pii(text: Any) -> str:  # pragma: no cover
+    """Free text bound for logs or a live agent: PIN/code digits dropped, long numbers to last 4, emails masked."""
+    return EMAIL_MASK_RE.sub(r"\1***@\2", mask_long_numbers(mask_secret_codes(str(text or ""))))
+
 SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
     "greeting_main": {
         "en-US": "Welcome to Telco. I can help with billing, technical support, or managing your account. To get started, could you tell me the phone number or account number associated with your service?",
@@ -690,7 +741,7 @@ def handover_to_person_impl(  # pragma: no cover
     open_now = queue_open(queue)
     context = {
         "reason": code,
-        "summary": " ".join(str(summary or "").split())[:300],
+        "summary": redact_pii(" ".join(str(summary or "").split()))[:300],
         "language": lang,
         "account_id_last4": normalize_code(state.get("account_id", ""))[-4:],
         "identification_status": state.get("identification_status") or "Fail",

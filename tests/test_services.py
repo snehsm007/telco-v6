@@ -518,3 +518,22 @@ def test_short_step_up_code_is_a_re_ask_with_a_resend_offer_not_a_strike(tool) -
     assert read_count(state, "auth_failure_count") == 0 and state["auth_status"] == "pass"
     assert read_count(state, "global_err_count") == before + 1
     assert state["code_purpose"] == "step_up"
+
+
+def test_handoff_context_summary_carries_no_full_pii() -> None:
+    # BR-TV-009 / BR-TV-015: the model-written summary reaches the live agent and the logs.
+    import json
+
+    from lib import services as svc
+
+    state = {"account_id": "A1001", "auth_status": "pass", "logged_in": True}
+    summary = (
+        "Caller 514-555-0199, account 12345678, PIN 7316, code 615203, "
+        "card 4111 1111 1111 1111, email jane.doe@example.com, wants a refund of $120.00"
+    )
+    svc.handover_to_person_impl("user_requested_agent", summary, state=state)
+    sent = json.loads(state["handoff_context"])["summary"]
+    for secret in ("555-0199", "12345678", "7316", "615203", "4111", "jane.doe"):
+        assert secret not in sent
+    for kept in ("0199", "5678", "1111", "j***@example.com", "$120.00"):
+        assert kept in sent

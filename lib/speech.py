@@ -65,6 +65,14 @@ def mask_secret_codes(text: str) -> str:
     return SECRET_CODE_RE.sub(_drop, text)
 
 
+EMAIL_MASK_RE = re.compile(r"\b([A-Za-z0-9])[A-Za-z0-9._%+-]*@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)")
+
+
+def redact_pii(text: Any) -> str:
+    """Free text bound for logs or a live agent: PIN/code digits dropped, long numbers to last 4, emails masked."""
+    return EMAIL_MASK_RE.sub(r"\1***@\2", mask_long_numbers(mask_secret_codes(str(text or ""))))
+
+
 def strip_markdown(text: str) -> str:
     """Drop the markdown symbols a voice would read out: asterisks, backticks, headings."""
     return MARKDOWN_RE.sub("", text)

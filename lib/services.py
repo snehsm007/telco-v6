@@ -64,6 +64,7 @@ from lib.sales import (  # noqa: F401
     place_order_impl,
     start_number_transfer_impl,
 )
+from lib.speech import redact_pii
 from lib.tech import (  # noqa: F401
     check_regional_outage_impl,
     get_appointment_and_ticket_status_impl,
@@ -482,7 +483,7 @@ def handover_to_person_impl(
     open_now = queue_open(queue)
     context = {
         "reason": code,
-        "summary": " ".join(str(summary or "").split())[:300],
+        "summary": redact_pii(" ".join(str(summary or "").split()))[:300],
         "language": lang,
         "account_id_last4": normalize_code(state.get("account_id", ""))[-4:],
         "identification_status": state.get("identification_status") or "Fail",
