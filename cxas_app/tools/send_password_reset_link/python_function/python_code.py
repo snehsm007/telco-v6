@@ -613,6 +613,18 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "I see there's an active outage in your area. We're working on it. Would you like me to text you when it's restored?",
         "fr-CA": "Je constate qu'il y a une panne active dans votre secteur. Nous y travaillons. Voulez-vous que je vous envoie un texto lorsque le service sera rétabli?",
     },
+    "sms_outage_updates_confirmed": {
+        "en-US": "You're all set. I'll text the number ending in [last4] as soon as service is restored.",
+        "fr-CA": "C'est noté. J'enverrai un texto au numéro se terminant par [last4] dès que le service sera rétabli.",
+    },
+    "sms_slot_callback_confirmed": {
+        "en-US": "You're all set. I'll text the number ending in [last4] as soon as a slot opens.",
+        "fr-CA": "C'est noté. J'enverrai un texto au numéro se terminant par [last4] dès qu'une plage se libère.",
+    },
+    "sms_sent_confirmed": {
+        "en-US": "Done. I've sent the text to the number ending in [last4].",
+        "fr-CA": "C'est fait. J'ai envoyé le texto au numéro se terminant par [last4].",
+    },
     "transfer_to_specialist": {
         "en-US": "I'll connect you to a billing specialist now — they'll have everything we've already discussed.",
         "fr-CA": "Je vais vous mettre en relation avec un spécialiste de la facturation — il aura tout ce dont nous avons déjà discuté.",
@@ -632,6 +644,21 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
     "pin_alternative": {
         "en-US": "Or, if you prefer, you can use your 4-digit PIN instead.",
         "fr-CA": "Ou, si vous préférez, vous pouvez plutôt utiliser votre NIP à 4 chiffres.",
+    },
+    # Texted and emailed codes may be spoken (appended after the PRD verbatim lines).
+    "say_code_aloud": {
+        "en-US": "Please say the 6 digits out loud.",
+        "fr-CA": "Dites les 6 chiffres à voix haute.",
+    },
+    # prd.md PIN flow: on a phone call the PIN is accepted from the keypad only
+    # (voice-spelled PINs are refused); check_secret_pin texts a code instead.
+    "pin_keypad_required": {
+        "en-US": "For your security, your PIN can only be entered on the keypad, so I just texted a 6-digit code to the mobile on file instead. Please say the 6 digits out loud.",
+        "fr-CA": "Pour votre sécurité, votre NIP ne peut être entré qu'au clavier; je viens donc d'envoyer un code à 6 chiffres par texto au mobile au dossier. Dites les 6 chiffres à voix haute.",
+    },
+    "pin_keypad_code_pending": {
+        "en-US": "For your security, your PIN can only be entered on the keypad. Please say the 6-digit code I texted you out loud instead.",
+        "fr-CA": "Pour votre sécurité, votre NIP ne peut être entré qu'au clavier. Dites plutôt à voix haute le code à 6 chiffres que je vous ai envoyé par texto.",
     },
     # Operational line (no account number at hand); interim wording PENDING LEGAL APPROVAL.
     "account_lookup_options": {
