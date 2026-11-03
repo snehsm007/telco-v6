@@ -273,3 +273,28 @@ def test_unknown_agent_gets_router_keys_and_non_supported_locale_template_branch
     assert "greeting_main" in sheet
     # Direct non-supported locale branch (resolve_locale maps it, so only reachable through en/fr).
     assert "</active_language_sheet>" in build_language_sheet("de-DE")
+
+
+def _req(*texts: str) -> SimpleNamespace:
+    return SimpleNamespace(contents=[SimpleNamespace(role="user", parts=[SimpleNamespace(text=t)]) for t in texts])
+
+
+def test_first_turn_keypad_two_selects_french() -> None:
+    """'Press 2 for French': the caller's first input alone picks the language."""
+    assert detect_active_call_language({}, _req("2")) == "fr-CA"
+    assert detect_active_call_language({}, _req("2", "77482910")) == "fr-CA"
+    assert detect_active_call_language({}, _req("deux")) == "fr-CA"
+
+
+def test_a_later_keypad_two_never_switches_language() -> None:
+    """A '2' after the first turn is a menu or slot choice (telco-v5 defect)."""
+    assert detect_active_call_language({}, _req("I need to reschedule", "2")) == "en-US"
+    assert detect_active_call_language({"language": "en-US"}, _req("2")) == "en-US"
+
+
+def test_platform_session_event_is_not_a_caller_turn() -> None:
+    """The live phone gateway sends <event>session start</event> as a user turn before the caller speaks."""
+    req = _req("<event>session start</event>", "Bonjour, je veux payer ma facture")
+    assert extract_user_utterances(req) == ["Bonjour, je veux payer ma facture"]
+    assert detect_active_call_language({}, req) == "fr-CA"
+    assert detect_active_call_language({}, _req("<event>session start</event>", "2")) == "fr-CA"

@@ -89,6 +89,9 @@ _RE_RELAY_PREFIX = re.compile(
 _RE_QUOTED_AGENT_BLOCK = re.compile(
     r"<<<BEGIN_QUOTED_AGENT_CONTENT>>>[\s\S]*?<<<END_QUOTED_AGENT_CONTENT>>>"
 )
+# Platform events delivered as "user" text, e.g. the live phone gateway's
+# <event>session start</event> before the caller speaks. Never a caller turn.
+_RE_PLATFORM_EVENT = re.compile(r"<event\b[^>]*>[\s\S]*?</event>|<state_update\b[^>]*>[\s\S]*?</state_update>", re.IGNORECASE)
 _RE_RELAY_ACTIVE_LANG = re.compile(
     r"""['"]active_language['"]\s*:\s*['"]([a-zA-Z]{2}(?:-[a-zA-Z]{2})?)['"]"""
 )
@@ -101,7 +104,7 @@ def _is_relay_or_quoted_part(txt: str) -> bool:
         return True
     if _RE_RELAY_PREFIX.match(s):
         return True
-    cleaned = _RE_QUOTED_AGENT_BLOCK.sub("", s).strip()
+    cleaned = _RE_PLATFORM_EVENT.sub("", _RE_QUOTED_AGENT_BLOCK.sub("", s)).strip()
     if not cleaned:
         return True
     if _RE_RELAY_PREFIX.match(cleaned):
@@ -156,11 +159,11 @@ def extract_user_utterances(llm_request: Any) -> list[str]:
                     txt = getattr(part, "text", None)
                     if txt and isinstance(txt, str) and txt.strip():
                         if not _is_relay_or_quoted_part(txt):
-                            utterances.append(txt.strip())
+                            utterances.append(_RE_PLATFORM_EVENT.sub("", txt).strip())
             elif isinstance(getattr(item, "text", None), str):
                 t = item.text.strip()
                 if t and not _is_relay_or_quoted_part(t):
-                    utterances.append(t)
+                    utterances.append(_RE_PLATFORM_EVENT.sub("", t).strip())
     return utterances
 
 
@@ -219,6 +222,16 @@ def detect_utterance_language(utterance: str, current_language: str = "en-US") -
     return resolve_locale(current_language)
 
 
+KEYPAD_FRENCH_CHOICES: frozenset[str] = frozenset({"2", "deux"})
+
+
+def _dp_is_keypad_french_choice(utterance: str) -> bool:
+    """True when the caller's first input is the keypad language choice for French."""
+    cleaned = re.sub(r"[\s.!,#*]+", "", str(utterance or "").strip().lower())
+    cleaned = re.sub(r"^(?:pressed|keyed|appuie|touche)", "", cleaned)
+    return cleaned in KEYPAD_FRENCH_CHOICES
+
+
 def detect_active_call_language(state_dict: Any, llm_request: Any) -> str:
     """Determine the active conversation language from state and user turns."""
     user_utterances = extract_user_utterances(llm_request)
@@ -243,6 +256,11 @@ def detect_active_call_language(state_dict: Any, llm_request: Any) -> str:
         return current
 
     current = resolve_locale(locked) if locked else "en-US"
+    if not locked and user_utterances and _dp_is_keypad_french_choice(user_utterances[0]):
+        # "Press 2 for French": only the caller's very first input selects the
+        # language this way; a "2" later in the call (a menu or slot choice) never does.
+        current = "fr-CA"
+        user_utterances = user_utterances[1:]
     for utt in user_utterances:
         if current != "en-US":
             switch = _dp_match_explicit_switch(utt.lower())
