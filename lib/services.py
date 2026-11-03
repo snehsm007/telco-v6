@@ -30,7 +30,6 @@ from lib.billing import (  # noqa: F401
 from lib.core import (
     account_record,
     check_mock_error,
-    dispatch_sms,
     ensure_account,
     fixture,
     fixture_flag,
@@ -572,21 +571,57 @@ def handover_to_person_impl(
     )
 
 
+# Texts about public information need no account: they go to the caller's own line.
+PUBLIC_SMS_PURPOSES: frozenset[str] = frozenset({"outage_updates", "troubleshooting_guide"})
+SMS_CONFIRMATION_LINES: dict[str, str] = {
+    "outage_updates": "sms_outage_updates_confirmed",
+    "slot_available_callback": "sms_slot_callback_confirmed",
+}
+
+
+def _sms_line_number(raw: Any) -> str:
+    """A caller-given mobile number (PHONE_* formats, 10 plausible digits), else ""."""
+    kind, digits = classify_identifier(raw)
+    return digits if kind == "phone" and is_plausible_phone(digits) else ""
+
+
+def _sms_destination(state: dict[str, Any], mobile_number: str) -> tuple[str, str]:
+    """(last4, source) of the number to text: the number the caller gave, the number on file,
+    the caller ID (`clid`), or the simulated calling line (like lookup_account's default_line)."""
+    given = _sms_line_number(mobile_number)
+    if given:
+        return given[-4:], "caller_provided"
+    clid = _caller_id_phone(state)
+    on_file = str(state.get("phone_last4") or account_record(state)["phone"][-4:])
+    if state.get("account_id") and not (clid and state.get("phone_derived")):
+        # A phone synthesized from account digits is never spoken when the caller ID is known.
+        return on_file, "on_file"
+    if clid:
+        return clid[-4:], "clid"
+    return ACCOUNTS[0]["phone"][-4:], "default_line"
+
+
 def send_sms_notification_impl(
     purpose: str = "outage_updates",
+    mobile_number: str | int | float = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     language: str = "",
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Text the mobile number on file (outage updates, troubleshooting guide, slot callback, registration link)."""
+    """Text the caller (outage updates, troubleshooting guide, slot callback, registration link).
+
+    Outage updates and the troubleshooting guide are public: with no account found they go
+    to the number the caller gave, else the caller ID, else the calling line.
+    """
     state = get_state(state, session_state)
     lang = session_language(state, language)
     err = check_mock_error(state, lang, "send_sms_notification")
     if err:
         return err
     clean = re.sub(r"[\s\-]+", "_", str(purpose or "").strip().lower())
-    reference = tracking_id("send_sms_notification", state.get("account_id", ""), clean)
+    raw_number = re.sub(r"\.0+$", "", str(mobile_number or "").strip())
+    reference = tracking_id("send_sms_notification", state.get("account_id", ""), clean, raw_number)
     if clean not in SMS_PURPOSES:
         return validation_error(
             state,
@@ -595,7 +630,15 @@ def send_sms_notification_impl(
             reference,
             lang,
         )
-    if not state.get("account_id"):
+    if raw_number and not _sms_line_number(raw_number):
+        return validation_error(
+            state,
+            "That is not a 10-digit mobile number.",
+            "Ask for the 10-digit mobile number to text, then retry with mobile_number.",
+            reference,
+            lang,
+        )
+    if not state.get("account_id") and not raw_number and clean not in PUBLIC_SMS_PURPOSES:
         return error_reply(
             "NOT_IDENTIFIED",
             "No mobile number on file yet.",
@@ -603,9 +646,23 @@ def send_sms_notification_impl(
             reference,
             language=lang,
         )
+    last4, source = _sms_destination(state, raw_number)
+    sent = [p for p in str(state.get("sms_sent") or "").split(",") if p]
+    sent.append(clean)
+    state["sms_sent"] = ",".join(sent[-10:])
     state["last_tracking_id"] = reference
-    return ok_reply({"purpose": clean, **dispatch_sms(state, clean)}, reference, language=lang)
-
+    line = SMS_CONFIRMATION_LINES.get(clean, "sms_sent_confirmed")
+    data = {
+        "purpose": clean,
+        "sms_sent": True,
+        "destination_last4": last4,
+        "destination_source": source,
+        "sms_purpose": clean,
+        "spoken_message": spoken_line(line, lang, last4=last4),
+    }
+    reply = ok_reply(data, reference, language=lang)
+    reply["agent_action"] = "Say spoken_message word for word."
+    return reply
 
 lookup_account = lookup_account_impl
 send_login_code = send_login_code_impl

@@ -4,20 +4,24 @@ from typing import Any
 
 def send_sms_notification(
     purpose: str = "outage_updates",
+    mobile_number: str | int | float = "",
     language: str = "",
 ) -> dict[str, Any]:
-    """Texts the mobile number on file: outage restoration updates, a troubleshooting
-      guide, a callback when an appointment slot opens, or a self-serve registration
-      link. Needs the caller's account to be found first.
+    """Texts the caller: outage restoration updates, a troubleshooting guide, a callback
+      when an appointment slot opens, or a self-serve registration link. Outage updates
+      and the troubleshooting guide need no account: they go to the caller's line.
 
     Args:
       purpose: outage_updates, troubleshooting_guide, slot_available_callback or
         registration_link.
+      mobile_number: Only when the caller gives a different mobile number to text;
+        otherwise leave empty.
       language: Active language code (en-US or fr-CA).
 
     Returns:
-      status, data (purpose, sms_sent, destination_last4), error_message, tracking_id.
-        Errors add error (NOT_IDENTIFIED, INVALID_INPUT) and agent_action.
+      status, data (purpose, sms_sent, destination_last4, destination_source,
+        spoken_message), error_message, tracking_id. Errors add error
+        (NOT_IDENTIFIED, INVALID_INPUT) and agent_action.
     """
     ctx = globals().get("context")
     state = getattr(ctx, "state", None) if ctx is not None else None
@@ -25,6 +29,7 @@ def send_sms_notification(
         state = ctx
     return send_sms_notification_impl(
         purpose=purpose,
+        mobile_number=mobile_number,
         language=language,
         state=state,
     )
@@ -40,7 +45,159 @@ import hashlib
 import json
 import re
 
+PUBLIC_SMS_PURPOSES: frozenset[str] = frozenset({"outage_updates", "troubleshooting_guide"})  # pragma: no cover
+
+SMS_CONFIRMATION_LINES: dict[str, str] = {  # pragma: no cover
+    "outage_updates": "sms_outage_updates_confirmed",
+    "slot_available_callback": "sms_slot_callback_confirmed",
+}
+
 SMS_PURPOSES = ("outage_updates", "troubleshooting_guide", "slot_available_callback", "registration_link")  # pragma: no cover
+
+ACCOUNTS: tuple[dict[str, Any], ...] = (  # pragma: no cover
+    {
+        "account_id": "A1001",
+        "phone": "2025550186",
+        "first_name": "Morgan",
+        "email": "m.okafor@mailprovider.example",
+        "status": "active",
+        "preferred_language": "en-US",
+        "card_last4": "7742",
+        "card_brand": "Visa",
+        "customer_type": "Existing",
+        "postal_code": "K2P 1L4",
+        "service_address_last_line": "Ottawa, ON K2P 1L4",
+        "lines_of_business": ["mobility", "internet", "tv", "homephone"],
+        "business_flag": False,
+    },
+    {
+        "account_id": "A1002",
+        "phone": "2025550198",
+        "first_name": "Taylor",
+        "email": "taylor.r@mailprovider.example",
+        "status": "active",
+        "preferred_language": "fr-CA",
+        "card_last4": "8853",
+        "card_brand": "Mastercard",
+        "customer_type": "Existing",
+        "postal_code": "K1A 0B1",
+        "service_address_last_line": "Ottawa, ON K1A 0B1",
+        "lines_of_business": ["mobility", "internet"],
+        "business_flag": False,
+    },
+)
+
+ACCOUNT_NUMBER_RE = re.compile(r"^[0-9](?:[\s\-]?[0-9]){5,14}$")  # pragma: no cover
+
+ACCOUNT_REFERENCE_RE = re.compile(  # pragma: no cover
+    r"^(?=(?:[^0-9]*[0-9]){4})(?=.*[A-Za-z])[A-Za-z0-9](?:[A-Za-z0-9]|[\s\-](?=[A-Za-z0-9])){3,24}$"
+)
+
+ALL_DIGITS_RE = re.compile(r"^[0-9]+$")  # pragma: no cover
+
+PHONE_INTL_RE = re.compile(r"^(?:\+|00)[1-9](?:[\s.\-]?[0-9]){9,14}$")  # pragma: no cover
+
+PHONE_LOCAL_PAIRS_RE = re.compile(r"^0[1-9](?:[\s.\-]?[0-9]{2}){4}$")  # pragma: no cover
+
+PHONE_NANP_RE = re.compile(r"^(?:\+?1[\s.\-]?)?\(?[0-9]{3}\)?[\s.\-]?[0-9]{3}[\s.\-]?[0-9]{4}$")  # pragma: no cover
+
+SPOKEN_DIGIT_SEPARATORS_RE = re.compile(r"[\s,.\-()]+")  # pragma: no cover
+
+def normalize_code(value: Any) -> str:  # pragma: no cover
+    """Coerce ints, floats (e.g. 5903.0), and formatted strings into a clean digit string."""
+    if value is None or isinstance(value, bool):
+        return ""
+    if isinstance(value, int):
+        return str(abs(value))
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(abs(value)))
+        return re.sub(r"\D", "", str(value))
+    text = str(value).strip()
+    if re.fullmatch(r"[+-]?\d+\.0+", text):
+        text = text.split(".", 1)[0]
+    return "".join(ch for ch in text if ch.isdigit())
+
+def classify_identifier(raw: Any) -> tuple[str, str]:  # pragma: no cover
+    """Match a caller identifier against the format patterns.
+
+    Phone speech-to-text writes numbers as "888,777,666" or "5 1 4 5 5 5 0 1 9 9";
+    when only separators (spaces, commas, dots, dashes, brackets) sit between the
+    digits, the digit string itself is classified by length with the same rules.
+    Returns (kind, digits): kind is phone, intl_phone, account_number,
+    account_reference, or "" when no pattern matches.
+    """
+    text = re.sub(r"\.0+$", "", str(raw or "").strip())
+    digits = normalize_code(text)
+    compact = SPOKEN_DIGIT_SEPARATORS_RE.sub("", text)
+    if compact and ALL_DIGITS_RE.fullmatch(compact) and not compact.startswith("00") and not PHONE_NANP_RE.fullmatch(text):
+        if len(compact) == 11 and compact.startswith("1"):
+            return "phone", compact[1:]
+        if len(compact) == 10 and not compact.startswith("0"):
+            return "phone", compact
+        if PHONE_LOCAL_PAIRS_RE.fullmatch(text):
+            return "phone", compact
+        if ACCOUNT_NUMBER_RE.fullmatch(compact):
+            return "account_number", compact
+    if PHONE_NANP_RE.fullmatch(text):
+        return "phone", digits[-10:]
+    if PHONE_LOCAL_PAIRS_RE.fullmatch(text):
+        return "phone", digits
+    if PHONE_INTL_RE.fullmatch(text):
+        return "intl_phone", digits
+    if ACCOUNT_NUMBER_RE.fullmatch(text):
+        return "account_number", digits
+    if ACCOUNT_REFERENCE_RE.fullmatch(text):
+        return "account_reference", digits
+    return "", digits
+
+DUMMY_NUMBERS: frozenset[str] = frozenset({"1234567890", "0123456789", "9876543210"})  # pragma: no cover
+
+def is_weak_code(digits: str) -> bool:  # pragma: no cover
+    """A code made of one repeated digit (e.g. all sevens) is never a valid credential."""
+    return bool(digits) and len(set(digits)) == 1
+
+def is_plausible_phone(digits: str) -> bool:  # pragma: no cover
+    """A 10-digit number that isn't one repeated digit or an obvious dummy run (Postel: accept generously)."""
+    if len(digits) != 10 or not digits.isdigit():
+        return False
+    return not is_weak_code(digits) and digits not in DUMMY_NUMBERS
+
+def _caller_id_phone(state: dict[str, Any]) -> str:  # pragma: no cover
+    """The caller ID (`clid`, prd.md §5) when it is a valid 10-digit phone number, else ""."""
+    kind, digits = classify_identifier(state.get("clid"))
+    return digits if kind == "phone" and is_plausible_phone(digits) else ""
+
+def _sms_line_number(raw: Any) -> str:  # pragma: no cover
+    """A caller-given mobile number (PHONE_* formats, 10 plausible digits), else ""."""
+    kind, digits = classify_identifier(raw)
+    return digits if kind == "phone" and is_plausible_phone(digits) else ""
+
+def account_record(state: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover
+    """The active account record, falling back to the default account."""
+    account_id = str(state.get("account_id") or "")
+    for record in ACCOUNTS:
+        if record["account_id"] == account_id:
+            return dict(record)
+    base = dict(ACCOUNTS[0])
+    if account_id:
+        base["account_id"] = account_id
+    return base
+
+def _sms_destination(state: dict[str, Any], mobile_number: str) -> tuple[str, str]:  # pragma: no cover
+    """(last4, source) of the number to text: the number the caller gave, the number on file,
+    the caller ID (`clid`), or the simulated calling line (like lookup_account's default_line)."""
+    given = _sms_line_number(mobile_number)
+    if given:
+        return given[-4:], "caller_provided"
+    clid = _caller_id_phone(state)
+    on_file = str(state.get("phone_last4") or account_record(state)["phone"][-4:])
+    if state.get("account_id") and not (clid and state.get("phone_derived")):
+        # A phone synthesized from account digits is never spoken when the caller ID is known.
+        return on_file, "on_file"
+    if clid:
+        return clid[-4:], "clid"
+    return ACCOUNTS[0]["phone"][-4:], "default_line"
 
 MOCK_ERROR_OFF: frozenset[str] = frozenset({"false", "none", "0", "off", "no", "null"})  # pragma: no cover
 
@@ -387,58 +544,6 @@ def check_mock_error(state: dict[str, Any], lang: str = "en-US", tool_name: str 
         )
     return None
 
-ACCOUNTS: tuple[dict[str, Any], ...] = (  # pragma: no cover
-    {
-        "account_id": "A1001",
-        "phone": "2025550186",
-        "first_name": "Morgan",
-        "email": "m.okafor@mailprovider.example",
-        "status": "active",
-        "preferred_language": "en-US",
-        "card_last4": "7742",
-        "card_brand": "Visa",
-        "customer_type": "Existing",
-        "postal_code": "K2P 1L4",
-        "service_address_last_line": "Ottawa, ON K2P 1L4",
-        "lines_of_business": ["mobility", "internet", "tv", "homephone"],
-        "business_flag": False,
-    },
-    {
-        "account_id": "A1002",
-        "phone": "2025550198",
-        "first_name": "Taylor",
-        "email": "taylor.r@mailprovider.example",
-        "status": "active",
-        "preferred_language": "fr-CA",
-        "card_last4": "8853",
-        "card_brand": "Mastercard",
-        "customer_type": "Existing",
-        "postal_code": "K1A 0B1",
-        "service_address_last_line": "Ottawa, ON K1A 0B1",
-        "lines_of_business": ["mobility", "internet"],
-        "business_flag": False,
-    },
-)
-
-def account_record(state: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover
-    """The active account record, falling back to the default account."""
-    account_id = str(state.get("account_id") or "")
-    for record in ACCOUNTS:
-        if record["account_id"] == account_id:
-            return dict(record)
-    base = dict(ACCOUNTS[0])
-    if account_id:
-        base["account_id"] = account_id
-    return base
-
-def dispatch_sms(state: dict[str, Any], purpose: str) -> dict[str, Any]:  # pragma: no cover
-    """Record a text message to the mobile number on file; returns its delivery facts."""
-    dest = str(state.get("phone_last4") or account_record(state)["phone"][-4:])
-    sent = [p for p in str(state.get("sms_sent") or "").split(",") if p]
-    sent.append(purpose)
-    state["sms_sent"] = ",".join(sent[-10:])
-    return {"sms_sent": True, "destination_last4": dest, "sms_purpose": purpose}
-
 def mock_mode_on(state: dict[str, Any] | None) -> bool:  # pragma: no cover
     """PRD §17 eval-harness flag (scenario variableOverrides mock_mode="True").
 
@@ -533,6 +638,123 @@ def session_language(state: dict[str, Any] | None, language: Any = "") -> str:  
         return arg_lang
     return "en-US"
 
+SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
+    "greeting_main": {
+        "en-US": "Welcome to Telco. I can help with billing, technical support, or managing your account. To get started, could you tell me the phone number or account number associated with your service?",
+        "fr-CA": "Bienvenue chez Telco. Je peux vous aider avec la facturation, le soutien technique ou la gestion de votre compte. Pour commencer, pourriez-vous me donner le numéro de téléphone ou le numéro de compte associé à votre service?",
+    },
+    "recording_notice": {
+        "en-US": "This call may be recorded for quality and training purposes.",
+        "fr-CA": "Cet appel peut être enregistré à des fins de qualité et de formation.",
+    },
+    "id_verification_otp": {
+        "en-US": "For your security, I just sent a 6-digit code to that number — please read it back to me.",
+        "fr-CA": "Pour votre sécurité, je viens d'envoyer un code à 6 chiffres à ce numéro — veuillez me le lire.",
+    },
+    "id_verification_pin": {
+        "en-US": "For your security, I'll need to verify your identity. Please enter the 4-digit PIN you set up.",
+        "fr-CA": "Pour votre sécurité, je dois vérifier votre identité. Veuillez entrer le NIP à 4 chiffres que vous avez configuré.",
+    },
+    "live_agent_handoff": {
+        "en-US": "I'll connect you to a representative who can help. Please hold.",
+        "fr-CA": "Je vais vous mettre en relation avec un représentant qui pourra vous aider. Veuillez patienter.",
+    },
+    "business_handoff": {
+        "en-US": "To get you the best support for your business account, I'll transfer you to an agent. You'll need to use your phone keypad instead of talking to the virtual assistant. Just a moment while I connect you.",
+        "fr-CA": "Pour vous offrir le meilleur soutien pour votre compte d'affaires, je vais vous transférer à un agent. Vous devrez utiliser le clavier de votre téléphone au lieu de parler à l'assistant virtuel. Un instant pendant que je vous mets en relation.",
+    },
+    "payment_method_preamble": {
+        "en-US": "Before we continue, please note that your payment details are protected and processed securely, and I will only ever refer to the last four digits of your card or account.",
+        "fr-CA": "Avant de continuer, sachez que vos renseignements de paiement sont protégés et traités de façon sécurisée, et que je ne mentionnerai jamais que les quatre derniers chiffres de votre carte ou de votre compte.",
+    },
+    "contract_cancellation_fee_disclosure": {
+        "en-US": "Please note that cancelling before the end of your contract term may result in an early termination fee and a final bill, as set out in your service agreement.",
+        "fr-CA": "Veuillez noter qu'une résiliation avant la fin de la durée de votre contrat peut entraîner des frais de résiliation anticipée et une facture finale, comme le prévoit votre entente de service.",
+    },
+    "refund_confirmation_pattern": {
+        "en-US": "Your refund of $[amount] will appear on your next statement within [days] business days.",
+        "fr-CA": "Votre remboursement de [amount] $ apparaîtra sur votre prochain relevé d'ici [days] jours ouvrables.",
+    },
+    "empathy_protocol": {
+        "en-US": "I'm very sorry to hear that you are facing challenges. I will ensure we handle your request with the utmost care.",
+        "fr-CA": "Je suis vraiment désolé d'apprendre que vous éprouvez des difficultés. Je veillerai à ce que votre demande soit traitée avec le plus grand soin.",
+    },
+    "outage_active": {
+        "en-US": "I see there's an active outage in your area. We're working on it. Would you like me to text you when it's restored?",
+        "fr-CA": "Je constate qu'il y a une panne active dans votre secteur. Nous y travaillons. Voulez-vous que je vous envoie un texto lorsque le service sera rétabli?",
+    },
+    "sms_outage_updates_confirmed": {
+        "en-US": "You're all set. I'll text the number ending in [last4] as soon as service is restored.",
+        "fr-CA": "C'est noté. J'enverrai un texto au numéro se terminant par [last4] dès que le service sera rétabli.",
+    },
+    "sms_slot_callback_confirmed": {
+        "en-US": "You're all set. I'll text the number ending in [last4] as soon as a slot opens.",
+        "fr-CA": "C'est noté. J'enverrai un texto au numéro se terminant par [last4] dès qu'une plage se libère.",
+    },
+    "sms_sent_confirmed": {
+        "en-US": "Done. I've sent the text to the number ending in [last4].",
+        "fr-CA": "C'est fait. J'ai envoyé le texto au numéro se terminant par [last4].",
+    },
+    "transfer_to_specialist": {
+        "en-US": "I'll connect you to a billing specialist now — they'll have everything we've already discussed.",
+        "fr-CA": "Je vais vous mettre en relation avec un spécialiste de la facturation — il aura tout ce dont nous avons déjà discuté.",
+    },
+    "refund_over_limit": {
+        "en-US": "That amount is above our $[limit] self-serve limit, so it needs a specialist's approval.",
+        "fr-CA": "Ce montant dépasse notre limite libre-service de [limit] $, il doit donc être approuvé par un spécialiste.",
+    },
+    "otp_callback_on_file": {
+        "en-US": "I'll send a 6-digit code to the mobile number on file. Ready?",
+        "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro de mobile au dossier. Êtes-vous prêt?",
+    },
+    "otp_callback_confirm": {
+        "en-US": "I'll send a 6-digit code to the number ending in [last4]. Ready?",
+        "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro se terminant par [last4]. Êtes-vous prêt?",
+    },
+    "pin_alternative": {
+        "en-US": "Or, if you prefer, you can use your 4-digit PIN instead.",
+        "fr-CA": "Ou, si vous préférez, vous pouvez plutôt utiliser votre NIP à 4 chiffres.",
+    },
+    # Operational line (no account number at hand); interim wording PENDING LEGAL APPROVAL.
+    "account_lookup_options": {
+        "en-US": "To find your account, I can use its phone number or account number, your email on file, or your 4-digit PIN.",
+        "fr-CA": "Pour trouver votre compte, je peux utiliser son numéro de téléphone ou son numéro de compte, votre courriel au dossier ou votre NIP à 4 chiffres.",
+    },
+    "email_code_sent": {
+        "en-US": "For your security, I just sent a 6-digit code to your email on file — please read it back to me.",
+        "fr-CA": "Pour votre sécurité, je viens d'envoyer un code à 6 chiffres à votre adresse courriel au dossier — veuillez me le lire.",
+    },
+    "callback_next_business_day": {
+        "en-US": "That team is closed right now, so I've arranged for them to call you back on the next business day.",
+        "fr-CA": "Cette équipe est fermée en ce moment, alors j'ai demandé qu'elle vous rappelle le prochain jour ouvrable.",
+    },
+    "restricted_caller": {
+        "en-US": "We're unable to help with this call on this line. Please visit one of our stores for assistance. Goodbye.",
+        "fr-CA": "Nous ne pouvons pas traiter cet appel sur cette ligne. Veuillez vous rendre dans l'une de nos boutiques pour obtenir de l'aide. Au revoir.",
+    },
+    "ai_disclosure": {
+        "en-US": "I'm an artificial intelligence customer care assistant.",
+        "fr-CA": "Je suis un assistant de service à la clientèle basé sur l'intelligence artificielle.",
+    },
+    "closing_goodbye": {
+        "en-US": "Thank you for calling. Have a great day.",
+        "fr-CA": "Merci de votre appel. Bonne journée.",
+    },
+    "malicious_closing": {
+        "en-US": "I am unable to continue this conversation. Thank you for calling and have a good day.",
+        "fr-CA": "Je ne peux pas poursuivre cette conversation. Merci de votre appel et bonne journée.",
+    },
+}
+
+def spoken_line(key: str, language: str | None = "en-US", **slots: object) -> str:  # pragma: no cover
+    """Return the fixed spoken line for `key` and `language`, filling any `[slot]` placeholders."""
+    locale = resolve_locale(language)
+    table = SPOKEN_LINES.get(key, {})
+    template = table.get(locale) or table.get("en-US") or ""
+    for slot_name, slot_val in slots.items():
+        template = template.replace(f"[{slot_name}]", str(slot_val))
+    return template
+
 MAX_VALIDATION_ERRORS = 3  # pragma: no cover
 
 def read_count(state: dict[str, Any] | None, key: str) -> int:  # pragma: no cover
@@ -571,19 +793,25 @@ def validation_error(  # pragma: no cover
 
 def send_sms_notification_impl(  # pragma: no cover
     purpose: str = "outage_updates",
+    mobile_number: str | int | float = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     language: str = "",
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Text the mobile number on file (outage updates, troubleshooting guide, slot callback, registration link)."""
+    """Text the caller (outage updates, troubleshooting guide, slot callback, registration link).
+
+    Outage updates and the troubleshooting guide are public: with no account found they go
+    to the number the caller gave, else the caller ID, else the calling line.
+    """
     state = get_state(state, session_state)
     lang = session_language(state, language)
     err = check_mock_error(state, lang, "send_sms_notification")
     if err:
         return err
     clean = re.sub(r"[\s\-]+", "_", str(purpose or "").strip().lower())
-    reference = tracking_id("send_sms_notification", state.get("account_id", ""), clean)
+    raw_number = re.sub(r"\.0+$", "", str(mobile_number or "").strip())
+    reference = tracking_id("send_sms_notification", state.get("account_id", ""), clean, raw_number)
     if clean not in SMS_PURPOSES:
         return validation_error(
             state,
@@ -592,7 +820,15 @@ def send_sms_notification_impl(  # pragma: no cover
             reference,
             lang,
         )
-    if not state.get("account_id"):
+    if raw_number and not _sms_line_number(raw_number):
+        return validation_error(
+            state,
+            "That is not a 10-digit mobile number.",
+            "Ask for the 10-digit mobile number to text, then retry with mobile_number.",
+            reference,
+            lang,
+        )
+    if not state.get("account_id") and not raw_number and clean not in PUBLIC_SMS_PURPOSES:
         return error_reply(
             "NOT_IDENTIFIED",
             "No mobile number on file yet.",
@@ -600,6 +836,21 @@ def send_sms_notification_impl(  # pragma: no cover
             reference,
             language=lang,
         )
+    last4, source = _sms_destination(state, raw_number)
+    sent = [p for p in str(state.get("sms_sent") or "").split(",") if p]
+    sent.append(clean)
+    state["sms_sent"] = ",".join(sent[-10:])
     state["last_tracking_id"] = reference
-    return ok_reply({"purpose": clean, **dispatch_sms(state, clean)}, reference, language=lang)
+    line = SMS_CONFIRMATION_LINES.get(clean, "sms_sent_confirmed")
+    data = {
+        "purpose": clean,
+        "sms_sent": True,
+        "destination_last4": last4,
+        "destination_source": source,
+        "sms_purpose": clean,
+        "spoken_message": spoken_line(line, lang, last4=last4),
+    }
+    reply = ok_reply(data, reference, language=lang)
+    reply["agent_action"] = "Say spoken_message word for word."
+    return reply
 # --- END GENERATED SHARED BUNDLE ---

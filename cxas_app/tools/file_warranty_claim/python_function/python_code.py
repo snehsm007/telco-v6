@@ -973,6 +973,18 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "I see there's an active outage in your area. We're working on it. Would you like me to text you when it's restored?",
         "fr-CA": "Je constate qu'il y a une panne active dans votre secteur. Nous y travaillons. Voulez-vous que je vous envoie un texto lorsque le service sera rétabli?",
     },
+    "sms_outage_updates_confirmed": {
+        "en-US": "You're all set. I'll text the number ending in [last4] as soon as service is restored.",
+        "fr-CA": "C'est noté. J'enverrai un texto au numéro se terminant par [last4] dès que le service sera rétabli.",
+    },
+    "sms_slot_callback_confirmed": {
+        "en-US": "You're all set. I'll text the number ending in [last4] as soon as a slot opens.",
+        "fr-CA": "C'est noté. J'enverrai un texto au numéro se terminant par [last4] dès qu'une plage se libère.",
+    },
+    "sms_sent_confirmed": {
+        "en-US": "Done. I've sent the text to the number ending in [last4].",
+        "fr-CA": "C'est fait. J'ai envoyé le texto au numéro se terminant par [last4].",
+    },
     "transfer_to_specialist": {
         "en-US": "I'll connect you to a billing specialist now — they'll have everything we've already discussed.",
         "fr-CA": "Je vais vous mettre en relation avec un spécialiste de la facturation — il aura tout ce dont nous avons déjà discuté.",
