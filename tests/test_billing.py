@@ -980,3 +980,16 @@ def test_billing_prompt_keeps_balance_disagreement_a_dispute_and_takeover_fraud(
     assert "pay any amount they choose" in rule
     assert "disagrees with their balance" in _billing_prompt_block("step", "Find Charge")
     assert "any amount the caller chooses" in _billing_prompt_block("step", "Payment Preamble")
+
+
+def test_saved_card_with_a_different_ending_is_charged_as_named() -> None:
+    """Callers who say their saved card ends differently from our record get that card, not a debate."""
+    state = _logged_in() if "_logged_in" in globals() else None
+    if state is None:
+        from lib.services import check_secret_pin_impl, lookup_account_impl
+
+        state = {}
+        lookup_account_impl("514-555-0199", state=state)
+        check_secret_pin_impl("2468", state=state)
+    paid = process_bill_payment_impl(amount="", payment_method="card_on_file", card_number="4421", state=state)
+    assert paid["status"] == "ok" and paid["data"]["card_last4"] == "4421"

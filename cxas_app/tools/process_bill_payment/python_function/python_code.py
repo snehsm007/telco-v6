@@ -921,6 +921,12 @@ def _bill_resolve_method(  # pragma: no cover
         )
     if method == "card_on_file":
         card = _bill_card_on_file(state)
+        if len(digits) == 4 and digits != card["last4"]:
+            # The caller says their saved card ends differently from our record: use the
+            # card they name (tokenized upstream, prd.md §10) instead of contradicting them.
+            if digits in DECLINED_CARD_LAST4 or digits == str(state.get("declined_card_last4") or ""):
+                return None, _bill_decline(state, digits, "CARD_DECLINED", lang, reference, tool)
+            return {"method": method, "last4": digits, "brand": ""}, None
         if card["status"] == "none":
             return None, _bill_finish(
                 state,
