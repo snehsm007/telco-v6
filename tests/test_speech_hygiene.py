@@ -81,8 +81,8 @@ def _tool_only(name: str, **args) -> SimpleNamespace:
 @pytest.mark.parametrize(
     ("language", "args", "expected"),
     [
-        ("en-US", {"reason": "resolved"}, "Thank you for calling Telco. Goodbye."),
-        ("fr-CA", {"reason": "resolved"}, "Merci d'avoir appelé Telco. Au revoir."),
+        ("en-US", {"reason": "resolved"}, "Thank you for calling. Have a great day."),
+        ("fr-CA", {"reason": "resolved"}, "Merci de votre appel. Bonne journée."),
         ("en-US", {"reason": "malicious_input"}, "I am unable to continue this conversation."),
         ("fr-CA", {"reason": "malicious_input"}, "Je ne peux pas poursuivre cette conversation."),
         ("en-US", {"reason": "blocked_caller"}, "We're unable to help with this call on this line."),

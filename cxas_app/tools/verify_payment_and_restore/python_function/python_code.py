@@ -777,8 +777,8 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "fr-CA": "Je suis un assistant de service à la clientèle basé sur l'intelligence artificielle.",
     },
     "closing_goodbye": {
-        "en-US": "Thank you for calling Telco. Goodbye.",
-        "fr-CA": "Merci d'avoir appelé Telco. Au revoir.",
+        "en-US": "Thank you for calling. Have a great day.",
+        "fr-CA": "Merci de votre appel. Bonne journée.",
     },
     "malicious_closing": {
         "en-US": "I am unable to continue this conversation. Thank you for calling and have a good day.",
