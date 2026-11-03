@@ -1244,6 +1244,8 @@ def get_billing_summary_impl(  # pragma: no cover
             f" Of that, {_bill_amount_text(lang, live['past_due'])} is past due.",
             f" De ce montant, {_bill_amount_text(lang, live['past_due'])} est en souffrance.",
         )
+    # PRD §7 verbatim, said before any payment step; carried here so the line is grounded.
+    data["payment_method_preamble"] = spoken_line("payment_method_preamble", lang)
     data["spoken_summary"] = summary
     reply = ok_reply(data, reference, language=lang)
     if status == "suspended_nonpayment":

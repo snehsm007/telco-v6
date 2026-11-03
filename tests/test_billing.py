@@ -993,3 +993,11 @@ def test_saved_card_with_a_different_ending_is_charged_as_named() -> None:
         check_secret_pin_impl("2468", state=state)
     paid = process_bill_payment_impl(amount="", payment_method="card_on_file", card_number="4421", state=state)
     assert paid["status"] == "ok" and paid["data"]["card_last4"] == "4421"
+
+
+def test_billing_summary_carries_payment_preamble_line():
+    from lib.fakes import SPOKEN_LINES
+    for lang in ("en-US", "fr-CA"):
+        r = get_billing_summary_impl(language=lang, state=logged_in())
+        assert r["status"] == "ok"
+        assert r["data"]["payment_method_preamble"] == SPOKEN_LINES["payment_method_preamble"][lang]
