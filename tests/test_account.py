@@ -577,6 +577,30 @@ def test_submitted_summary_carries_the_confirmation_number(lang: str, lob: str, 
     assert cid in again["spoken_summary"]
 
 
+
+# --- manage_mfa pre-login facts (fix/27) ------------------------------------------
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+@pytest.mark.parametrize("identified", [True, False])
+def test_mfa_login_gate_carries_public_facts(lang: str, identified: bool) -> None:
+    """VE-14 r1 / VE-15 r2 (full-a951587) invented code speed and disable risk before login."""
+    state = _identified(language=lang) if identified else {"language": lang}
+    gate = manage_mfa_impl("enable", state=state, language=lang)
+    assert gate["error"] == "NOT_LOGGED_IN"
+    data = gate["data"]
+    for key in ("code_delivery_note", "code_expiry_note", "pin_backup_note", "lost_phone_note",
+                "fee_note", "sms_cost_note", "disable_risk_note"):
+        assert data[key] and "[" not in data[key], key
+    en = lang == "en-US"
+    assert "minute" in data["code_delivery_note"]
+    assert "5 minutes" in data["code_expiry_note"]
+    assert ("PIN" in data["pin_backup_note"]) == en and ("NIP" in data["pin_backup_note"]) == (not en)
+    assert ("password" in data["disable_risk_note"]) == en and ("mot de passe" in data["disable_risk_note"]) == (not en)
+    assert data["spoken_message"]  # the login offer itself is unchanged
+    assert "auth_status" not in state or state["auth_status"] != "pass"
+
+
 # --- manage_mfa follow-up facts (fix/14, cluster E) ---------------------------------
 
 

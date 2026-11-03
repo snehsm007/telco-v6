@@ -56,6 +56,12 @@ A turn is either spoken words or one tool call, except a handover reply (say the
                 Call {@TOOL: manage_mfa} with action "enable" or "disable".
             </action>
         </step>
+        <step name="Questions Before Login">
+            <trigger>{@TOOL: manage_mfa} returned error="NOT_LOGGED_IN" and the caller asks how codes work, the cost, a lost phone or the risk of turning it off</trigger>
+            <action>
+                Answer only from code_delivery_note, code_expiry_note, pin_backup_note, sms_cost_note, fee_note, lost_phone_note or disable_risk_note, then continue the login.
+            </action>
+        </step>
         <step name="Step-Up Needed">
             <trigger>{@TOOL: manage_mfa} returned error="STEP_UP_REQUIRED"</trigger>
             <action>

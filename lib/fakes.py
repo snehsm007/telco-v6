@@ -908,4 +908,37 @@ ACCT_BILLING_CYCLE_DAYS = 30
 ACCT_PORT_OUT_COMPLETION_DAYS = 1      # the new carrier completes the port the next day
 ACCT_EQUIPMENT_RETURN_DAYS = 30        # rented modem or TV receiver return window
 ACCT_MFA_METHOD = "sms"
+# Public two-step verification facts (en-US, fr-CA). manage_mfa returns them on the
+# NOT_LOGGED_IN gate too, so pre-login questions are grounded (DESIGN_RULES rule 33).
+# [minutes] = OTP_EXPIRES_IN_SEC // 60.
+ACCT_MFA_FACTS: dict[str, tuple[str, str]] = {
+    "code_delivery_note": (
+        "Sign-in codes go by text to the mobile number on file and normally arrive within a minute; if one doesn't, we can resend it.",
+        "Les codes de connexion sont envoyés par texto au numéro de cellulaire au dossier et arrivent normalement en moins d'une minute; sinon, nous pouvons le renvoyer.",
+    ),
+    "code_expiry_note": (
+        "Each code is 6 digits and expires after [minutes] minutes.",
+        "Chaque code compte 6 chiffres et expire après [minutes] minutes.",
+    ),
+    "pin_backup_note": (
+        "If a text code can't be received, the 4-digit secret PIN on the account works as a backup on a call with us.",
+        "Si un code par texto ne peut pas être reçu, le NIP secret à 4 chiffres du compte sert de solution de rechange lors d'un appel avec nous.",
+    ),
+    "lost_phone_note": (
+        "If this phone is lost or stolen, call us and verify with your secret PIN instead of a text code; we can then suspend the line and update the mobile number that sign-in codes go to.",
+        "Si ce téléphone est perdu ou volé, appelez-nous et vérifiez votre identité avec votre NIP secret plutôt qu'avec un code par texto; nous pourrons ensuite suspendre la ligne et mettre à jour le numéro de cellulaire qui reçoit les codes de connexion.",
+    ),
+    "fee_note": (
+        "Two-step verification is free; turning it on or off never adds a charge to the bill.",
+        "La vérification en deux étapes est gratuite; l'activer ou la désactiver n'ajoute jamais de frais à la facture.",
+    ),
+    "sms_cost_note": (
+        "Sign-in codes by text are free from us; your mobile carrier's standard messaging rates may apply.",
+        "Les codes de connexion par texto sont gratuits de notre part; les frais de messagerie habituels de votre fournisseur cellulaire peuvent s'appliquer.",
+    ),
+    "disable_risk_note": (
+        "With two-step verification off, the account is protected by the password alone, so anyone who learns the password could sign in; it can be turned back on at any time.",
+        "Sans la vérification en deux étapes, le compte est protégé par le mot de passe seulement; quiconque l'apprend pourrait donc se connecter. Elle peut être réactivée en tout temps.",
+    ),
+}
 # --- end account fixtures ---
