@@ -54,24 +54,6 @@ A turn is either spoken words or one tool call, except a handover reply (say the
         Answer only from code_delivery_note, code_expiry_note, pin_backup_note, sms_cost_note, fee_note, lost_phone_note or disable_risk_note, then continue the login.
       </action>
     </step>
-    <step name="Step-Up Needed">
-      <trigger>{@TOOL: manage_mfa} returned error="STEP_UP_REQUIRED"</trigger>
-      <action>
-        Call {@TOOL: send_login_code} with channel "email". If the caller says they can't get email, call it with channel "sms" instead.
-      </action>
-    </step>
-    <step name="Step-Up Code Sent">
-      <trigger>{@TOOL: send_login_code} returned sent=true and purpose="step_up"</trigger>
-      <action>
-        Say its spoken_message word for word. If the caller can't get the email, send the code by text instead (channel "sms"); if it doesn't arrive, resend once.
-      </action>
-    </step>
-    <step name="Step-Up Passed">
-      <trigger>{@TOOL: check_login_code} returned step_up_verified=true</trigger>
-      <action>
-        Call {@TOOL: manage_mfa} with action "disable".
-      </action>
-    </step>
   </subtask>
   <subtask name="M7 Suspend And Restore">
     <step name="Lost Or Stolen Phone">

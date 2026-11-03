@@ -74,14 +74,6 @@ ACCT_MFA_FACTS: dict[str, tuple[str, str]] = {  # pragma: no cover
 
 ACCT_MFA_METHOD = "sms"  # pragma: no cover
 
-_ACCT_TRUE = ("true", "1", "yes", "y", "oui", "confirmed", "confirm")  # pragma: no cover
-
-def _acct_flag(value: Any) -> bool:  # pragma: no cover
-    """Read a true/false argument the model may send as bool, number or text."""
-    if isinstance(value, bool):
-        return value
-    return str(value or "").strip().lower() in _ACCT_TRUE
-
 def _acct_key(value: Any) -> str:  # pragma: no cover
     """Lower-case, accent-light, underscore-joined form of a free-text enum argument."""
     text = str(value or "").strip().lower()
@@ -966,22 +958,10 @@ def manage_mfa_impl(  # pragma: no cover
             language=lang,
             data={"mfa_enabled": currently_on, "already_in_state": True},
         )
-    if act == "disable" and not _acct_flag(state.get("step_up_verified")):
-        # Step-up = a second factor beyond the login: the emailed code, or a text to
-        # the mobile on file when the caller can't get email.
-        state["step_up_pending"] = True
-        return error_reply(
-            "STEP_UP_REQUIRED",
-            "Turning off two-step verification needs a second verification code first.",
-            "Send a code by email (send_login_code channel email); if no email access, by text (channel sms).",
-            reference,
-            language=lang,
-            data={"step_up_channel": "email", "step_up_fallback_channel": "sms", "mfa_enabled": currently_on},
-        )
+    # Owner decision (2026-11-03): the PIN or code login on this call (enforced by
+    # require_login above) is enough to turn two-step verification on or off.
     now_on = act == "enable"
     state["mfa_state"] = "enabled" if now_on else "disabled"
-    if not now_on:
-        state["step_up_verified"] = False  # a step-up code authorizes one change only
     record = account_record(state)
     dest = str(state.get("phone_last4") or record["phone"][-4:])
     today = date_in(0, lang)

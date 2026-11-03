@@ -166,41 +166,30 @@ def test_mfa_disable_when_already_off() -> None:
     assert reply["data"]["mfa_enabled"] is False
 
 
-def test_mfa_disable_needs_email_step_up_then_applies_once() -> None:
+def test_mfa_disable_applies_after_the_call_login() -> None:
+    # Owner decision (2026-11-03): the PIN or code login on this call is enough.
     state = _logged_in(fx_mfa_enabled="true")
-    first = manage_mfa_impl("disable", state=state)
-    assert first["error"] == "STEP_UP_REQUIRED"
-    assert "email" in first["agent_action"]
-    assert len(first["agent_action"]) <= 120
-    assert state.get("mfa_state", "") == ""
-
-    sent = send_login_code_impl("email", state=state)
-    assert sent["data"]["purpose"] == "step_up"
-    checked = check_login_code_impl("372615", state=state)
-    assert checked["data"]["step_up_verified"] is True
-
     done = manage_mfa_impl("disable", state=state)
     assert done["status"] == "ok"
     assert done["data"]["mfa_enabled"] is False
     assert done["data"]["method"] == "none"
     assert state["mfa_state"] == "disabled"
-    assert state["step_up_verified"] is False  # single use
-
-    # Turning it back on needs no step-up; turning it off again needs a new one.
     assert manage_mfa_impl("enable", state=state)["status"] == "ok"
-    assert manage_mfa_impl("disable", state=state)["error"] == "STEP_UP_REQUIRED"
+    assert manage_mfa_impl("disable", state=state)["status"] == "ok"
+
+
+def test_mfa_change_still_needs_login() -> None:
+    state = {"account_id": "ACC-1001", "fx_mfa_enabled": "true"}
+    assert manage_mfa_impl("disable", state=state)["error"] == "NOT_LOGGED_IN"
 
 
 def test_mfa_default_is_opposite_of_the_request_then_fixed_for_the_call() -> None:
     """No fixture, no live state: disable finds MFA on, enable finds it off (fix 16)."""
     off = _logged_in()
     first = manage_mfa_impl("disable", state=off)
-    assert first["error"] == "STEP_UP_REQUIRED" and first["data"]["mfa_enabled"] is True
-    assert off["mfa_state"] == "enabled"
-    # The resolved state holds for the rest of the call: enabling now is already done.
-    assert manage_mfa_impl("enable", state=off)["error"] == "ALREADY_APPLIED"
-    off["step_up_verified"] = True
-    assert manage_mfa_impl("disable", state=off)["data"]["mfa_enabled"] is False
+    assert first["status"] == "ok" and first["data"]["mfa_enabled"] is False
+    # The resolved state holds for the rest of the call: disabling again is already done.
+    assert manage_mfa_impl("disable", state=off)["error"] == "ALREADY_APPLIED"
 
     on = _logged_in()
     reply = manage_mfa_impl("enable", state=on)
@@ -215,9 +204,9 @@ def test_mfa_fixture_and_live_state_beat_the_default() -> None:
     assert manage_mfa_impl("disable", state=live_off)["error"] == "ALREADY_APPLIED"
 
 
-def test_mfa_login_alone_is_not_a_step_up() -> None:
+def test_mfa_login_is_enough_to_turn_it_off() -> None:
     state = _logged_in(fx_mfa_enabled="true", step_up_verified=False)
-    assert manage_mfa_impl("off", state=state)["error"] == "STEP_UP_REQUIRED"
+    assert manage_mfa_impl("off", state=state)["status"] == "ok"
 
 
 def test_mfa_invalid_action_counts_validation_error() -> None:
@@ -534,18 +523,13 @@ def test_mfa_enable_says_what_to_do_if_the_phone_is_lost() -> None:
     assert "NIP" in fr["data"]["lost_phone_note"]
 
 
-def test_mfa_step_up_falls_back_to_a_text_when_email_is_unavailable() -> None:
-    """Step-up needs a second factor beyond the login; a text to the mobile on file counts."""
-    from lib.services import check_login_code_impl, check_secret_pin_impl, lookup_account_impl, send_login_code_impl
+def test_mfa_disable_after_a_pin_login_needs_no_extra_code() -> None:
+    """Owner decision (2026-11-03): a PIN login on this call is enough to turn MFA off."""
+    from lib.services import check_secret_pin_impl, lookup_account_impl
 
     state: dict = {"fx_mfa_enabled": "true"}
     lookup_account_impl("514-555-0199", state=state)
     check_secret_pin_impl("2468", state=state)
-    first = manage_mfa_impl(action="disable", state=state)
-    assert first["error"] == "STEP_UP_REQUIRED" and first["data"]["step_up_fallback_channel"] == "sms"
-    sent = send_login_code_impl(channel="sms", state=state)
-    assert sent["data"]["sent"] is True and sent["data"]["purpose"] == "step_up"
-    assert check_login_code_impl("482913", state=state)["data"]["step_up_verified"] is True
     assert manage_mfa_impl(action="disable", state=state)["status"] == "ok"
 
 

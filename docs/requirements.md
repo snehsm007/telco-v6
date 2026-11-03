@@ -30,7 +30,7 @@ Every `BR-TV-*` in `prd.md` §18 is a requirement here, plus the module rules fr
 | REQ-22 | §11 | P0 | Outage check before diagnostics; TV sub-type before TV steps; SMS for >2 steps | tech tools + prompt |
 | REQ-23 | §12 | P0 | ≤3 plan options; order number + ETA + SMS receipt | `browse_plans`, `place_order` |
 | REQ-24 | §13 | P0 | Appointment rules: 2–3 slots, same-day cancel confirmed twice, en-route cannot cancel, SMS confirmation | `manage_appointment` |
-| REQ-25 | §14 | P0 | Password reset link (30 min, login required: PIN or code), MFA step-up, lost/stolen suspend first, cancel/port-out disclosure + two-step confirm | account tools |
+| REQ-25 | §14 | P0 | Password reset link (30 min, login required: PIN or code), MFA change after the call's PIN or code login (no separate step-up; owner decision 2026-11-03), lost/stolen suspend first, cancel/port-out disclosure + two-step confirm | account tools |
 | REQ-26 | §15 | P1 | Secondary-language tech fallback, `secondary_language_live_agent` | tech prompt |
 | REQ-27 | CUJ-6 | P0 | Never restore before the balance is cleared or a payment is verified | `process_bill_payment`, `verify_payment_and_restore`, `setup_payment_arrangement` |
 

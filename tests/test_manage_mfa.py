@@ -10,7 +10,8 @@ def test_manage_mfa_reads_and_writes_session_state(monkeypatch) -> None:
     assert reply["status"] == "ok"
     assert reply["data"]["mfa_enabled"] is True
     assert session.state["mfa_state"] == "enabled"
-    assert tool.manage_mfa("disable")["error"] == "STEP_UP_REQUIRED"
+    assert tool.manage_mfa("disable")["status"] == "ok"
+    assert session.state["mfa_state"] == "disabled"
 
 
 def test_manage_mfa_without_a_session() -> None:
