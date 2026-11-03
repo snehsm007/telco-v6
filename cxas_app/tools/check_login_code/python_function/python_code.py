@@ -514,6 +514,208 @@ def _record_failure(state: dict[str, Any], reference: str, lang: str, kind: str)
         data={"attempts_remaining": remaining, "lockout_triggered": False},
     )
 
+OK_STATUS = _StatusStr("ok")  # pragma: no cover
+
+def ok_reply(  # pragma: no cover
+    data: dict[str, Any] | None = None,
+    reference: str | None = None,
+    language: str | None = None,
+    spoken_summary: str | None = None,
+) -> dict[str, Any]:
+    """Build a success reply."""
+    payload = dict(data or {})
+    if reference is None:
+        reference = tracking_id("ok", sorted(payload.keys()))
+    reply: dict[str, Any] = {
+        "status": OK_STATUS,
+        "data": payload,
+        "error_message": "",
+        "tracking_id": reference,
+    }
+    if language is not None:
+        reply["active_language"] = str(language)
+    if spoken_summary is not None:
+        reply["spoken_summary"] = str(spoken_summary)
+    for key in (
+        "logged_in",
+        "handoff_message",
+        "spoken_message",
+        "spoken_summary",
+        "handoff_status",
+        "action_fulfilled",
+        "task_completed",
+        "user_goal_fulfilled",
+    ):
+        if key in payload:
+            reply[key] = payload[key]
+    return _stamp_mock(reply)
+
+SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
+    "greeting_main": {
+        "en-US": "Welcome to Telco. I can help with billing, technical support, or managing your account. To get started, could you tell me the phone number or account number associated with your service?",
+        "fr-CA": "Bienvenue chez Telco. Je peux vous aider avec la facturation, le soutien technique ou la gestion de votre compte. Pour commencer, pourriez-vous me donner le numéro de téléphone ou le numéro de compte associé à votre service?",
+    },
+    "recording_notice": {
+        "en-US": "This call may be recorded for quality and training purposes.",
+        "fr-CA": "Cet appel peut être enregistré à des fins de qualité et de formation.",
+    },
+    "id_verification_otp": {
+        "en-US": "For your security, I just sent a 6-digit code to that number — please read it back to me.",
+        "fr-CA": "Pour votre sécurité, je viens d'envoyer un code à 6 chiffres à ce numéro — veuillez me le lire.",
+    },
+    "id_verification_pin": {
+        "en-US": "For your security, I'll need to verify your identity. Please enter the 4-digit PIN you set up.",
+        "fr-CA": "Pour votre sécurité, je dois vérifier votre identité. Veuillez entrer le NIP à 4 chiffres que vous avez configuré.",
+    },
+    "live_agent_handoff": {
+        "en-US": "I'll connect you to a representative who can help. Please hold.",
+        "fr-CA": "Je vais vous mettre en relation avec un représentant qui pourra vous aider. Veuillez patienter.",
+    },
+    # Operational handover lines (scorecard: transfer context, fraud team, distress);
+    # spoken by handover_to_person around the verbatim §7 lines, never instead of them.
+    # Interim French PENDING LEGAL APPROVAL (docs/requirements.md decision A6).
+    "fraud_team_transfer": {
+        "en-US": "I'm transferring you now to our fraud prevention team; they'll have the details you've shared, and they're available 24/7.",
+        "fr-CA": "Je vous transfère maintenant à notre équipe de prévention de la fraude; elle aura les détails que vous avez fournis, et elle est disponible 24 heures sur 24, 7 jours sur 7.",
+    },
+    "handoff_context_note": {
+        "en-US": "I've passed along what we've discussed so you won't need to repeat it.",
+        "fr-CA": "J'ai transmis ce dont nous avons discuté, vous n'aurez donc pas à le répéter.",
+    },
+    "distress_acknowledgement": {
+        "en-US": "I understand this has been frustrating, and I'm sorry for the trouble.",
+        "fr-CA": "Je comprends que la situation soit frustrante, et je suis désolé pour ces inconvénients.",
+    },
+    "business_handoff": {
+        "en-US": "To get you the best support for your business account, I'll transfer you to an agent. You'll need to use your phone keypad instead of talking to the virtual assistant. Just a moment while I connect you.",
+        "fr-CA": "Pour vous offrir le meilleur soutien pour votre compte d'affaires, je vais vous transférer à un agent. Vous devrez utiliser le clavier de votre téléphone au lieu de parler à l'assistant virtuel. Un instant pendant que je vous mets en relation.",
+    },
+    "payment_method_preamble": {
+        "en-US": "Before we continue, please note that your payment details are protected and processed securely, and I will only ever refer to the last four digits of your card or account.",
+        "fr-CA": "Avant de continuer, sachez que vos renseignements de paiement sont protégés et traités de façon sécurisée, et que je ne mentionnerai jamais que les quatre derniers chiffres de votre carte ou de votre compte.",
+    },
+    "contract_cancellation_fee_disclosure": {
+        "en-US": "Please note that cancelling before the end of your contract term may result in an early termination fee and a final bill, as set out in your service agreement.",
+        "fr-CA": "Veuillez noter qu'une résiliation avant la fin de la durée de votre contrat peut entraîner des frais de résiliation anticipée et une facture finale, comme le prévoit votre entente de service.",
+    },
+    "refund_confirmation_pattern": {
+        "en-US": "Your refund of $[amount] will appear on your next statement within [days] business days.",
+        "fr-CA": "Votre remboursement de [amount] $ apparaîtra sur votre prochain relevé d'ici [days] jours ouvrables.",
+    },
+    "empathy_protocol": {
+        "en-US": "I'm very sorry to hear that you are facing challenges. I will ensure we handle your request with the utmost care.",
+        "fr-CA": "Je suis vraiment désolé d'apprendre que vous éprouvez des difficultés. Je veillerai à ce que votre demande soit traitée avec le plus grand soin.",
+    },
+    "outage_active": {
+        "en-US": "I see there's an active outage in your area. We're working on it. Would you like me to text you when it's restored?",
+        "fr-CA": "Je constate qu'il y a une panne active dans votre secteur. Nous y travaillons. Voulez-vous que je vous envoie un texto lorsque le service sera rétabli?",
+    },
+    "sms_outage_updates_confirmed": {
+        "en-US": "You're all set. I'll text the number ending in [last4] as soon as service is restored.",
+        "fr-CA": "C'est noté. J'enverrai un texto au numéro se terminant par [last4] dès que le service sera rétabli.",
+    },
+    "sms_slot_callback_confirmed": {
+        "en-US": "You're all set. I'll text the number ending in [last4] as soon as a slot opens.",
+        "fr-CA": "C'est noté. J'enverrai un texto au numéro se terminant par [last4] dès qu'une plage se libère.",
+    },
+    "sms_sent_confirmed": {
+        "en-US": "Done. I've sent the text to the number ending in [last4].",
+        "fr-CA": "C'est fait. J'ai envoyé le texto au numéro se terminant par [last4].",
+    },
+    "transfer_to_specialist": {
+        "en-US": "I'll connect you to a billing specialist now — they'll have everything we've already discussed.",
+        "fr-CA": "Je vais vous mettre en relation avec un spécialiste de la facturation — il aura tout ce dont nous avons déjà discuté.",
+    },
+    "refund_over_limit": {
+        "en-US": "That amount is above our $[limit] self-serve limit, so it needs a specialist's approval.",
+        "fr-CA": "Ce montant dépasse notre limite libre-service de [limit] $, il doit donc être approuvé par un spécialiste.",
+    },
+    "otp_callback_on_file": {
+        "en-US": "I'll send a 6-digit code to the mobile number on file. Ready?",
+        "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro de mobile au dossier. Êtes-vous prêt?",
+    },
+    "otp_callback_confirm": {
+        "en-US": "I'll send a 6-digit code to the number ending in [last4]. Ready?",
+        "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro se terminant par [last4]. Êtes-vous prêt?",
+    },
+    "pin_alternative": {
+        "en-US": "Or, if you prefer, you can use your 4-digit PIN instead.",
+        "fr-CA": "Ou, si vous préférez, vous pouvez plutôt utiliser votre NIP à 4 chiffres.",
+    },
+    # Operational line: said after check_login_code / check_secret_pin succeed, so the
+    # confirmation is grounded in the tool reply (judges flagged a bare "You are verified.").
+    "login_verified": {
+        "en-US": "You are verified.",
+        "fr-CA": "Votre identité est vérifiée.",
+    },
+    # Texted and emailed codes may be spoken (appended after the PRD verbatim lines).
+    "say_code_aloud": {
+        "en-US": "Please say the 6 digits out loud.",
+        "fr-CA": "Dites les 6 chiffres à voix haute.",
+    },
+    # prd.md PIN flow: on a phone call the PIN is accepted from the keypad only
+    # (voice-spelled PINs are refused); check_secret_pin texts a code instead.
+    "pin_keypad_required": {
+        "en-US": "For your security, your PIN can only be entered on the keypad, so I just texted a 6-digit code to the mobile on file instead. Please say the 6 digits out loud.",
+        "fr-CA": "Pour votre sécurité, votre NIP ne peut être entré qu'au clavier; je viens donc d'envoyer un code à 6 chiffres par texto au mobile au dossier. Dites les 6 chiffres à voix haute.",
+    },
+    "pin_keypad_code_pending": {
+        "en-US": "For your security, your PIN can only be entered on the keypad. Please say the 6-digit code I texted you out loud instead.",
+        "fr-CA": "Pour votre sécurité, votre NIP ne peut être entré qu'au clavier. Dites plutôt à voix haute le code à 6 chiffres que je vous ai envoyé par texto.",
+    },
+    # Operational line (no account number at hand); interim wording PENDING LEGAL APPROVAL.
+    "account_lookup_options": {
+        "en-US": "To find your account, I can use its phone number or account number, your email on file, or your 4-digit PIN.",
+        "fr-CA": "Pour trouver votre compte, je peux utiliser son numéro de téléphone ou son numéro de compte, votre courriel au dossier ou votre NIP à 4 chiffres.",
+    },
+    "email_code_sent": {
+        "en-US": "For your security, I just sent a 6-digit code to your email on file — please read it back to me.",
+        "fr-CA": "Pour votre sécurité, je viens d'envoyer un code à 6 chiffres à votre adresse courriel au dossier — veuillez me le lire.",
+    },
+    "callback_next_business_day": {
+        "en-US": "That team is closed right now, so I've arranged for them to call you back on the next business day.",
+        "fr-CA": "Cette équipe est fermée en ce moment, alors j'ai demandé qu'elle vous rappelle le prochain jour ouvrable.",
+    },
+    "restricted_caller": {
+        "en-US": "We're unable to help with this call on this line. Please visit one of our stores for assistance. Goodbye.",
+        "fr-CA": "Nous ne pouvons pas traiter cet appel sur cette ligne. Veuillez vous rendre dans l'une de nos boutiques pour obtenir de l'aide. Au revoir.",
+    },
+    "ai_disclosure": {
+        "en-US": "I'm an artificial intelligence customer care assistant.",
+        "fr-CA": "Je suis un assistant de service à la clientèle basé sur l'intelligence artificielle.",
+    },
+    "closing_goodbye": {
+        "en-US": "Thank you for calling. Have a great day.",
+        "fr-CA": "Merci de votre appel. Bonne journée.",
+    },
+    "malicious_closing": {
+        "en-US": "I am unable to continue this conversation. Thank you for calling and have a good day.",
+        "fr-CA": "Je ne peux pas poursuivre cette conversation. Merci de votre appel et bonne journée.",
+    },
+}
+
+def resolve_locale(language: str | None) -> str:  # pragma: no cover
+    """Normalize a language tag or prefix to a supported locale (en-US or fr-CA)."""
+    low = str(language or "").strip().lower().replace("_", "-")
+    if low.startswith("fr"):
+        return "fr-CA"
+    return "en-US"
+
+def spoken_line(key: str, language: str | None = "en-US", **slots: object) -> str:  # pragma: no cover
+    """Return the fixed spoken line for `key` and `language`, filling any `[slot]` placeholders."""
+    locale = resolve_locale(language)
+    table = SPOKEN_LINES.get(key, {})
+    template = table.get(locale) or table.get("en-US") or ""
+    for slot_name, slot_val in slots.items():
+        template = template.replace(f"[{slot_name}]", str(slot_val))
+    return template
+
+def _verified_reply(reference: str, lang: str, **extra: Any) -> dict[str, Any]:  # pragma: no cover
+    """A passed login check, carrying the line the agent says (the login_verified line)."""
+    data: dict[str, Any] = {"verified": True, **extra, "logged_in": True}
+    data["spoken_message"] = spoken_line("login_verified", lang)
+    return ok_reply(data, reference, language=lang)
+
 MOCK_ERROR_OFF: frozenset[str] = frozenset({"false", "none", "0", "off", "no", "null"})  # pragma: no cover
 
 def check_mock_error(state: dict[str, Any], lang: str = "en-US", tool_name: str = "tool") -> dict[str, Any] | None:  # pragma: no cover
@@ -612,49 +814,6 @@ def get_state(  # pragma: no cover
     set_mock_mode_active(mock_mode_on(resolved))
     return resolved
 
-OK_STATUS = _StatusStr("ok")  # pragma: no cover
-
-def ok_reply(  # pragma: no cover
-    data: dict[str, Any] | None = None,
-    reference: str | None = None,
-    language: str | None = None,
-    spoken_summary: str | None = None,
-) -> dict[str, Any]:
-    """Build a success reply."""
-    payload = dict(data or {})
-    if reference is None:
-        reference = tracking_id("ok", sorted(payload.keys()))
-    reply: dict[str, Any] = {
-        "status": OK_STATUS,
-        "data": payload,
-        "error_message": "",
-        "tracking_id": reference,
-    }
-    if language is not None:
-        reply["active_language"] = str(language)
-    if spoken_summary is not None:
-        reply["spoken_summary"] = str(spoken_summary)
-    for key in (
-        "logged_in",
-        "handoff_message",
-        "spoken_message",
-        "spoken_summary",
-        "handoff_status",
-        "action_fulfilled",
-        "task_completed",
-        "user_goal_fulfilled",
-    ):
-        if key in payload:
-            reply[key] = payload[key]
-    return _stamp_mock(reply)
-
-def resolve_locale(language: str | None) -> str:  # pragma: no cover
-    """Normalize a language tag or prefix to a supported locale (en-US or fr-CA)."""
-    low = str(language or "").strip().lower().replace("_", "-")
-    if low.startswith("fr"):
-        return "fr-CA"
-    return "en-US"
-
 resolve_copy_locale = resolve_locale  # pragma: no cover
 
 def session_language(state: dict[str, Any] | None, language: Any = "") -> str:  # pragma: no cover
@@ -681,153 +840,6 @@ def session_language(state: dict[str, Any] | None, language: Any = "") -> str:  
         state["language"] = arg_lang
         return arg_lang
     return "en-US"
-
-SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
-    "greeting_main": {
-        "en-US": "Welcome to Telco. I can help with billing, technical support, or managing your account. To get started, could you tell me the phone number or account number associated with your service?",
-        "fr-CA": "Bienvenue chez Telco. Je peux vous aider avec la facturation, le soutien technique ou la gestion de votre compte. Pour commencer, pourriez-vous me donner le numéro de téléphone ou le numéro de compte associé à votre service?",
-    },
-    "recording_notice": {
-        "en-US": "This call may be recorded for quality and training purposes.",
-        "fr-CA": "Cet appel peut être enregistré à des fins de qualité et de formation.",
-    },
-    "id_verification_otp": {
-        "en-US": "For your security, I just sent a 6-digit code to that number — please read it back to me.",
-        "fr-CA": "Pour votre sécurité, je viens d'envoyer un code à 6 chiffres à ce numéro — veuillez me le lire.",
-    },
-    "id_verification_pin": {
-        "en-US": "For your security, I'll need to verify your identity. Please enter the 4-digit PIN you set up.",
-        "fr-CA": "Pour votre sécurité, je dois vérifier votre identité. Veuillez entrer le NIP à 4 chiffres que vous avez configuré.",
-    },
-    "live_agent_handoff": {
-        "en-US": "I'll connect you to a representative who can help. Please hold.",
-        "fr-CA": "Je vais vous mettre en relation avec un représentant qui pourra vous aider. Veuillez patienter.",
-    },
-    # Operational handover lines (scorecard: transfer context, fraud team, distress);
-    # spoken by handover_to_person around the verbatim §7 lines, never instead of them.
-    # Interim French PENDING LEGAL APPROVAL (docs/requirements.md decision A6).
-    "fraud_team_transfer": {
-        "en-US": "I'm transferring you now to our fraud prevention team; they'll have the details you've shared, and they're available 24/7.",
-        "fr-CA": "Je vous transfère maintenant à notre équipe de prévention de la fraude; elle aura les détails que vous avez fournis, et elle est disponible 24 heures sur 24, 7 jours sur 7.",
-    },
-    "handoff_context_note": {
-        "en-US": "I've passed along what we've discussed so you won't need to repeat it.",
-        "fr-CA": "J'ai transmis ce dont nous avons discuté, vous n'aurez donc pas à le répéter.",
-    },
-    "distress_acknowledgement": {
-        "en-US": "I understand this has been frustrating, and I'm sorry for the trouble.",
-        "fr-CA": "Je comprends que la situation soit frustrante, et je suis désolé pour ces inconvénients.",
-    },
-    "business_handoff": {
-        "en-US": "To get you the best support for your business account, I'll transfer you to an agent. You'll need to use your phone keypad instead of talking to the virtual assistant. Just a moment while I connect you.",
-        "fr-CA": "Pour vous offrir le meilleur soutien pour votre compte d'affaires, je vais vous transférer à un agent. Vous devrez utiliser le clavier de votre téléphone au lieu de parler à l'assistant virtuel. Un instant pendant que je vous mets en relation.",
-    },
-    "payment_method_preamble": {
-        "en-US": "Before we continue, please note that your payment details are protected and processed securely, and I will only ever refer to the last four digits of your card or account.",
-        "fr-CA": "Avant de continuer, sachez que vos renseignements de paiement sont protégés et traités de façon sécurisée, et que je ne mentionnerai jamais que les quatre derniers chiffres de votre carte ou de votre compte.",
-    },
-    "contract_cancellation_fee_disclosure": {
-        "en-US": "Please note that cancelling before the end of your contract term may result in an early termination fee and a final bill, as set out in your service agreement.",
-        "fr-CA": "Veuillez noter qu'une résiliation avant la fin de la durée de votre contrat peut entraîner des frais de résiliation anticipée et une facture finale, comme le prévoit votre entente de service.",
-    },
-    "refund_confirmation_pattern": {
-        "en-US": "Your refund of $[amount] will appear on your next statement within [days] business days.",
-        "fr-CA": "Votre remboursement de [amount] $ apparaîtra sur votre prochain relevé d'ici [days] jours ouvrables.",
-    },
-    "empathy_protocol": {
-        "en-US": "I'm very sorry to hear that you are facing challenges. I will ensure we handle your request with the utmost care.",
-        "fr-CA": "Je suis vraiment désolé d'apprendre que vous éprouvez des difficultés. Je veillerai à ce que votre demande soit traitée avec le plus grand soin.",
-    },
-    "outage_active": {
-        "en-US": "I see there's an active outage in your area. We're working on it. Would you like me to text you when it's restored?",
-        "fr-CA": "Je constate qu'il y a une panne active dans votre secteur. Nous y travaillons. Voulez-vous que je vous envoie un texto lorsque le service sera rétabli?",
-    },
-    "sms_outage_updates_confirmed": {
-        "en-US": "You're all set. I'll text the number ending in [last4] as soon as service is restored.",
-        "fr-CA": "C'est noté. J'enverrai un texto au numéro se terminant par [last4] dès que le service sera rétabli.",
-    },
-    "sms_slot_callback_confirmed": {
-        "en-US": "You're all set. I'll text the number ending in [last4] as soon as a slot opens.",
-        "fr-CA": "C'est noté. J'enverrai un texto au numéro se terminant par [last4] dès qu'une plage se libère.",
-    },
-    "sms_sent_confirmed": {
-        "en-US": "Done. I've sent the text to the number ending in [last4].",
-        "fr-CA": "C'est fait. J'ai envoyé le texto au numéro se terminant par [last4].",
-    },
-    "transfer_to_specialist": {
-        "en-US": "I'll connect you to a billing specialist now — they'll have everything we've already discussed.",
-        "fr-CA": "Je vais vous mettre en relation avec un spécialiste de la facturation — il aura tout ce dont nous avons déjà discuté.",
-    },
-    "refund_over_limit": {
-        "en-US": "That amount is above our $[limit] self-serve limit, so it needs a specialist's approval.",
-        "fr-CA": "Ce montant dépasse notre limite libre-service de [limit] $, il doit donc être approuvé par un spécialiste.",
-    },
-    "otp_callback_on_file": {
-        "en-US": "I'll send a 6-digit code to the mobile number on file. Ready?",
-        "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro de mobile au dossier. Êtes-vous prêt?",
-    },
-    "otp_callback_confirm": {
-        "en-US": "I'll send a 6-digit code to the number ending in [last4]. Ready?",
-        "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro se terminant par [last4]. Êtes-vous prêt?",
-    },
-    "pin_alternative": {
-        "en-US": "Or, if you prefer, you can use your 4-digit PIN instead.",
-        "fr-CA": "Ou, si vous préférez, vous pouvez plutôt utiliser votre NIP à 4 chiffres.",
-    },
-    # Texted and emailed codes may be spoken (appended after the PRD verbatim lines).
-    "say_code_aloud": {
-        "en-US": "Please say the 6 digits out loud.",
-        "fr-CA": "Dites les 6 chiffres à voix haute.",
-    },
-    # prd.md PIN flow: on a phone call the PIN is accepted from the keypad only
-    # (voice-spelled PINs are refused); check_secret_pin texts a code instead.
-    "pin_keypad_required": {
-        "en-US": "For your security, your PIN can only be entered on the keypad, so I just texted a 6-digit code to the mobile on file instead. Please say the 6 digits out loud.",
-        "fr-CA": "Pour votre sécurité, votre NIP ne peut être entré qu'au clavier; je viens donc d'envoyer un code à 6 chiffres par texto au mobile au dossier. Dites les 6 chiffres à voix haute.",
-    },
-    "pin_keypad_code_pending": {
-        "en-US": "For your security, your PIN can only be entered on the keypad. Please say the 6-digit code I texted you out loud instead.",
-        "fr-CA": "Pour votre sécurité, votre NIP ne peut être entré qu'au clavier. Dites plutôt à voix haute le code à 6 chiffres que je vous ai envoyé par texto.",
-    },
-    # Operational line (no account number at hand); interim wording PENDING LEGAL APPROVAL.
-    "account_lookup_options": {
-        "en-US": "To find your account, I can use its phone number or account number, your email on file, or your 4-digit PIN.",
-        "fr-CA": "Pour trouver votre compte, je peux utiliser son numéro de téléphone ou son numéro de compte, votre courriel au dossier ou votre NIP à 4 chiffres.",
-    },
-    "email_code_sent": {
-        "en-US": "For your security, I just sent a 6-digit code to your email on file — please read it back to me.",
-        "fr-CA": "Pour votre sécurité, je viens d'envoyer un code à 6 chiffres à votre adresse courriel au dossier — veuillez me le lire.",
-    },
-    "callback_next_business_day": {
-        "en-US": "That team is closed right now, so I've arranged for them to call you back on the next business day.",
-        "fr-CA": "Cette équipe est fermée en ce moment, alors j'ai demandé qu'elle vous rappelle le prochain jour ouvrable.",
-    },
-    "restricted_caller": {
-        "en-US": "We're unable to help with this call on this line. Please visit one of our stores for assistance. Goodbye.",
-        "fr-CA": "Nous ne pouvons pas traiter cet appel sur cette ligne. Veuillez vous rendre dans l'une de nos boutiques pour obtenir de l'aide. Au revoir.",
-    },
-    "ai_disclosure": {
-        "en-US": "I'm an artificial intelligence customer care assistant.",
-        "fr-CA": "Je suis un assistant de service à la clientèle basé sur l'intelligence artificielle.",
-    },
-    "closing_goodbye": {
-        "en-US": "Thank you for calling. Have a great day.",
-        "fr-CA": "Merci de votre appel. Bonne journée.",
-    },
-    "malicious_closing": {
-        "en-US": "I am unable to continue this conversation. Thank you for calling and have a good day.",
-        "fr-CA": "Je ne peux pas poursuivre cette conversation. Merci de votre appel et bonne journée.",
-    },
-}
-
-def spoken_line(key: str, language: str | None = "en-US", **slots: object) -> str:  # pragma: no cover
-    """Return the fixed spoken line for `key` and `language`, filling any `[slot]` placeholders."""
-    locale = resolve_locale(language)
-    table = SPOKEN_LINES.get(key, {})
-    template = table.get(locale) or table.get("en-US") or ""
-    for slot_name, slot_val in slots.items():
-        template = template.replace(f"[{slot_name}]", str(slot_val))
-    return template
 
 def send_login_code_impl(  # pragma: no cover
     channel: str = "sms",
@@ -1089,7 +1101,7 @@ def check_secret_pin_impl(  # pragma: no cover
         return check_login_code_impl(pin, state=state, language=lang)
     if state.get("auth_status") == "pass":
         state["logged_in"] = True
-        return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
+        return _verified_reply(reference, lang)
     if state.get("auth_status") == "locked" or _failures(state) >= MAX_LOGIN_ATTEMPTS:
         return _locked_reply(state, reference, lang)
     keyed = normalize_code(state.get("dtmf_digits"))
@@ -1111,7 +1123,7 @@ def check_secret_pin_impl(  # pragma: no cover
     state["logged_in"] = True
     state["auth_failure_count"] = 0
     state["login_attempts"] = 0
-    return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
+    return _verified_reply(reference, lang)
 
 def check_login_code_impl(  # pragma: no cover
     code: str | int | float = "",
@@ -1132,7 +1144,7 @@ def check_login_code_impl(  # pragma: no cover
     step_up = state.get("code_purpose") == "step_up" and state.get("auth_status") == "pass"
     if state.get("auth_status") == "pass" and not step_up:
         state["logged_in"] = True
-        return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
+        return _verified_reply(reference, lang)
     if state.get("auth_status") == "locked" or _failures(state) >= MAX_LOGIN_ATTEMPTS:
         return _locked_reply(state, reference, lang)
     digits = spoken_digits(code) or normalize_code(state.get("dtmf_digits"))
@@ -1158,8 +1170,8 @@ def check_login_code_impl(  # pragma: no cover
         state["step_up_verified"] = True
         state["step_up_pending"] = False
         state["code_purpose"] = "login"
-        return ok_reply({"verified": True, "step_up_verified": True, "logged_in": True}, reference, language=lang)
+        return _verified_reply(reference, lang, step_up_verified=True)
     state["auth_status"] = "pass"
     state["logged_in"] = True
-    return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
+    return _verified_reply(reference, lang)
 # --- END GENERATED SHARED BUNDLE ---

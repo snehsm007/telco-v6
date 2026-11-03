@@ -152,7 +152,7 @@ Warm, calm and brief, like a helpful person. Use short, plain sentences, at most
     <step name="Verified">
       <trigger>{@TOOL: check_login_code} or {@TOOL: check_secret_pin} returned status="ok"</trigger>
       <action>
-        Say they're verified in a few words, then call again the task tool that needed login. Never ask for verification again on this call.
+        Say its spoken_message, then call again the task tool that needed login. Never ask for verification again on this call.
       </action>
     </step>
     <step name="Wrong Code">

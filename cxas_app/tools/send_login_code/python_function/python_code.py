@@ -660,6 +660,12 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "Or, if you prefer, you can use your 4-digit PIN instead.",
         "fr-CA": "Ou, si vous préférez, vous pouvez plutôt utiliser votre NIP à 4 chiffres.",
     },
+    # Operational line: said after check_login_code / check_secret_pin succeed, so the
+    # confirmation is grounded in the tool reply (judges flagged a bare "You are verified.").
+    "login_verified": {
+        "en-US": "You are verified.",
+        "fr-CA": "Votre identité est vérifiée.",
+    },
     # Texted and emailed codes may be spoken (appended after the PRD verbatim lines).
     "say_code_aloud": {
         "en-US": "Please say the 6 digits out loud.",

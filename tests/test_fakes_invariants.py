@@ -50,12 +50,16 @@ FIXTURES = {
 }
 
 
+# Deliberately short operational lines (the length floor catches stub translations).
+SHORT_LINES = {"login_verified"}
+
+
 def test_spoken_lines_cover_the_brief_in_every_locale() -> None:
     assert BRIEF_KEYS <= set(SPOKEN_LINES)
     for key, table in SPOKEN_LINES.items():
         assert set(table) == set(SUPPORTED_LOCALES), key
         for loc, line in table.items():
-            assert len(line) > 30, (key, loc)
+            assert len(line) > 30 or key in SHORT_LINES, (key, loc)
             assert table["fr-CA"] != table["en-US"], key
     # Slots survive translation.
     for key, table in SPOKEN_LINES.items():

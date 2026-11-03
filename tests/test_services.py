@@ -752,3 +752,40 @@ def test_phone_callers_still_hear_their_own_ending() -> None:
     lookup_account_impl("514-555-0199", state=state)
     assert state["phone_derived"] is False
     assert send_login_code_impl(state=state)["data"]["destination_last4"] == "0199"
+
+
+# --- fix/35 (a): the "verified" line comes from the login tools ------------------------
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_passed_login_checks_carry_the_login_verified_line(lang: str) -> None:
+    """VE-64 / VE-17: a bare "You are verified." was judged ungrounded; the tools now say it."""
+    expected = SPOKEN_LINES["login_verified"][lang]
+    by_pin = identified(language=lang)
+    pin_reply = check_secret_pin_impl(PIN, state=by_pin, language=lang)
+    assert pin_reply["status"] == "ok" and pin_reply["spoken_message"] == expected
+    assert pin_reply["data"]["verified"] is True and pin_reply["data"]["spoken_message"] == expected
+    # Already verified on this call: the same line, never a second login.
+    assert check_secret_pin_impl(PIN, state=by_pin, language=lang)["spoken_message"] == expected
+
+    by_code = identified(language=lang)
+    send_login_code_impl(state=by_code, language=lang)
+    code_reply = check_login_code_impl(OTP, state=by_code, language=lang)
+    assert code_reply["status"] == "ok" and code_reply["spoken_message"] == expected
+    assert check_login_code_impl(OTP, state=by_code, language=lang)["spoken_message"] == expected
+
+
+def test_failed_login_checks_never_say_verified() -> None:
+    state = identified()
+    wrong = check_secret_pin_impl("9999", state=state)
+    assert wrong["status"] == "error"
+    assert SPOKEN_LINES["login_verified"]["en-US"] not in json.dumps(wrong)
+
+
+def test_step_up_pass_also_carries_the_line() -> None:
+    state = logged_in()
+    state["step_up_pending"] = True
+    assert send_login_code_impl("email", state=state)["data"]["purpose"] == "step_up"
+    reply = check_login_code_impl(OTP, state=state)
+    assert reply["data"]["step_up_verified"] is True
+    assert reply["spoken_message"] == SPOKEN_LINES["login_verified"]["en-US"]

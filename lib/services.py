@@ -399,6 +399,13 @@ def send_login_code_impl(
     return reply
 
 
+def _verified_reply(reference: str, lang: str, **extra: Any) -> dict[str, Any]:
+    """A passed login check, carrying the line the agent says (the login_verified line)."""
+    data: dict[str, Any] = {"verified": True, **extra, "logged_in": True}
+    data["spoken_message"] = spoken_line("login_verified", lang)
+    return ok_reply(data, reference, language=lang)
+
+
 def check_login_code_impl(
     code: str | int | float = "",
     state: dict[str, Any] | None = None,
@@ -418,7 +425,7 @@ def check_login_code_impl(
     step_up = state.get("code_purpose") == "step_up" and state.get("auth_status") == "pass"
     if state.get("auth_status") == "pass" and not step_up:
         state["logged_in"] = True
-        return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
+        return _verified_reply(reference, lang)
     if state.get("auth_status") == "locked" or _failures(state) >= MAX_LOGIN_ATTEMPTS:
         return _locked_reply(state, reference, lang)
     digits = spoken_digits(code) or normalize_code(state.get("dtmf_digits"))
@@ -444,10 +451,10 @@ def check_login_code_impl(
         state["step_up_verified"] = True
         state["step_up_pending"] = False
         state["code_purpose"] = "login"
-        return ok_reply({"verified": True, "step_up_verified": True, "logged_in": True}, reference, language=lang)
+        return _verified_reply(reference, lang, step_up_verified=True)
     state["auth_status"] = "pass"
     state["logged_in"] = True
-    return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
+    return _verified_reply(reference, lang)
 
 
 def is_voice_call(state: dict[str, Any]) -> bool:
@@ -500,7 +507,7 @@ def check_secret_pin_impl(
         return check_login_code_impl(pin, state=state, language=lang)
     if state.get("auth_status") == "pass":
         state["logged_in"] = True
-        return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
+        return _verified_reply(reference, lang)
     if state.get("auth_status") == "locked" or _failures(state) >= MAX_LOGIN_ATTEMPTS:
         return _locked_reply(state, reference, lang)
     keyed = normalize_code(state.get("dtmf_digits"))
@@ -522,7 +529,7 @@ def check_secret_pin_impl(
     state["logged_in"] = True
     state["auth_failure_count"] = 0
     state["login_attempts"] = 0
-    return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
+    return _verified_reply(reference, lang)
 
 
 def _normalize_reason(reason: str) -> str:

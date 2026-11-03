@@ -753,6 +753,12 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "Or, if you prefer, you can use your 4-digit PIN instead.",
         "fr-CA": "Ou, si vous préférez, vous pouvez plutôt utiliser votre NIP à 4 chiffres.",
     },
+    # Operational line: said after check_login_code / check_secret_pin succeed, so the
+    # confirmation is grounded in the tool reply (judges flagged a bare "You are verified.").
+    "login_verified": {
+        "en-US": "You are verified.",
+        "fr-CA": "Votre identité est vérifiée.",
+    },
     # Texted and emailed codes may be spoken (appended after the PRD verbatim lines).
     "say_code_aloud": {
         "en-US": "Please say the 6 digits out loud.",
@@ -902,6 +908,12 @@ def _record_failure(state: dict[str, Any], reference: str, lang: str, kind: str)
         language=lang,
         data={"attempts_remaining": remaining, "lockout_triggered": False},
     )
+
+def _verified_reply(reference: str, lang: str, **extra: Any) -> dict[str, Any]:  # pragma: no cover
+    """A passed login check, carrying the line the agent says (the login_verified line)."""
+    data: dict[str, Any] = {"verified": True, **extra, "logged_in": True}
+    data["spoken_message"] = spoken_line("login_verified", lang)
+    return ok_reply(data, reference, language=lang)
 
 _SPOKEN_SCALES: dict[str, int] = {"hundred": 100, "cent": 100, "cents": 100, "thousand": 1000, "mille": 1000}  # pragma: no cover
 
@@ -1081,7 +1093,7 @@ def check_login_code_impl(  # pragma: no cover
     step_up = state.get("code_purpose") == "step_up" and state.get("auth_status") == "pass"
     if state.get("auth_status") == "pass" and not step_up:
         state["logged_in"] = True
-        return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
+        return _verified_reply(reference, lang)
     if state.get("auth_status") == "locked" or _failures(state) >= MAX_LOGIN_ATTEMPTS:
         return _locked_reply(state, reference, lang)
     digits = spoken_digits(code) or normalize_code(state.get("dtmf_digits"))
@@ -1107,10 +1119,10 @@ def check_login_code_impl(  # pragma: no cover
         state["step_up_verified"] = True
         state["step_up_pending"] = False
         state["code_purpose"] = "login"
-        return ok_reply({"verified": True, "step_up_verified": True, "logged_in": True}, reference, language=lang)
+        return _verified_reply(reference, lang, step_up_verified=True)
     state["auth_status"] = "pass"
     state["logged_in"] = True
-    return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
+    return _verified_reply(reference, lang)
 
 def is_voice_call(state: dict[str, Any]) -> bool:  # pragma: no cover
     """True on a live phone call (the before-model callback sets call_channel; text chats stay "")."""
@@ -1137,7 +1149,7 @@ def check_secret_pin_impl(  # pragma: no cover
         return check_login_code_impl(pin, state=state, language=lang)
     if state.get("auth_status") == "pass":
         state["logged_in"] = True
-        return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
+        return _verified_reply(reference, lang)
     if state.get("auth_status") == "locked" or _failures(state) >= MAX_LOGIN_ATTEMPTS:
         return _locked_reply(state, reference, lang)
     keyed = normalize_code(state.get("dtmf_digits"))
@@ -1159,5 +1171,5 @@ def check_secret_pin_impl(  # pragma: no cover
     state["logged_in"] = True
     state["auth_failure_count"] = 0
     state["login_attempts"] = 0
-    return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
+    return _verified_reply(reference, lang)
 # --- END GENERATED SHARED BUNDLE ---
