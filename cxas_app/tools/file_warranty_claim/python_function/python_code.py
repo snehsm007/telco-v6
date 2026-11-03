@@ -7,12 +7,16 @@ def file_warranty_claim(
     issue: str = "",
     physical_damage: str | bool = "",
     water_damage: str | bool = "",
+    confirmed: str | bool = "",
     language: str = "",
 ) -> dict[str, Any]:
     """Checks warranty coverage for the caller's device on file and files a replacement
       claim. Needs login. Call with the damage answers empty to check coverage; call
-      again with both damage answers to file. A swollen battery, smoke or overheating
-      files an urgent expedited claim and returns safety_advice.
+      again with both damage answers and confirmed false to get the claim terms
+      (CONFIRMATION_REQUIRED: no-cost replacement, prepaid return shipping, arrival
+      date); after the caller agrees, call again with confirmed true to file. A
+      swollen battery, smoke or overheating gives an urgent expedited claim and
+      returns safety_advice.
 
     Args:
       device: The device as the caller named it (brand or model); empty if not said.
@@ -21,15 +25,18 @@ def file_warranty_claim(
         dropped; empty if not asked yet.
       water_damage: true or false once the caller answered whether it got wet; empty if
         not asked yet.
+      confirmed: true only after the caller agreed to file the claim on the terms you
+        read; otherwise false.
       language: Active language code (en-US or fr-CA).
 
     Returns:
       status, data (device_model, device_matched, purchase_date_display,
-        warranty_end_display, in_warranty, claim_filed, damage_check_needed, claim_id,
-        replacement_eta_display, shipping_address_last_line, return_instructions,
-        urgent, safety_advice), error_message, tracking_id. Errors add error
-        (NOT_LOGGED_IN, NOT_ELIGIBLE with repair_options, INVALID_INPUT) and
-        agent_action.
+        warranty_end_display, in_warranty, claim_filed, damage_check_needed,
+        replacement_cost_display, return_shipping_prepaid, fees_note, claim_id,
+        replacement_eta_display, return_by_display, shipping_address_last_line,
+        return_instructions, urgent, safety_advice), error_message, tracking_id.
+        Errors add error (NOT_LOGGED_IN, CONFIRMATION_REQUIRED with the claim terms,
+        NOT_ELIGIBLE with repair_options, INVALID_INPUT) and agent_action.
     """
     ctx = globals().get("context")
     state = getattr(ctx, "state", None) if ctx is not None else None
@@ -40,6 +47,7 @@ def file_warranty_claim(
         issue=issue,
         physical_damage=physical_damage,
         water_damage=water_damage,
+        confirmed=confirmed,
         language=language,
         state=state,
     )
@@ -68,6 +76,8 @@ SALES_SAFETY_WORDS: tuple[str, ...] = (  # pragma: no cover
 )
 
 SALES_URGENT_SHIP_DAYS = 1  # pragma: no cover
+
+SALES_WARRANTY_REPLACEMENT_COST = "0.00"  # pragma: no cover
 
 SALES_WARRANTY_SHIP_DAYS = 3  # pragma: no cover
 
@@ -213,6 +223,14 @@ SALES_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
     "return_urgent": {
         "en-US": "Do not ship the damaged phone. Bring it to a Telco store or a certified battery recycling drop-off; no return label is needed.",
         "fr-CA": "N'expédiez pas le téléphone endommagé. Apportez-le dans une boutique Telco ou à un point de dépôt certifié pour le recyclage des batteries; aucune étiquette de retour n'est nécessaire.",
+    },
+    "warranty_fees": {
+        "en-US": "An in-warranty replacement costs nothing: no fee or deductible, free shipping of the replacement, and a prepaid return label for the old phone.",
+        "fr-CA": "Un remplacement sous garantie ne coûte rien : aucuns frais ni franchise, livraison gratuite du téléphone de remplacement et étiquette de retour prépayée pour l'ancien téléphone.",
+    },
+    "warranty_fees_urgent": {
+        "en-US": "This safety replacement costs nothing: no fee or deductible, and free expedited shipping. The damaged phone is not mailed back.",
+        "fr-CA": "Ce remplacement pour raison de sécurité ne coûte rien : aucuns frais ni franchise, et livraison accélérée gratuite. Le téléphone endommagé n'est pas renvoyé par la poste.",
     },
     "repair_paid": {
         "en-US": "Paid repair at a Telco repair centre",
@@ -1033,12 +1051,13 @@ def file_warranty_claim_impl(  # pragma: no cover
     issue: str = "",
     physical_damage: str | bool = "",
     water_damage: str | bool = "",
+    confirmed: str | bool = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     language: str = "",
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Check warranty coverage for a device on file and file a replacement claim. Needs login."""
+    """Check coverage, read the claim terms (confirmed=false), then file (confirmed=true). Needs login."""
     state = get_state(state, session_state)
     lang = session_language(state, language)
     err = check_mock_error(state, lang, "file_warranty_claim")
@@ -1073,6 +1092,13 @@ def file_warranty_claim_impl(  # pragma: no cover
         "warranty_end_display": display_date(end_iso, lang),
         "in_warranty": in_warranty,
         "urgent": urgent,
+    }
+    # What the replacement costs, for the fee question callers ask before agreeing (rule 33).
+    fees: dict[str, Any] = {
+        **money(SALES_WARRANTY_REPLACEMENT_COST, "replacement_cost"),
+        "replacement_shipping_free": True,
+        "return_shipping_prepaid": not urgent,
+        "fees_note": _sales_text("warranty_fees_urgent" if urgent else "warranty_fees", lang),
     }
     if urgent:
         base["safety_advice_key"] = "battery_safety"
@@ -1109,6 +1135,7 @@ def file_warranty_claim_impl(  # pragma: no cover
             "claim_filed": False,
             "damage_check_needed": True,
             "missing": missing,
+            **fees,
             # Turn N+1: the caller can confirm where the replacement goes before the claim is filed.
         }
         reply = ok_reply(check, reference, language=lang)
@@ -1120,23 +1147,41 @@ def file_warranty_claim_impl(  # pragma: no cover
     claim_id = "WC-" + tracking_id("warranty_claim", account_id, dev["device_id"])[1:]
     ship_days = SALES_URGENT_SHIP_DAYS if urgent else SALES_WARRANTY_SHIP_DAYS
     eta_iso = _sales_business_date(ship_days)
-    data: dict[str, Any] = {
+    terms: dict[str, Any] = {
         **base,
-        "claim_id": claim_id,
-        "claim_filed": True,
+        **fees,
         "shipping": "expedited" if urgent else "standard",
         "replacement_eta_date": eta_iso,
         "replacement_eta_display": display_date(eta_iso, lang),
-        "shipping_address_last_line": account_record(state).get("service_address_last_line", ""),
         "return_instructions": _sales_text("return_urgent" if urgent else "return_standard", lang),
     }
     if not urgent:
         return_by = relative_date(SALES_RETURN_WINDOW_DAYS + ship_days)
-        data["return_by_display"] = display_date(return_by, lang)
+        terms["return_by_display"] = display_date(return_by, lang)
     claims = [c for c in str(state.get("sales_claims") or "").split(",") if c]
-    data["already_filed"] = claim_id in claims
-    if not data["already_filed"]:
+    already = claim_id in claims
+    pending_key = f"file_warranty_claim:{dev['device_id']}"
+    if not already and (_sales_bool(confirmed) is not True or state.get("pending_confirmation") != pending_key):
+        # Two-step like a cancellation: the caller hears the terms and agrees before anything is filed.
+        state["pending_confirmation"] = pending_key
+        return error_reply(
+            "CONFIRMATION_REQUIRED",
+            "Read the claim terms and get the caller's yes before filing.",
+            "Say safety_advice if urgent, then the replacement terms and fees_note; ask to file; then confirmed=true.",
+            reference,
+            language=lang,
+            data={**terms, "claim_filed": False},
+        )
+    data: dict[str, Any] = {
+        **terms,
+        "claim_id": claim_id,
+        "claim_filed": True,
+        "shipping_address_last_line": account_record(state).get("service_address_last_line", ""),
+        "already_filed": already,
+    }
+    if not already:
         append_list(state, "sales_claims", claim_id)
+        state["pending_confirmation"] = ""
         data["sms_confirmation_sent"] = dispatch_sms(state, "warranty_claim")["sms_sent"]
     else:
         data["sms_confirmation_sent"] = True

@@ -247,6 +247,7 @@ SALES_URGENT_SHIP_DAYS = 1               # expedited safety replacement
 SALES_RETURN_WINDOW_DAYS = 15
 SALES_OUT_OF_WARRANTY_AGE_DAYS = 430     # device age reported when fx_device_warranty=out_of_warranty
 SALES_REPAIR_FEE = "139.00"
+SALES_WARRANTY_REPLACEMENT_COST = "0.00"  # in-warranty replacement: no fee, no deductible, free shipping
 SALES_PORT_DAYS: dict[str, int] = {"mobile": 0, "landline": 3}
 
 # French wording of the plan features in PLANS (English is the catalogue text).
@@ -355,6 +356,14 @@ SALES_COPY: dict[str, dict[str, str]] = {
     "return_urgent": {
         "en-US": "Do not ship the damaged phone. Bring it to a Telco store or a certified battery recycling drop-off; no return label is needed.",
         "fr-CA": "N'expédiez pas le téléphone endommagé. Apportez-le dans une boutique Telco ou à un point de dépôt certifié pour le recyclage des batteries; aucune étiquette de retour n'est nécessaire.",
+    },
+    "warranty_fees": {
+        "en-US": "An in-warranty replacement costs nothing: no fee or deductible, free shipping of the replacement, and a prepaid return label for the old phone.",
+        "fr-CA": "Un remplacement sous garantie ne coûte rien : aucuns frais ni franchise, livraison gratuite du téléphone de remplacement et étiquette de retour prépayée pour l'ancien téléphone.",
+    },
+    "warranty_fees_urgent": {
+        "en-US": "This safety replacement costs nothing: no fee or deductible, and free expedited shipping. The damaged phone is not mailed back.",
+        "fr-CA": "Ce remplacement pour raison de sécurité ne coûte rien : aucuns frais ni franchise, et livraison accélérée gratuite. Le téléphone endommagé n'est pas renvoyé par la poste.",
     },
     "repair_paid": {
         "en-US": "Paid repair at a Telco repair centre",

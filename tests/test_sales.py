@@ -36,6 +36,13 @@ def _logged_in(**extra: Any) -> dict[str, Any]:
     return _identified(auth_status="pass", logged_in=True, **extra)
 
 
+def _file_claim(*args: Any, state: dict[str, Any], **kw: Any) -> dict[str, Any]:
+    """Warranty two-step: the terms first (CONFIRMATION_REQUIRED), then the caller's yes files it."""
+    terms = file_warranty_claim_impl(*args, state=state, **kw)
+    assert terms.get("error") == "CONFIRMATION_REQUIRED" and terms["data"]["claim_filed"] is False, terms
+    return file_warranty_claim_impl(*args, confirmed=True, state=state, **kw)
+
+
 def _keys(obj: Any) -> list[str]:
     out: list[str] = []
     if isinstance(obj, dict):
@@ -226,7 +233,7 @@ def test_warranty_matches_device_and_reports_dates() -> None:
 
 
 def test_warranty_falls_back_to_most_recent_device() -> None:
-    reply = file_warranty_claim_impl("my phone", "screen flickers", False, False, state=_logged_in())
+    reply = _file_claim("my phone", "screen flickers", False, False, state=_logged_in())
     newest = min(DEVICES_ON_FILE, key=lambda d: d["purchased_days_ago"])
     assert reply["data"]["device_model"] == newest["model"]
     assert reply["data"]["device_matched"] is False
@@ -235,7 +242,7 @@ def test_warranty_falls_back_to_most_recent_device() -> None:
 
 def test_warranty_claim_filed_once() -> None:
     state = _logged_in()
-    first = file_warranty_claim_impl("iPhone", "screen flickering", "no", "no", state=state)
+    first = _file_claim("iPhone", "screen flickering", "no", "no", state=state)
     data = first["data"]
     assert data["claim_id"].startswith("WC-") and data["shipping"] == "standard"
     assert data["shipping_address_last_line"]
@@ -268,7 +275,7 @@ def test_swollen_battery_requires_login_then_files_urgent_claim() -> None:
     assert guest["data"]["urgent"] is True and "claim_id" not in guest["data"]
     assert guest["data"]["safety_advice"] == SALES_COPY["battery_safety"]["fr-CA"]
     state = _logged_in(language="fr-CA")
-    claim = file_warranty_claim_impl("", "la batterie est gonflée", state=state)
+    claim = _file_claim("", "la batterie est gonflée", state=state)
     data = claim["data"]
     assert claim["status"] == "ok" and data["urgent"] is True and data["shipping"] == "expedited"
     assert data["safety_advice_key"] == "battery_safety"
@@ -277,7 +284,7 @@ def test_swollen_battery_requires_login_then_files_urgent_claim() -> None:
 
 
 def test_urgent_claim_ignores_damage_answers() -> None:
-    reply = file_warranty_claim_impl("iPhone", "phone is smoking", True, True, state=_logged_in())
+    reply = _file_claim("iPhone", "phone is smoking", True, True, state=_logged_in())
     assert reply["status"] == "ok" and reply["data"]["urgent"] is True
 
 
@@ -393,7 +400,7 @@ def test_place_order_mobility_quote_has_unambiguous_new_line_price() -> None:
 
 def test_warranty_unknown_named_model_is_not_swapped_for_a_device_on_file() -> None:
     state = _logged_in()
-    reply = file_warranty_claim_impl("Orbit Z9 Max", "screen flickers", False, False, state=state)
+    reply = _file_claim("Orbit Z9 Max", "screen flickers", False, False, state=state)
     data = reply["data"]
     assert data["device_model"] == "Orbit Z9 Max"
     assert data["device_matched"] is False
@@ -460,3 +467,40 @@ def test_own_number_with_another_provider_or_mobile_still_needs_account_number()
     assert mobile["internal_move"] is False and mobile["missing_details"] == ["current_account_number"]
     stranger = start_number_transfer_impl("5145550142", "", "", "", "home phone", state=_logged_in())["data"]
     assert stranger["internal_move"] is False and stranger["missing_details"] == ["current_account_number"]
+
+
+# ----------------------------------------------------------------------------- fix/20 (C8a, C9c)
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_warranty_claim_needs_the_callers_yes_after_the_terms(lang: str) -> None:
+    """VE-47 r3: the claim was filed the moment damage was answered ("I did not authorize a
+    claim"), and the fee question went unanswered. VE-48: same fee question after filing."""
+    state = _logged_in(language=lang)
+    check = file_warranty_claim_impl("iPhone", "screen flickers", state=state)
+    assert check["data"]["replacement_cost_display"] == "0.00" and check["data"]["fees_note"]
+    early = file_warranty_claim_impl("iPhone", "screen flickers", False, False, confirmed=True, state=state)
+    assert early["error"] == "CONFIRMATION_REQUIRED", "a yes before the terms were read never files"
+    terms = early["data"]
+    assert terms["claim_filed"] is False and "claim_id" not in terms and "sales_claims" not in state
+    assert terms["replacement_cost_display"] == "0.00" and terms["replacement_cost"] == 0.0
+    assert terms["return_shipping_prepaid"] is True and terms["replacement_shipping_free"] is True
+    assert terms["fees_note"] == SALES_COPY["warranty_fees"][lang]
+    assert terms["replacement_eta_display"] and terms["return_by_display"] and terms["device_model"]
+    assert "shipping_address_last_line" not in terms
+    assert len(early["agent_action"]) <= 120
+    filed = file_warranty_claim_impl("iPhone", "screen flickers", False, False, confirmed=True, state=state)
+    assert filed["status"] == "ok" and filed["data"]["claim_filed"] is True
+    assert filed["data"]["replacement_cost_display"] == "0.00" and filed["data"]["shipping_address_last_line"]
+    assert state["pending_confirmation"] == "" and state["sms_sent"].count("warranty_claim") == 1
+
+
+def test_urgent_battery_claim_still_confirms_once() -> None:
+    state = _logged_in()
+    terms = file_warranty_claim_impl("", "battery is swollen", state=state)
+    assert terms["error"] == "CONFIRMATION_REQUIRED"
+    assert terms["data"]["urgent"] is True and terms["data"]["safety_advice"] and terms["data"]["shipping"] == "expedited"
+    assert terms["data"]["return_shipping_prepaid"] is False
+    assert terms["data"]["fees_note"] == SALES_COPY["warranty_fees_urgent"]["en-US"]
+    filed = file_warranty_claim_impl("", "battery is swollen", confirmed="yes", state=state)
+    assert filed["data"]["claim_filed"] is True and filed["data"]["urgent"] is True
