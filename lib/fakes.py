@@ -502,6 +502,30 @@ BILL_EXTRA_LINE_KEYWORDS: dict[str, tuple[str, ...]] = {
     "CH-STR-01": ("stream", "apple", "diffusion", "en continu", "purchase", "achat", "subscription", "abonnement"),
     "CH-LD-01": ("long distance", "long-distance", "longue distance", "interurbain", "international", "calls", "appels"),
 }
+# Where each extra line came from and how to prevent it (DESIGN_RULES rule 33: the
+# "where did this come from / how do I stop it" follow-up), (en-US, fr-CA).
+BILL_EXTRA_LINE_NOTES: dict[str, dict[str, tuple[str, str]]] = {
+    "CH-STR-01": {
+        "origin": (
+            "A purchase made through a connected TV app on the account.",
+            "Un achat fait au moyen d'une application télé connectée au compte.",
+        ),
+        "prevention_tip": (
+            "Purchases can be protected with a purchase PIN on the TV service.",
+            "Les achats peuvent être protégés par un NIP d'achat sur le service télé.",
+        ),
+    },
+    "CH-LD-01": {
+        "origin": (
+            "Calls from the mobility line to numbers outside its local calling area.",
+            "Des appels faits depuis la ligne mobile vers des numéros hors de sa zone d'appel locale.",
+        ),
+        "prevention_tip": (
+            "A plan that includes long distance calling avoids these per-call charges.",
+            "Un forfait qui inclut les appels interurbains évite ces frais par appel.",
+        ),
+    },
+}
 EXTRA_FIXTURE_LINE_DAYS_AGO = 4      # fx_extra_bill_line posts on the latest bill
 BANK_ON_FILE_ENDING = "6083"
 ARRANGEMENT_FIRST_DUE_DAYS = 7       # first instalment within 7 days

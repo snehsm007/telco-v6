@@ -56,6 +56,12 @@ EXCEPTION — a handover to a person is one turn: the transfer sentence, {@TOOL:
                 - description: the caller's words
             </action>
         </step>
+        <step name="Charge Origin">
+            <trigger>The caller asks how a charge got on the bill or how to prevent it</trigger>
+            <action>
+                Give that line item's origin and prevention_tip (after a credit: charge_origin and charge_prevention_tip), in your own words, adding nothing else.
+            </action>
+        </step>
         <step name="Outage Or Duplicate Payment">
             <trigger>The caller wants a credit for days their service was down, or paid twice</trigger>
             <action>

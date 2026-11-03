@@ -34,3 +34,11 @@ def test_get_billing_summary_reads_session_state(monkeypatch) -> None:
     reply = tool.get_billing_summary(language="fr-CA")
     assert reply["data"]["balance_due_display"] == "12.00"
     assert reply["active_language"] == "fr-CA"
+
+
+def test_get_billing_summary_line_items_carry_origin_and_prevention_tip(monkeypatch) -> None:
+    monkeypatch.setattr(tool, "context", _session(), raising=False)
+    items = tool.get_billing_summary()["data"]["recent_bills"][0]["line_items"]
+    streaming = next(i for i in items if i["charge_id"] == "CH-STR-01")
+    assert "connected TV app" in streaming["origin"]
+    assert "purchase PIN" in streaming["prevention_tip"]

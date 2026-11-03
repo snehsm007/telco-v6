@@ -46,6 +46,7 @@ from lib.fakes import (
     BILL_DUE_IN_DAYS,
     BILL_EXTRA_LINE_FR,
     BILL_EXTRA_LINE_KEYWORDS,
+    BILL_EXTRA_LINE_NOTES,
     BILL_EXTRA_LINES,
     CARD_BRANDS_BY_PREFIX,
     DECLINED_CARD_LAST4,
@@ -194,6 +195,7 @@ def _bill_lines(state: dict[str, Any], lang: str) -> list[dict[str, Any]]:
                 "date_display": when["display"],
                 "keywords": BILL_EXTRA_LINE_KEYWORDS.get(extra["charge_id"], ()),
                 **money(extra["amount"]),
+                **{key: _bill_text(lang, *pair) for key, pair in BILL_EXTRA_LINE_NOTES.get(extra["charge_id"], {}).items()},
             }
         )
     raw = fixture(state, "fx_extra_bill_line")
@@ -1008,7 +1010,13 @@ def apply_bill_adjustment_impl(
             kind if kind != "duplicate_payment" else "incorrect_charge",
             credit,
             key,
-            {"charge_id": line["charge_id"], "charge_description": line["description"], "charge_date_display": line["date_display"]},
+            {
+                "charge_id": line["charge_id"],
+                "charge_description": line["description"],
+                "charge_date_display": line["date_display"],
+                # Turn N+1 "how did this get on my bill / how do I stop it" (DESIGN_RULES rule 33).
+                **{f"charge_{key}": line[key] for key in ("origin", "prevention_tip") if line.get(key)},
+            },
         )
     # (5) Nothing matched: open a dispute case for the billing team.
     key = "dispute:" + tracking_id("dispute", kind, asked, desc)

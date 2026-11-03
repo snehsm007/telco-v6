@@ -23,6 +23,7 @@ from lib.fakes import (
     BILL_DATE_CHANGE_NOTE,
     BILL_DUE_IN_DAYS,
     BILL_EXTRA_LINES,
+    BILL_EXTRA_LINE_NOTES,
     DUPLICATE_PAYMENT,
     PAST_DUE_AMOUNT,
     REFUND_WINDOW_BUSINESS_DAYS,
@@ -444,6 +445,28 @@ def test_unrecognized_charge_is_credited_with_refund_pattern():
     assert data["balance_due_display"] == str(expected_balance() - Decimal(STREAMING["amount"]))
     again = apply_bill_adjustment_impl("unrecognized_charge", STREAMING["amount"], "streaming purchase", state=state)
     assert again["error"] == "ALREADY_APPLIED"
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_extra_charges_say_where_they_came_from_and_how_to_prevent_them(lang):
+    # "Where did this charge come from / how do I stop it" must be grounded in a payload.
+    items = get_billing_summary_impl(state=logged_in(), language=lang)["data"]["recent_bills"][0]["line_items"]
+    for charge_id, notes in BILL_EXTRA_LINE_NOTES.items():
+        item = next(i for i in items if i["charge_id"] == charge_id)
+        for key, (en, fr) in notes.items():
+            assert item[key] == (fr if lang == "fr-CA" else en)
+    streaming = next(i for i in items if i["charge_id"] == STREAMING["charge_id"])
+    assert "connected TV app" in BILL_EXTRA_LINE_NOTES["CH-STR-01"]["origin"][0]
+    assert "purchase PIN" in BILL_EXTRA_LINE_NOTES["CH-STR-01"]["prevention_tip"][0]
+    assert streaming["origin"] and streaming["prevention_tip"]
+    service = next(i for i in items if i["charge_id"] == "CH-SVC-TV")
+    assert "origin" not in service and "prevention_tip" not in service
+
+
+def test_credit_for_a_charge_carries_its_origin_and_prevention_tip():
+    data = apply_bill_adjustment_impl("unrecognized_charge", "", "", charge_id=STREAMING["charge_id"], state=logged_in())["data"]
+    assert data["charge_origin"] == BILL_EXTRA_LINE_NOTES["CH-STR-01"]["origin"][0]
+    assert data["charge_prevention_tip"] == BILL_EXTRA_LINE_NOTES["CH-STR-01"]["prevention_tip"][0]
 
 
 def test_charge_found_by_whole_dollar_amount():
