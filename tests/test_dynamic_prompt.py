@@ -333,3 +333,16 @@ def test_capture_turn_input_without_state_or_contents() -> None:
     relay = SimpleNamespace(contents=[SimpleNamespace(role="user", parts=[SimpleNamespace(text="For context: [router] said: hi")]), SimpleNamespace(text="bare")])
     capture_turn_input(SimpleNamespace(state=state), relay)
     assert state == {}
+
+
+def test_first_turn_keypad_two_adds_french_choice_note():
+    from types import SimpleNamespace as N
+    from lib import dynamic_prompt as dp
+    part = N(text="2", function_response=None, function_call=None)
+    req = N(contents=[N(role="user", parts=[part])], config=N(system_instruction="base"))
+    dp.apply_language_prompt_filter(N(state={}), req, agent_name="router")
+    assert dp.KEYPAD_FRENCH_NOTE in req.config.system_instruction
+    req2 = N(contents=[N(role="user", parts=[part]), N(role="user", parts=[N(text="847291044", function_response=None, function_call=None)])],
+             config=N(system_instruction="base"))
+    dp.apply_language_prompt_filter(N(state={}), req2, agent_name="router")
+    assert dp.KEYPAD_FRENCH_NOTE not in req2.config.system_instruction

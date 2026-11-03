@@ -24,7 +24,20 @@ from typing import Any
 import re
 import unicodedata
 
+KEYPAD_FRENCH_NOTE = (  # pragma: no cover
+    "The caller pressed 2 on the keypad to choose French. It is a language choice, not an account "
+    "number: do not call any tool for it; reply in French with your greeting."
+)
+
 LANGUAGE_SHEET_SENTINEL = "<!-- ACTIVE_LANGUAGE_SHEET -->"  # pragma: no cover
+
+KEYPAD_FRENCH_CHOICES: frozenset[str] = frozenset({"2", "deux"})  # pragma: no cover
+
+def _dp_is_keypad_french_choice(utterance: str) -> bool:  # pragma: no cover
+    """True when the caller's first input is the keypad language choice for French."""
+    cleaned = re.sub(r"[\s.!,#*]+", "", str(utterance or "").strip().lower())
+    cleaned = re.sub(r"^(?:pressed|keyed|appuie|touche)", "", cleaned)
+    return cleaned in KEYPAD_FRENCH_CHOICES
 
 AGENT_VERBATIM_KEYS: dict[str, tuple[str, ...]] = {  # pragma: no cover
     "router": ("greeting_main", "restricted_caller", "live_agent_handoff", "business_handoff", "empathy_protocol", "recording_notice", "ai_disclosure", "malicious_closing"),
@@ -348,14 +361,6 @@ def capture_turn_input(callback_context: Any, llm_request: Any) -> None:  # prag
     except (TypeError, AttributeError):  # pragma: no cover - read-only state objects
         return
 
-KEYPAD_FRENCH_CHOICES: frozenset[str] = frozenset({"2", "deux"})  # pragma: no cover
-
-def _dp_is_keypad_french_choice(utterance: str) -> bool:  # pragma: no cover
-    """True when the caller's first input is the keypad language choice for French."""
-    cleaned = re.sub(r"[\s.!,#*]+", "", str(utterance or "").strip().lower())
-    cleaned = re.sub(r"^(?:pressed|keyed|appuie|touche)", "", cleaned)
-    return cleaned in KEYPAD_FRENCH_CHOICES
-
 _DP_EXPLICIT_SWITCH_TERMS: tuple[tuple[str, tuple[str, ...]], ...] = (  # pragma: no cover
     ("fr-CA", ("en français", "en francais", "parlez-vous français", "parlez vous francais", "in french", "speak french", "french please", "switch to french")),
     ("es-US", ("en español", "en espanol", "habla español", "habla espanol", "in spanish", "speak spanish", "spanish please", "switch to spanish")),
@@ -554,6 +559,11 @@ def apply_language_prompt_filter(  # pragma: no cover
     state_dict = state if callable(getattr(state, "get", None)) else {}
     locale = detect_active_call_language(state_dict, llm_request)
     sheet = build_language_sheet(locale, agent_name=agent_name)
+    utterances = extract_user_utterances(llm_request)
+    if len(utterances) == 1 and _dp_is_keypad_french_choice(utterances[0]) and locale == "fr-CA":
+        # The caller's only input so far is the keypad language choice ("2" = French):
+        # it is not an account number, so greet in French instead of looking it up.
+        sheet += "\n" + KEYPAD_FRENCH_NOTE
 
     config = getattr(llm_request, "config", None)
     if config is None:

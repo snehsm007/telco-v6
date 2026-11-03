@@ -224,6 +224,10 @@ def detect_utterance_language(utterance: str, current_language: str = "en-US") -
 
 
 KEYPAD_FRENCH_CHOICES: frozenset[str] = frozenset({"2", "deux"})
+KEYPAD_FRENCH_NOTE = (
+    "The caller pressed 2 on the keypad to choose French. It is a language choice, not an account "
+    "number: do not call any tool for it; reply in French with your greeting."
+)
 
 
 def _dp_is_keypad_french_choice(utterance: str) -> bool:
@@ -405,6 +409,11 @@ def apply_language_prompt_filter(
     state_dict = state if callable(getattr(state, "get", None)) else {}
     locale = detect_active_call_language(state_dict, llm_request)
     sheet = build_language_sheet(locale, agent_name=agent_name)
+    utterances = extract_user_utterances(llm_request)
+    if len(utterances) == 1 and _dp_is_keypad_french_choice(utterances[0]) and locale == "fr-CA":
+        # The caller's only input so far is the keypad language choice ("2" = French):
+        # it is not an account number, so greet in French instead of looking it up.
+        sheet += "\n" + KEYPAD_FRENCH_NOTE
 
     config = getattr(llm_request, "config", None)
     if config is None:
