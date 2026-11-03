@@ -154,7 +154,7 @@ bundle-check: ## Fail if a generated bundle is stale
 	$(PYTHON) suite/bundle.py --check --app $(APP_DIR) --lib $(LIB_DIR)
 
 overfit-check: ## Scan prompts, lib/ and tool wrappers for test values, fake data, test IDs, non-PRD numbers/dates, bloat, one-sided rules
-	$(PYTHON) suite/overfit_check.py --app $(APP_DIR) --lib $(LIB_DIR) --prd prd.md --eval-dir $(EVALS_DIR) --bench-dir $(BENCH_DIR)/dev
+	$(PYTHON) suite/overfit_check.py --app $(APP_DIR) --lib $(LIB_DIR) --prd prd.md --max-chars 14000 --eval-dir $(EVALS_DIR) --bench-dir $(BENCH_DIR)/dev
 
 format: ## Format Python with ruff (skips if ruff is not installed)
 	@if $(PYTHON) -m ruff --version >/dev/null 2>&1; then $(PYTHON) -m ruff format $(APP_DIR) $(LIB_DIR) suite scripts $(TESTS_DIR); \

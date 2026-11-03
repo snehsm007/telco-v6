@@ -255,10 +255,17 @@ and callback.
 Register a single small `after_model_callback` (`speech_hygiene`, code in
 `lib/speech.py`) with these jobs:
 1. strip leaked internal snake_case/camelCase identifiers and markdown from
-   spoken text, and cut any number of 9 or more digits to its last 4;
+   spoken text, and cut any number of 7 or more digits to its last 4 (ISO
+   dates and plain money amounts under 9 digits are kept), and drop the
+   digits of a PIN or login code said right after its name ("PIN 4829");
 2. if `state.get("handover_complete")` is true and the reply has **no text**
    (only `handover_to_person` + `end_session`), add `state["handoff_message"]`
    as the spoken text. It never replaces or rewrites text the model spoke.
+3. if the reply calls `end_session` with **no text** and no handover ran, add
+   a closing line in the call language: `malicious_closing` (reason
+   `malicious_input`), `restricted_caller` (`blocked_caller`),
+   `live_agent_handoff` (`session_escalated` true), else `closing_goodbye`.
+   A silent transfer to another agent stays silent.
 
 Never register `before_tool` `auth_gate` (`NOT_IDENTIFIED`) or `before_model`
 `turn_state` callbacks.

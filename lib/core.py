@@ -35,6 +35,8 @@ SYSTEM_ERROR_CODES: frozenset[str] = frozenset(
     {"SYSTEM_UNAVAILABLE", "SYSTEM_DOWN", "INTERNAL_ERROR", "AUTH_SERVICE_UNAVAILABLE"}
 )
 
+MOCK_ERROR_OFF: frozenset[str] = frozenset({"false", "none", "0", "off", "no", "null"})
+
 _FR_MONTHS = (
     "janvier", "février", "mars", "avril", "mai", "juin",
     "juillet", "août", "septembre", "octobre", "novembre", "décembre",
@@ -110,8 +112,13 @@ def mock_mode_on(state: dict[str, Any] | None) -> bool:
 
 
 def check_mock_error(state: dict[str, Any], lang: str = "en-US", tool_name: str = "tool") -> dict[str, Any] | None:
-    """Fault injection: `mock_error` set in session state makes every tool return a system error."""
+    """Fault injection: `mock_error` set in session state makes every tool return a system error.
+
+    "false", "none", "0", "off", "no" and "null" mean no fault, like an empty value.
+    """
     if str(state.get("mock_error") or "").strip():
+        if str(state.get("mock_error")).strip().lower() in MOCK_ERROR_OFF:
+            return None
         ref = tracking_id(tool_name, "mock_error", state.get("account_id", ""))
         state["last_tracking_id"] = ref
         return error_reply(

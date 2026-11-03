@@ -66,6 +66,7 @@ from lib.sales import (  # noqa: F401
     place_order_impl,
     start_number_transfer_impl,
 )
+from lib.speech import redact_pii
 from lib.tech import (  # noqa: F401
     check_regional_outage_impl,
     get_appointment_and_ticket_status_impl,
@@ -497,7 +498,7 @@ def handover_to_person_impl(
     open_now = queue_open(queue)
     context = {
         "reason": code,
-        "summary": " ".join(str(summary or "").split())[:300],
+        "summary": redact_pii(" ".join(str(summary or "").split()))[:300],
         "language": lang,
         "account_id_last4": normalize_code(state.get("account_id", ""))[-4:],
         "identification_status": state.get("identification_status") or "Fail",
@@ -506,6 +507,15 @@ def handover_to_person_impl(
         "service_status": state.get("service_status") or "",
         "last_tracking_id": state.get("last_tracking_id") or "",
         "applied_adjustments": state.get("applied_adjustments") or "",
+        "phone_last4": str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or "")[-4:],
+        "customer_type": state.get("customer_type") or "",
+        "region": state.get("region") or "",
+        "lob": state.get("lob") or "",
+        "route": state.get("route") or "",
+        "global_err_count": read_count(state, "global_err_count"),
+        "auth_failure_count": read_count(state, "auth_failure_count"),
+        "queue": queue,
+        "queue_open": open_now,
     }
     reference = tracking_id("handover_to_person", state.get("account_id", ""), code, lang)
     state["language"] = lang

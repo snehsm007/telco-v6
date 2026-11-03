@@ -152,6 +152,8 @@ def _normalize_reason(reason: str) -> str:  # pragma: no cover
             return code
     return "user_requested_agent"
 
+MOCK_ERROR_OFF: frozenset[str] = frozenset({"false", "none", "0", "off", "no", "null"})  # pragma: no cover
+
 ERROR_CODES = (  # pragma: no cover
     "INVALID_INPUT",
     "NOT_FOUND",
@@ -467,8 +469,13 @@ def error_reply(  # pragma: no cover
     return reply
 
 def check_mock_error(state: dict[str, Any], lang: str = "en-US", tool_name: str = "tool") -> dict[str, Any] | None:  # pragma: no cover
-    """Fault injection: `mock_error` set in session state makes every tool return a system error."""
+    """Fault injection: `mock_error` set in session state makes every tool return a system error.
+
+    "false", "none", "0", "off", "no" and "null" mean no fault, like an empty value.
+    """
     if str(state.get("mock_error") or "").strip():
+        if str(state.get("mock_error")).strip().lower() in MOCK_ERROR_OFF:
+            return None
         ref = tracking_id(tool_name, "mock_error", state.get("account_id", ""))
         state["last_tracking_id"] = ref
         return error_reply(
@@ -576,6 +583,66 @@ def queue_open(queue: str, now: datetime | None = None) -> bool:  # pragma: no c
         return False
     return hours[0] <= current.hour < hours[1]
 
+def read_count(state: dict[str, Any] | None, key: str) -> int:  # pragma: no cover
+    """Read a whole-number variable; the platform hands them to tools as decimals (5 -> 5.0)."""
+    if not isinstance(state, dict):
+        return 0
+    try:
+        return int(float(state.get(key) or 0))
+    except (TypeError, ValueError):
+        return 0
+
+EMAIL_MASK_RE = re.compile(r"\b([A-Za-z0-9])[A-Za-z0-9._%+-]*@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)")  # pragma: no cover
+
+MIN_MASKED_DIGITS = 7  # pragma: no cover
+
+NUMBER_RUN_RE = re.compile(r"\(?\d+\)?(?:[-.]\(?\d+\)?|\s\(?\d{3,}\)?)*")  # pragma: no cover
+
+SHORT_NUMBER_KEEP_RE = re.compile(r"\d{4}-\d{2}-\d{2}|\d{4}/\d{2}/\d{2}|\d+\.\d{2}")  # pragma: no cover
+
+SPEAKABLE_NUMBERS: frozenset[str] = frozenset()  # pragma: no cover
+
+def mask_long_numbers(text: str, min_digits: int = MIN_MASKED_DIGITS) -> str:  # pragma: no cover
+    """Replace every number of `min_digits` or more digits by its last 4 digits."""
+
+    def _mask(match: re.Match[str]) -> str:
+        digits = re.sub(r"\D", "", match.group(0))
+        if len(digits) < min_digits or digits in SPEAKABLE_NUMBERS:
+            return match.group(0)
+        if len(digits) < 9 and SHORT_NUMBER_KEEP_RE.fullmatch(match.group(0)):
+            return match.group(0)
+        return digits[-4:]
+
+    return NUMBER_RUN_RE.sub(_mask, text)
+
+SECRET_CODE_RE = re.compile(  # pragma: no cover
+    r"\b(?P<word>pin|nip|passcode|code)\b(?P<gap>(?:\s+(?:is|was|est|of|de|:)|\s*:)*\s*)"
+    r"(?P<digits>\d(?:[\s-]?\d){3,7})(?![\d-])",
+    re.IGNORECASE,
+)
+
+_SECRET_CODE_SKIP_BEFORE = ("error", "erreur", "area", "régional", "postal")  # pragma: no cover
+
+def mask_secret_codes(text: str) -> str:  # pragma: no cover
+    """Drop the digits of a PIN (4-8 digits) or login code (6-8 digits) said after its name.
+
+    "Error code 1002" (a TV error code) and "area code 514" are kept.
+    """
+
+    def _drop(match: re.Match[str]) -> str:
+        digits = re.sub(r"\D", "", match.group("digits"))
+        word = match.group("word").lower()
+        before = text[max(0, match.start() - 10) : match.start()].lower()
+        if word == "code" and (len(digits) < 6 or any(w in before for w in _SECRET_CODE_SKIP_BEFORE)):
+            return match.group(0)
+        return match.group("word")
+
+    return SECRET_CODE_RE.sub(_drop, text)
+
+def redact_pii(text: Any) -> str:  # pragma: no cover
+    """Free text bound for logs or a live agent: PIN/code digits dropped, long numbers to last 4, emails masked."""
+    return EMAIL_MASK_RE.sub(r"\1***@\2", mask_long_numbers(mask_secret_codes(str(text or ""))))
+
 SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
     "greeting_main": {
         "en-US": "Welcome to Telco. I can help with billing, technical support, or managing your account. To get started, could you tell me the phone number or account number associated with your service?",
@@ -654,6 +721,10 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "I'm an artificial intelligence customer care assistant.",
         "fr-CA": "Je suis un assistant de service à la clientèle basé sur l'intelligence artificielle.",
     },
+    "closing_goodbye": {
+        "en-US": "Thank you for calling. Have a great day.",
+        "fr-CA": "Merci de votre appel. Bonne journée.",
+    },
     "malicious_closing": {
         "en-US": "I am unable to continue this conversation. Thank you for calling and have a good day.",
         "fr-CA": "Je ne peux pas poursuivre cette conversation. Merci de votre appel et bonne journée.",
@@ -691,7 +762,7 @@ def handover_to_person_impl(  # pragma: no cover
     open_now = queue_open(queue)
     context = {
         "reason": code,
-        "summary": " ".join(str(summary or "").split())[:300],
+        "summary": redact_pii(" ".join(str(summary or "").split()))[:300],
         "language": lang,
         "account_id_last4": normalize_code(state.get("account_id", ""))[-4:],
         "identification_status": state.get("identification_status") or "Fail",
@@ -700,6 +771,15 @@ def handover_to_person_impl(  # pragma: no cover
         "service_status": state.get("service_status") or "",
         "last_tracking_id": state.get("last_tracking_id") or "",
         "applied_adjustments": state.get("applied_adjustments") or "",
+        "phone_last4": str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or "")[-4:],
+        "customer_type": state.get("customer_type") or "",
+        "region": state.get("region") or "",
+        "lob": state.get("lob") or "",
+        "route": state.get("route") or "",
+        "global_err_count": read_count(state, "global_err_count"),
+        "auth_failure_count": read_count(state, "auth_failure_count"),
+        "queue": queue,
+        "queue_open": open_now,
     }
     reference = tracking_id("handover_to_person", state.get("account_id", ""), code, lang)
     state["language"] = lang

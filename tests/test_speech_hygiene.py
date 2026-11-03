@@ -63,3 +63,50 @@ def test_bundled_callback_keeps_tool_endings_and_fixes_profile_phone(callback) -
     response = make_response("I sent the code to the number ending in 0186.")
     assert callback.after_model_callback(SimpleNamespace(state=state), response) is response
     assert response.content.parts[0].text == "I sent the code to the number ending in 0199."
+
+
+@pytest.mark.parametrize("callback", CALLBACKS)
+def test_bundled_callback_never_speaks_back_a_pin(callback) -> None:
+    response = make_response("Thanks, your PIN 7316 is verified.")
+    assert callback.after_model_callback(SimpleNamespace(state={}), response) is response
+    assert response.content.parts[0].text == "Thanks, your PIN is verified."
+
+
+def _tool_only(name: str, **args) -> SimpleNamespace:
+    call = SimpleNamespace(name=name, args=args)
+    return SimpleNamespace(content=SimpleNamespace(parts=[SimpleNamespace(text=None, function_call=call)]))
+
+
+@pytest.mark.parametrize("callback", CALLBACKS)
+@pytest.mark.parametrize(
+    ("language", "args", "expected"),
+    [
+        ("en-US", {"reason": "resolved"}, "Thank you for calling. Have a great day."),
+        ("fr-CA", {"reason": "resolved"}, "Merci de votre appel. Bonne journée."),
+        ("en-US", {"reason": "malicious_input"}, "I am unable to continue this conversation."),
+        ("fr-CA", {"reason": "malicious_input"}, "Je ne peux pas poursuivre cette conversation."),
+        ("en-US", {"reason": "blocked_caller"}, "We're unable to help with this call on this line."),
+        ("fr-CA", {"reason": "system_unavailable", "session_escalated": True}, "Je vais vous mettre en relation"),
+    ],
+)
+def test_silent_end_session_gets_a_spoken_closing(callback, language, args, expected) -> None:
+    # Dead air: the model sometimes called end_session with no words at all.
+    response = _tool_only("end_session", **args)
+    assert callback.after_model_callback(SimpleNamespace(state={"language": language}), response) is response
+    assert response.content.parts[0].text.startswith(expected)
+    assert response.content.parts[1].function_call.name == "end_session"
+
+
+@pytest.mark.parametrize("callback", CALLBACKS)
+def test_silent_transfer_without_end_session_stays_silent(callback) -> None:
+    response = _tool_only("transfer_to_agent", agent_name="billing")
+    assert callback.after_model_callback(SimpleNamespace(state={"language": "en-US"}), response) is None
+    assert response.content.parts[0].text is None
+
+
+@pytest.mark.parametrize("callback", CALLBACKS)
+def test_handoff_message_still_wins_on_a_silent_end_session(callback) -> None:
+    state = {"handover_complete": True, "handoff_message": "Please hold.", "language": "en-US"}
+    response = _tool_only("end_session", reason="user_requested_agent", session_escalated=True)
+    assert callback.after_model_callback(SimpleNamespace(state=state), response) is response
+    assert response.content.parts[0].text == "Please hold."

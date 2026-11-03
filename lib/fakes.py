@@ -104,6 +104,10 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {
         "en-US": "I'm an artificial intelligence customer care assistant.",
         "fr-CA": "Je suis un assistant de service à la clientèle basé sur l'intelligence artificielle.",
     },
+    "closing_goodbye": {
+        "en-US": "Thank you for calling. Have a great day.",
+        "fr-CA": "Merci de votre appel. Bonne journée.",
+    },
     "malicious_closing": {
         "en-US": "I am unable to continue this conversation. Thank you for calling and have a good day.",
         "fr-CA": "Je ne peux pas poursuivre cette conversation. Merci de votre appel et bonne journée.",

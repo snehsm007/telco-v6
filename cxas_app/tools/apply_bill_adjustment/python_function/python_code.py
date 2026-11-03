@@ -564,6 +564,10 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "I'm an artificial intelligence customer care assistant.",
         "fr-CA": "Je suis un assistant de service à la clientèle basé sur l'intelligence artificielle.",
     },
+    "closing_goodbye": {
+        "en-US": "Thank you for calling. Have a great day.",
+        "fr-CA": "Merci de votre appel. Bonne journée.",
+    },
     "malicious_closing": {
         "en-US": "I am unable to continue this conversation. Thank you for calling and have a good day.",
         "fr-CA": "Je ne peux pas poursuivre cette conversation. Merci de votre appel et bonne journée.",
@@ -660,6 +664,8 @@ def _bill_outage_lob(description: str, state: dict[str, Any]) -> str:  # pragma:
     if live in lobs:
         return live
     return lobs[0] if len(lobs) == 1 else ""
+
+MOCK_ERROR_OFF: frozenset[str] = frozenset({"false", "none", "0", "off", "no", "null"})  # pragma: no cover
 
 ERROR_CODES = (  # pragma: no cover
     "INVALID_INPUT",
@@ -950,8 +956,13 @@ def error_reply(  # pragma: no cover
     return reply
 
 def check_mock_error(state: dict[str, Any], lang: str = "en-US", tool_name: str = "tool") -> dict[str, Any] | None:  # pragma: no cover
-    """Fault injection: `mock_error` set in session state makes every tool return a system error."""
+    """Fault injection: `mock_error` set in session state makes every tool return a system error.
+
+    "false", "none", "0", "off", "no" and "null" mean no fault, like an empty value.
+    """
     if str(state.get("mock_error") or "").strip():
+        if str(state.get("mock_error")).strip().lower() in MOCK_ERROR_OFF:
+            return None
         ref = tracking_id(tool_name, "mock_error", state.get("account_id", ""))
         state["last_tracking_id"] = ref
         return error_reply(
