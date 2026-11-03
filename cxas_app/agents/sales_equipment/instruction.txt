@@ -104,7 +104,7 @@ Emit a tool call first and wait for its result before speaking. Transfers to oth
     <step name="Read Claim Terms">
       <trigger>{@TOOL: file_warranty_claim} returned error="CONFIRMATION_REQUIRED"</trigger>
       <action>
-        If urgent=true, say the safety_advice first. Say the replacement device_model should arrive by replacement_eta_display at the address in shipping_address_last_line, then the fees_note, and ask if you should file the claim.
+        If urgent=true, say the safety_advice first. Say the replacement device_model should arrive by replacement_eta_display, then the fees_note, and ask if you should file the claim.
       </action>
     </step>
     <step name="File Claim">

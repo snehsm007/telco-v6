@@ -487,6 +487,7 @@ def test_warranty_claim_needs_the_callers_yes_after_the_terms(lang: str) -> None
     assert terms["return_shipping_prepaid"] is True and terms["replacement_shipping_free"] is True
     assert terms["fees_note"] == SALES_COPY["warranty_fees"][lang]
     assert terms["replacement_eta_display"] and terms["return_by_display"] and terms["device_model"]
+    assert "shipping_address_last_line" not in terms
     assert len(early["agent_action"]) <= 120
     filed = file_warranty_claim_impl("iPhone", "screen flickers", False, False, confirmed=True, state=state)
     assert filed["status"] == "ok" and filed["data"]["claim_filed"] is True
@@ -587,13 +588,3 @@ def test_warranty_named_variant_is_not_the_base_model_on_file() -> None:
         assert data["device_matched"] is False and data["device_model"] == named, named
     for named in ("Apple iPhone 15", "my pixel", "Galaxy S24"):
         assert file_warranty_claim_impl(named, "screen flickers", state=_logged_in())["data"]["device_matched"] is True
-
-
-@pytest.mark.parametrize("urgent", [False, True])
-def test_warranty_terms_say_where_it_ships_before_filing(urgent: bool) -> None:
-    """VE-50 r3: the ship-to city was first heard after filing, and correcting it handed over."""
-    device, issue = ("", "battery is swollen") if urgent else ("iPhone", "screen flickers")
-    terms = file_warranty_claim_impl(device, issue, False, False, state=_logged_in())
-    assert terms["error"] == "CONFIRMATION_REQUIRED" and terms["data"]["claim_filed"] is False
-    assert terms["data"]["shipping_address_last_line"]
-    assert len(terms["agent_action"]) <= 120
