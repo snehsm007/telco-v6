@@ -606,6 +606,53 @@ _TECH_APP_DATA_NOTE: dict[str, str] = {
     "en-US": "Clearing the app's cache or reinstalling the app doesn't delete anything saved to your Telco account: favourites, cloud recordings, profiles and watch history stay, because they are stored in the cloud. You only sign in again after a reinstall. Reinstalling takes a few minutes.",
     "fr-CA": "Vider le cache de l'application ou la réinstaller ne supprime rien de ce qui est enregistré dans votre compte Telco : les favoris, les enregistrements infonuagiques, les profils et l'historique de visionnement sont conservés, car ils sont stockés dans le nuage. Il faut seulement vous reconnecter après une réinstallation. La réinstallation prend quelques minutes.",
 }
+# Turn N+1 fact for "why is this happening?" (rule 33): the usual causes, matching the steps.
+_TECH_CAUSE_NOTES: dict[str, dict[str, str]] = {
+    "internet_down": {
+        "en-US": "When there's no area outage, a home internet loss usually comes from the modem losing power or its connection; a restart fixes most cases, and a technician can check the line if it doesn't.",
+        "fr-CA": "Sans panne dans le secteur, une perte d'Internet à la maison vient habituellement du modem qui a perdu son alimentation ou sa connexion; un redémarrage règle la plupart des cas, et un technicien peut vérifier la ligne sinon.",
+    },
+    "internet_slow": {
+        "en-US": "Slow or dropping Wi-Fi usually comes from distance or obstacles between the device and the modem, or many devices sharing it; a speed test on a cabled device shows whether the line itself is slow.",
+        "fr-CA": "Un Wi-Fi lent ou instable vient habituellement de la distance ou d'obstacles entre l'appareil et le modem, ou de nombreux appareils connectés; un test de vitesse sur un appareil branché par câble montre si la ligne elle-même est lente.",
+    },
+    "mobile_no_service": {
+        "en-US": "No service usually comes from the phone's network connection or settings, or a SIM card that has shifted or failed; if these steps don't fix it, the SIM card or the phone needs a closer look.",
+        "fr-CA": "L'absence de service vient habituellement de la connexion ou des réglages réseau du téléphone, ou d'une carte SIM déplacée ou défectueuse; si ces étapes ne règlent pas le problème, la carte SIM ou le téléphone doit être examiné de plus près.",
+    },
+    "mobile_slow_data": {
+        "en-US": "Slow mobile data usually comes from reaching the high-speed data limit, a weak signal where you are, or the phone's network settings.",
+        "fr-CA": "Des données cellulaires lentes viennent habituellement de la limite de données haute vitesse atteinte, d'un signal faible à l'endroit où vous êtes ou des réglages réseau du téléphone.",
+    },
+    "mobile_sim": {
+        "en-US": "SIM errors usually come from a card that has shifted in its tray or is damaged; if reseating it doesn't help, the SIM card needs a closer look.",
+        "fr-CA": "Les erreurs de carte SIM viennent habituellement d'une carte déplacée dans son tiroir ou endommagée; si la réinsérer ne règle rien, la carte SIM doit être examinée de plus près.",
+    },
+    "tv_no_signal": {
+        "en-US": "A black screen or no signal usually comes from the TV being on the wrong input, a loose cable, or the receiver or device needing a restart.",
+        "fr-CA": "Un écran noir ou l'absence de signal vient habituellement d'une mauvaise entrée sélectionnée sur la télé, d'un câble mal branché, ou d'un récepteur ou appareil à redémarrer.",
+    },
+    "tv_error_code": {
+        "en-US": "An error code on screen usually means the receiver or the TV app lost its signal or connection; a restart reloads it.",
+        "fr-CA": "Un code d'erreur à l'écran signifie habituellement que le récepteur ou l'application télé a perdu son signal ou sa connexion; un redémarrage le recharge.",
+    },
+    "tv_app_freezing": {
+        "en-US": "App freezing usually comes from the app's stored data, the streaming device itself, or a slow home connection; clearing the cache or reinstalling gives the app a clean start.",
+        "fr-CA": "Le gel de l'application vient habituellement des données qu'elle a stockées, de l'appareil de diffusion lui-même ou d'une connexion lente à la maison; vider le cache ou la réinstaller lui donne un nouveau départ.",
+    },
+    "homephone_no_dial_tone": {
+        "en-US": "No dial tone usually comes from a loose or faulty cord or phone, or the line needing a reset; trying another phone or jack shows which.",
+        "fr-CA": "L'absence de tonalité vient habituellement d'un cordon ou d'un téléphone mal branché ou défectueux, ou d'une ligne à réinitialiser; essayer un autre téléphone ou une autre prise permet de le savoir.",
+    },
+    "homephone_noise": {
+        "en-US": "Static or noise usually comes from a worn cord, another device sharing the line, or interference from nearby electronics.",
+        "fr-CA": "Le grésillement ou le bruit vient habituellement d'un cordon usé, d'un autre appareil sur la ligne ou d'interférences d'appareils électroniques à proximité.",
+    },
+    "smarthome_offline": {
+        "en-US": "A smart home device usually goes offline when the hub loses power or its internet connection, or the device loses its pairing with the hub.",
+        "fr-CA": "Un appareil de maison intelligente se déconnecte habituellement quand le concentrateur perd son alimentation ou sa connexion Internet, ou quand l'appareil perd son jumelage avec le concentrateur.",
+    },
+}
 _TECH_FEE_NOTES: dict[str, dict[str, str]] = {
     "free_visit": {
         "en-US": "Troubleshooting with us and the remote reset are free. A technician repair visit for Telco service or equipment is also free of charge.",
@@ -803,6 +850,7 @@ def run_virtual_repair_impl(
         # A phone with no service can't receive the guide by text: walk through it instead.
         "sms_recommended": len(steps) > 2 and category not in _TECH_NO_TEXT_CATEGORIES,
         "known_issue": known_issue,
+        "cause_note": _tech_text(_TECH_CAUSE_NOTES[category], lang),
         "if_unresolved": ["technician_visit", "live_agent"],
         # Turn N+1 facts: how to do each step, what the reset does, what it costs (rule 33).
         "step_details": _tech_step_details(category, sub_type, steps, lang),

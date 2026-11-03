@@ -614,3 +614,22 @@ def test_repair_no_service_phone_walks_through_instead_of_texting(lang: str, sym
     assert reply["data"]["step_count"] > 2 and reply["data"]["sms_recommended"] is False
     assert reply["agent_action"].startswith("Walk") and "troubleshooting_guide" not in reply["agent_action"]
     assert "email" not in reply["agent_action"].lower()
+
+
+def test_every_repair_category_has_a_cause_note_in_both_languages() -> None:
+    categories = {cat for groups in tech._TECH_CATEGORIES.values() for cat, _ in groups}
+    assert categories == set(tech._TECH_CAUSE_NOTES)
+    for cat, table in tech._TECH_CAUSE_NOTES.items():
+        assert table["en-US"] and table["fr-CA"] and table["en-US"] != table["fr-CA"], cat
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_repair_reply_carries_the_cause_note(lang: str) -> None:
+    """VE-43 ("why does it freeze?") and VE-41 (SIM chip / SIM causes) were answered from nothing."""
+    app = run_virtual_repair_impl("tv", "the app keeps freezing", "streaming_only", state=_logged_in(), language=lang)
+    note = app["data"]["cause_note"]
+    assert note == tech._TECH_CAUSE_NOTES["tv_app_freezing"][lang]
+    # The steps include a speed check, so the cause never rules the connection out.
+    assert ("connection" in note) == (lang == "en-US") and ("connexion" in note) == (lang == "fr-CA")
+    phone = run_virtual_repair_impl("mobility", "no service", state=_logged_in(), language=lang)
+    assert "SIM" in phone["data"]["cause_note"]
