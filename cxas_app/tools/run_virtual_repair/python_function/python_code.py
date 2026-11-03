@@ -85,7 +85,9 @@ FIXTURE_DEFAULTS: dict[str, str] = {  # pragma: no cover
     "fx_recent_payment": "none",
     "fx_business_account": "false",
     "fx_outage_status": "",
-    "fx_technician_status": "scheduled",
+    # Default visit: technician on the way but running late (reads as both "en route"
+    # and "delayed"); it can be moved to another day, not cancelled (en route).
+    "fx_technician_status": "en_route_delayed",
     "fx_duplicate_payment": "true",  # the ledger holds a duplicate payment; refunded only when a caller claims it
     "fx_extra_bill_line": "",
     "fx_device_warranty": "in_warranty",
