@@ -25,7 +25,7 @@ from lib.fakes import (
     resolve_copy_locale,
     spoken_line,
 )
-from lib.replies import display_amount, error_reply, tracking_id
+from lib.replies import display_amount, error_reply, set_mock_mode_active, tracking_id
 
 MAX_VALIDATION_ERRORS = 3
 
@@ -54,12 +54,13 @@ def get_state(
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Return the session state dict. A missing state gets a fresh dict, never a shared one."""
-    if state is not None:
-        return state
-    if session_state is not None:
-        return session_state
-    return {}
+    """Return the session state dict. A missing state gets a fresh dict, never a shared one.
+
+    Also switches the PRD §17 mock_mode marker on or off for the replies of this call.
+    """
+    resolved = state if state is not None else (session_state if session_state is not None else {})
+    set_mock_mode_active(mock_mode_on(resolved))
+    return resolved
 
 
 def session_language(state: dict[str, Any] | None, language: Any = "") -> str:

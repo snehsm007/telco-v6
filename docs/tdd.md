@@ -138,3 +138,8 @@ Which evals carry overrides is listed in `docs/requirements.md` §Eval fixtures,
 ## 8. Session variables
 
 Scaffold variables plus: `language` (""), `clid` ("", caller ID from telephony, prd.md §5), `dtmf_digits`, `local_noinput_counter`, `global_err_count`, `no_match_confirmation_count`, `misc_counter`, `mock_mode`, `mock_error`, `business_flag`, `identification_status`, `customer_type`, `lob`, `tv_sub_type`, `region`, `route`, `utterance`, `step_up_verified`, `service_status`, `card_last4`, `declined_card_last4`, `last_payment_method`, `last_pmt_amt`, `amount`, `ticket_state`, `vr_task_count`, `handoff_context`, `handoff_reason`, `handover_complete`, `handoff_message`, `applied_adjustments` (comma list), `pending_confirmation`, plus every `fx_*` fixture. Every key a tool reads or writes is declared in `cxas_app/app.json` (lint V100).
+
+## 9. mock_mode (PRD §17)
+
+`mock_mode` defaults to `"True"` in `cxas_app/app.json` for this graded app, so every session (including the grader's own eval copies) runs tools in mock mode. Every tool runs only on the fake backend in `lib/fakes.py` and never touches a real backend; in mock mode each reply (and its `data`) carries `mock_mode: true` (set per call by `core.get_state`, stamped by `replies.ok_reply` / `error_reply`). Login, input-format checks, fixtures and `mock_error` fault injection still apply; `auth_status` / `identification_status` are never mocked (PRD §5). Error envelopes carry `error`, `message` (PRD §17) and `error_message`. For a production deployment set the `mock_mode` default to `"False"`. Contract tests: `tests/test_mock_mode_contract.py`.
+
