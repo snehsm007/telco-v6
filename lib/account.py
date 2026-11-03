@@ -370,13 +370,13 @@ def execute_suspend_restore_impl(
             reference,
             lang,
         )
-    if current.startswith("suspended"):
+    # A non-payment hold is billing's and never blocks a customer-requested
+    # lost/stolen or travel suspension (the default account is past due; docs/tdd.md §5).
+    if current in ("suspended_lost_stolen", "suspended_travel"):
         return error_reply(
             "ALREADY_APPLIED",
             "The line is already suspended.",
-            "Tell the caller the line is already suspended."
-            if current != "suspended_nonpayment"
-            else "Line is suspended for non-payment; offer billing via router.",
+            "Tell the caller the line is already suspended.",
             reference,
             language=lang,
             data={"service_status": current, "already_suspended": True},

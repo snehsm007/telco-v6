@@ -225,7 +225,6 @@ def lookup_account_impl(
         state["login_code_sent"] = False
         state["step_up_verified"] = False
     business = bool(account.get("business_flag")) or fixture_flag(state, "fx_business_account")
-    status = service_status(state)
     state["account_id"] = account["account_id"]
     state["phone_last4"] = account["phone"][-4:]
     ident = normalize_identifier(raw)
@@ -236,7 +235,6 @@ def lookup_account_impl(
     state["business_flag"] = business
     state["customer_type"] = account.get("customer_type", "Existing")
     state["region"] = _region_for_postal(account.get("postal_code", ""))
-    state["service_status"] = status
     if account.get("preferred_language") and not state.get("preferred_language"):
         state["preferred_language"] = account["preferred_language"]
     state["last_tracking_id"] = reference
@@ -249,7 +247,6 @@ def lookup_account_impl(
         "customer_type": state["customer_type"],
         "lines_of_business": list(account.get("lines_of_business", [])),
         "region": state["region"],
-        "service_status": status,
     }
     reply = ok_reply(data, reference, language=lang)
     if business:

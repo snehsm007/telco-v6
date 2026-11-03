@@ -455,9 +455,11 @@ def _bill_payments(state: dict[str, Any], lang: str, past_due: Decimal) -> list[
     if paid_now is not None and paid_now > _BILL_ZERO:
         today = _bill_date(0, lang)
         payments.append({"date": today["iso"], "date_display": today["display"], "status": "posted", "method": str(state.get("last_payment_method") or ""), **money(paid_now)})
-    if fixture(state, "fx_recent_payment") == "posted_yesterday" and not _bill_flag(state, "recent_payment_applied"):
+    # A posted payment not applied yet is in the payment processor's queue, not the
+    # ledger: it shows only once verify_payment_and_restore found and applied it.
+    if fixture(state, "fx_recent_payment") == "posted_yesterday" and _bill_flag(state, "recent_payment_applied"):
         when = _bill_date(-RECENT_PAYMENT_DAYS_AGO, lang)
-        payments.append({"date": when["iso"], "date_display": when["display"], "status": "posted_not_applied", "method": "online_banking", **money(PAST_DUE_AMOUNT)})
+        payments.append({"date": when["iso"], "date_display": when["display"], "status": "posted", "method": "online_banking", **money(PAST_DUE_AMOUNT)})
     if fixture_flag(state, "fx_duplicate_payment"):
         when = _bill_date(-int(DUPLICATE_PAYMENT["days_ago"]), lang)
         refunded = "duplicate_payment" in str(state.get("applied_adjustments") or "").split(",")
@@ -537,10 +539,12 @@ def get_billing_summary_impl(
             f" Of that, {_bill_amount_text(lang, live['past_due'])} is past due.",
             f" De ce montant, {_bill_amount_text(lang, live['past_due'])} est en souffrance.",
         )
-    if status == "suspended_nonpayment":
-        summary += _bill_text(lang, " Your service is suspended for non-payment.", " Votre service est suspendu pour non-paiement.")
     data["spoken_summary"] = summary
-    return _bill_finish(st, ok_reply(data, reference, language=lang))
+    reply = ok_reply(data, reference, language=lang)
+    if status == "suspended_nonpayment":
+        # The suspension is in the data; it is raised only with a caller who asks about it.
+        reply["agent_action"] = "Mention the non-payment suspension only if the caller asks about restoring service."
+    return _bill_finish(st, reply)
 
 
 # ---------------------------------------------------------------------------
@@ -642,16 +646,24 @@ def process_bill_payment_impl(
         f"Votre paiement de {_bill_amount_text(lang, pay)} avec la {_bill_method_text(lang, method)} est accepté. "
         f"Votre solde restant est de {_bill_amount_text(lang, new_balance)}.",
     ).replace("avec la compte", "avec le compte")
+    # Wording fits both a caller restoring a suspended line and one paying to avoid a
+    # cut-off (the default account is suspended; docs/tdd.md §5): no unprompted
+    # "suspended", and "fully active" confirms a restore.
     if status_before == "suspended_nonpayment" and new_past_due == _BILL_ZERO:
         data.update(_bill_restore(st))
         data["service_status"] = "active"
-        summary += _bill_text(lang, " Your service is restored.", " Votre service est rétabli.")
+        data["suspension_risk_cleared"] = True
+        summary += _bill_text(
+            lang,
+            " Your account is no longer past due, and your service is fully active.",
+            " Votre compte n'est plus en souffrance et votre service est entièrement actif.",
+        )
     elif status_before == "suspended_nonpayment":
         data["restore_requires_display"] = display_amount(new_past_due)
         summary += _bill_text(
             lang,
-            f" Your service stays suspended until the remaining past-due amount of {_bill_amount_text(lang, new_past_due)} is paid.",
-            f" Votre service reste suspendu jusqu'au paiement du montant en souffrance restant de {_bill_amount_text(lang, new_past_due)}.",
+            f" The remaining past-due amount of {_bill_amount_text(lang, new_past_due)} still needs to be paid to make your service fully active.",
+            f" Le montant en souffrance restant de {_bill_amount_text(lang, new_past_due)} doit encore être payé pour que votre service soit entièrement actif.",
         )
     elif live["past_due"] > _BILL_ZERO and new_past_due == _BILL_ZERO:
         data["suspension_risk_cleared"] = True

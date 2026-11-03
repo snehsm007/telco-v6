@@ -283,17 +283,20 @@ def test_restore_non_payment_goes_to_billing() -> None:
     assert state["service_status"] == ""
 
 
-def test_suspend_over_non_payment_never_masks_it() -> None:
+def test_non_payment_hold_never_blocks_a_lost_stolen_suspension() -> None:
+    """The default account is suspended for non-payment (fix 16); a lost phone is still suspended at once."""
     state = _logged_in()
-    state["service_status"] = "suspended_nonpayment"
     reply = execute_suspend_restore_impl("suspend", "lost_stolen", state=state)
-    assert reply["error"] == "ALREADY_APPLIED"
-    assert "billing" in reply["agent_action"]
-    assert state["service_status"] == "suspended_nonpayment"
+    assert reply["status"] == "ok" and reply["data"]["immediate"] is True
+    assert state["service_status"] == "suspended_lost_stolen"
+    travel = execute_suspend_restore_impl("suspend", "travel", state=_logged_in(service_status="suspended_nonpayment"))
+    assert travel["status"] == "ok"
+    again = execute_suspend_restore_impl("suspend", "travel", state=state)
+    assert again["error"] == "ALREADY_APPLIED"
 
 
 def test_restore_active_line() -> None:
-    assert execute_suspend_restore_impl("restore", state=_logged_in())["error"] == "NOT_SUSPENDED"
+    assert execute_suspend_restore_impl("restore", state=_logged_in(fx_service_status="active"))["error"] == "NOT_SUSPENDED"
 
 
 @pytest.mark.parametrize("action,reason", [("freeze", "travel"), ("suspend", "")])

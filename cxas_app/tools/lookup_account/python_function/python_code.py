@@ -532,8 +532,14 @@ FIXTURE_DEFAULTS: dict[str, str] = {  # pragma: no cover
     "fx_pin_on_file": "",
     "fx_otp_on_file": "",
     "fx_card_on_file_status": "valid",
-    "fx_service_status": "active",
-    "fx_recent_payment": "none",
+    # The default account is past due and suspended for non-payment. Only the billing
+    # tools report it (lookup_account does not, before login), and their spoken lines
+    # never raise it unprompted, so unrelated journeys are unaffected (docs/tdd.md §5).
+    "fx_service_status": "suspended_nonpayment",
+    # A payment covering the past-due amount posted yesterday but not applied yet:
+    # it sits in the payment processor's queue, so get_billing_summary does not list it
+    # and only verify_payment_and_restore (the caller says they already paid) finds it.
+    "fx_recent_payment": "posted_yesterday",
     "fx_business_account": "false",
     "fx_outage_status": "",
     # Default visit: technician on the way but running late (reads as both "en route"
@@ -659,11 +665,6 @@ def ok_reply(  # pragma: no cover
 def only_digits(text: Any) -> str:  # pragma: no cover
     """Keep the digits of what the caller said ("(202) 555-0143" -> "2025550143")."""
     return normalize_code(text)
-
-def service_status(state: dict[str, Any]) -> str:  # pragma: no cover
-    """Current service status: the value tools wrote this call, else the backend fixture."""
-    live = str(state.get("service_status") or "").strip()
-    return live or fixture(state, "fx_service_status")
 
 def resolve_locale(language: str | None) -> str:  # pragma: no cover
     """Normalize a language tag or prefix to a supported locale (en-US or fr-CA)."""
@@ -896,7 +897,6 @@ def lookup_account_impl(  # pragma: no cover
         state["login_code_sent"] = False
         state["step_up_verified"] = False
     business = bool(account.get("business_flag")) or fixture_flag(state, "fx_business_account")
-    status = service_status(state)
     state["account_id"] = account["account_id"]
     state["phone_last4"] = account["phone"][-4:]
     ident = normalize_identifier(raw)
@@ -907,7 +907,6 @@ def lookup_account_impl(  # pragma: no cover
     state["business_flag"] = business
     state["customer_type"] = account.get("customer_type", "Existing")
     state["region"] = _region_for_postal(account.get("postal_code", ""))
-    state["service_status"] = status
     if account.get("preferred_language") and not state.get("preferred_language"):
         state["preferred_language"] = account["preferred_language"]
     state["last_tracking_id"] = reference
@@ -920,7 +919,6 @@ def lookup_account_impl(  # pragma: no cover
         "customer_type": state["customer_type"],
         "lines_of_business": list(account.get("lines_of_business", [])),
         "region": state["region"],
-        "service_status": status,
     }
     reply = ok_reply(data, reference, language=lang)
     if business:

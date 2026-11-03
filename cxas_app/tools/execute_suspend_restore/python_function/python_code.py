@@ -652,8 +652,14 @@ FIXTURE_DEFAULTS: dict[str, str] = {  # pragma: no cover
     "fx_pin_on_file": "",
     "fx_otp_on_file": "",
     "fx_card_on_file_status": "valid",
-    "fx_service_status": "active",
-    "fx_recent_payment": "none",
+    # The default account is past due and suspended for non-payment. Only the billing
+    # tools report it (lookup_account does not, before login), and their spoken lines
+    # never raise it unprompted, so unrelated journeys are unaffected (docs/tdd.md §5).
+    "fx_service_status": "suspended_nonpayment",
+    # A payment covering the past-due amount posted yesterday but not applied yet:
+    # it sits in the payment processor's queue, so get_billing_summary does not list it
+    # and only verify_payment_and_restore (the caller says they already paid) finds it.
+    "fx_recent_payment": "posted_yesterday",
     "fx_business_account": "false",
     "fx_outage_status": "",
     # Default visit: technician on the way but running late (reads as both "en route"
@@ -829,13 +835,13 @@ def execute_suspend_restore_impl(  # pragma: no cover
             reference,
             lang,
         )
-    if current.startswith("suspended"):
+    # A non-payment hold is billing's and never blocks a customer-requested
+    # lost/stolen or travel suspension (the default account is past due; docs/tdd.md §5).
+    if current in ("suspended_lost_stolen", "suspended_travel"):
         return error_reply(
             "ALREADY_APPLIED",
             "The line is already suspended.",
-            "Tell the caller the line is already suspended."
-            if current != "suspended_nonpayment"
-            else "Line is suspended for non-payment; offer billing via router.",
+            "Tell the caller the line is already suspended.",
             reference,
             language=lang,
             data={"service_status": current, "already_suspended": True},

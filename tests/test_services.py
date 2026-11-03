@@ -60,7 +60,7 @@ def test_lookup_known_account_returns_last4_only_and_remembers_it() -> None:
     assert data["identification_status"] == "Pass"
     assert data["phone_last4"] == "0186" and data["caller_provided_phone_last4"] == "0186"
     assert data["business_flag"] is False
-    assert data["service_status"] == "active"
+    assert "service_status" not in data  # account data: billing reports it after login
     assert data["region"] in ("Region-A", "Region-B", "Region-C")
     assert set(data["lines_of_business"]) >= {"mobility", "internet"}
     assert data["account_id_last4"] == ACCOUNTS[0]["account_id"][-4:]
@@ -140,10 +140,13 @@ def test_lookup_business_flag_comes_from_the_fixture() -> None:
     assert "business_handoff" in reply["agent_action"]
 
 
-def test_lookup_service_status_comes_from_the_fixture() -> None:
-    state = {"fx_service_status": "suspended_nonpayment"}
-    assert lookup_account_impl(KNOWN_PHONE, state=state)["data"]["service_status"] == "suspended_nonpayment"
-    assert state["service_status"] == "suspended_nonpayment"
+def test_lookup_never_reports_a_suspension_before_login() -> None:
+    """The default account is suspended for non-payment (fix 16); identification must not say so,
+    so troubleshooting, sales and fraud calls never hear about it."""
+    for state in ({}, {"fx_service_status": "suspended_nonpayment"}):
+        reply = lookup_account_impl(KNOWN_PHONE, state=state)
+        assert "suspen" not in json.dumps(reply)
+        assert "service_status" not in state
 
 
 def test_switching_accounts_clears_the_login_but_keeps_the_failure_count() -> None:
@@ -540,3 +543,32 @@ def test_short_step_up_code_is_a_re_ask_with_a_resend_offer_not_a_strike(tool) -
     assert read_count(state, "auth_failure_count") == 0 and state["auth_status"] == "pass"
     assert read_count(state, "global_err_count") == before + 1
     assert state["code_purpose"] == "step_up"
+
+
+def test_suspended_default_leaves_unrelated_journeys_unchanged() -> None:
+    """Fix 16: the default account is suspended for non-payment, but only the billing tools
+    report it. Troubleshooting, outages, appointments, sales, warranty, porting, MFA,
+    password reset, cancellation, contact updates, texts and handovers neither refuse
+    nor mention it."""
+    calls = [
+        lambda st: services.check_regional_outage_impl("K1A 0B1", "internet", state=st),
+        lambda st: services.run_virtual_repair_impl("internet", "internet is slow", state=st),
+        lambda st: services.run_virtual_repair_impl("mobility", "no service on my phone", state=st),
+        lambda st: services.get_appointment_and_ticket_status_impl(state=st),
+        lambda st: services.manage_appointment_impl("reschedule", slot_id="SLOT-2", state=st),
+        lambda st: services.browse_plans_impl("mobility", "", "more data", state=st),
+        lambda st: services.file_warranty_claim_impl("phone", "screen flickers", "no", "no", state=st),
+        lambda st: services.start_number_transfer_impl(state=st),
+        lambda st: services.manage_mfa_impl("enable", state=st),
+        lambda st: services.send_password_reset_link_impl(state=st),
+        lambda st: services.cancel_or_port_out_service_impl("tv", "cancel", "moving", False, state=st),
+        lambda st: services.update_contact_profile_impl("email", "new.name@mailprovider.example", state=st),
+        lambda st: services.send_sms_notification_impl("troubleshooting_guide", state=st),
+        lambda st: services.handover_to_person_impl("fraud_escalation", "caller reports a SIM swap", state=st),
+    ]
+    for call in calls:
+        state = logged_in()
+        reply = call(state)
+        text = json.dumps(reply, ensure_ascii=False).lower()
+        assert reply["status"] == "ok" or reply.get("error") == "CONFIRMATION_REQUIRED", reply
+        assert not any(w in text for w in ("suspended", "nonpayment", "non_payment", "past due", "past_due")), reply

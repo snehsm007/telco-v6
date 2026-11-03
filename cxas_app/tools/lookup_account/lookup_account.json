@@ -4,7 +4,7 @@
   "executionType": "SYNCHRONOUS",
   "pythonFunction": {
     "name": "lookup_account",
-    "description": "Finds the caller's account from the phone number or account number they gave (or their email address when they have no number) and remembers it for the call. Call it as soon as the caller gives a number. Returns business_flag and service_status; a blocked number returns error PERMISSION_DENIED.",
+    "description": "Finds the caller's account from the phone number or account number they gave (or their email address when they have no number) and remembers it for the call. Call it as soon as the caller gives a number. Returns business_flag (service status comes from the billing tools after login); a blocked number returns error PERMISSION_DENIED.",
     "pythonCode": "tools/lookup_account/python_function/python_code.py"
   }
 }

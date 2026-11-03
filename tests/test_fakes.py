@@ -201,3 +201,5 @@ def test_default_world_serves_scenarios_without_overrides() -> None:
     assert FIXTURE_DEFAULTS["fx_duplicate_payment"] == "true"
     assert FIXTURE_DEFAULTS["fx_mfa_enabled"] == ""  # manage_mfa: opposite of the request
     assert FIXTURE_DEFAULTS["fx_technician_status"] == "en_route_delayed"
+    assert FIXTURE_DEFAULTS["fx_service_status"] == "suspended_nonpayment"  # billing tools only
+    assert FIXTURE_DEFAULTS["fx_recent_payment"] == "posted_yesterday"  # found only by verify_payment_and_restore
