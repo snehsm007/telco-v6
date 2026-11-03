@@ -69,6 +69,29 @@ _TECH_REMOTE_RESET_TARGET = {  # pragma: no cover
     "smarthome": "hub",
 }
 
+_TECH_RESET_NOTES: dict[str, dict[str, str]] = {  # pragma: no cover
+    "modem": {
+        "en-US": "A remote reset restarts the modem from our side, like unplugging it, and refreshes its connection to our network. It takes about five minutes; Wi-Fi name, password and settings are not changed.",
+        "fr-CA": "La réinitialisation à distance redémarre le modem de notre côté, comme si on le débranchait, et rafraîchit sa connexion à notre réseau. Elle prend environ cinq minutes; le nom, le mot de passe et les réglages du Wi-Fi ne changent pas.",
+    },
+    "receiver": {
+        "en-US": "A remote reset restarts the receiver from our side and reloads its picture output, channel guide and connection. It takes a few minutes; recordings, scheduled recordings and settings are not affected.",
+        "fr-CA": "La réinitialisation à distance redémarre le récepteur de notre côté et recharge sa sortie vidéo, le guide des chaînes et sa connexion. Elle prend quelques minutes; les enregistrements, les enregistrements programmés et les réglages ne sont pas touchés.",
+    },
+    "line": {
+        "en-US": "A remote reset refreshes the home phone line from our side. It takes a few minutes; your number, voicemail and calling features are not affected.",
+        "fr-CA": "La réinitialisation à distance rafraîchit la ligne résidentielle de notre côté. Elle prend quelques minutes; votre numéro, votre boîte vocale et vos options d'appel ne sont pas touchés.",
+    },
+    "network_registration": {
+        "en-US": "A remote reset refreshes your phone's registration on our network, so it reconnects on its next restart. Nothing on the phone is erased: contacts, photos, apps and data stay as they are.",
+        "fr-CA": "La réinitialisation à distance rafraîchit l'inscription de votre téléphone sur notre réseau, qui se reconnecte au prochain redémarrage. Rien n'est effacé du téléphone : contacts, photos, applications et données restent intacts.",
+    },
+    "hub": {
+        "en-US": "A remote reset restarts the smart home hub from our side. It takes a few minutes; paired devices, schedules and settings are kept.",
+        "fr-CA": "La réinitialisation à distance redémarre le concentrateur de maison intelligente de notre côté. Elle prend quelques minutes; les appareils jumelés, les horaires et les réglages sont conservés.",
+    },
+}
+
 _TECH_SUB_TYPES = ("streaming", "satellite", "streaming_only")  # pragma: no cover
 
 ACTIVE_OUTAGES: dict[str, dict[str, Any]] = {  # pragma: no cover
@@ -214,6 +237,68 @@ def _tech_data_usage(lang: str) -> dict[str, Any]:  # pragma: no cover
     )
     return {"data_speed_reduced": slowed, "data_usage_note": usage, "throttling_note": _tech_text(_TECH_DATA_NOTES["throttling"], lang)}
 
+TECH_REPAIR_VISIT_FEE = "0.00"  # pragma: no cover
+
+_TECH_FEE_NOTES: dict[str, dict[str, str]] = {  # pragma: no cover
+    "free_visit": {
+        "en-US": "Troubleshooting with us and the remote reset are free. A technician repair visit for Telco service or equipment is also free of charge.",
+        "fr-CA": "Le dépannage avec nous et la réinitialisation à distance sont gratuits. Une visite de réparation d'un technicien pour un service ou un équipement Telco est aussi sans frais.",
+    },
+    "paid_visit": {
+        "en-US": "Troubleshooting with us and the remote reset are free. A technician repair visit costs {fee} dollars.",
+        "fr-CA": "Le dépannage avec nous et la réinitialisation à distance sont gratuits. Une visite de réparation d'un technicien coûte {fee} dollars.",
+    },
+}
+
+CURRENCY = "CAD"  # pragma: no cover
+
+def display_amount(value: Any) -> str:  # pragma: no cover
+    """Format money for the agent to say: 85.5 -> "85.50" (two decimals, half-up rounding).
+
+    Return it next to the number, never instead of it:
+    {"amount": 85.5, "amount_display": "85.50", "currency": "CAD"}.
+    """
+    if isinstance(value, bool) or value is None:
+        raise ValueError(f"not an amount: {value!r}")
+    try:
+        amount = Decimal(str(value).replace(",", "").strip())
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(f"not an amount: {value!r}") from exc
+    if not amount.is_finite():
+        raise ValueError(f"not an amount: {value!r}")
+    return str(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+def to_decimal(value: Any) -> Decimal | None:  # pragma: no cover
+    """Parse a caller or model amount ("$85.50", 85.5, "85,50") into Decimal; None when not a number."""
+    if value is None or isinstance(value, bool):
+        return None
+    text = str(value).strip().replace("$", "").replace("CAD", "").replace(" ", "")
+    if not text:
+        return None
+    if text.count(",") == 1 and "." not in text:
+        text = text.replace(",", ".")
+    text = text.replace(",", "")
+    try:
+        amount = Decimal(text)
+    except (InvalidOperation, ValueError):
+        return None
+    if not amount.is_finite():
+        return None
+    return amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+def money(value: Any, prefix: str = "amount") -> dict[str, Any]:  # pragma: no cover
+    """Money as a number plus a 2-decimal display string (DESIGN_RULES rule 27)."""
+    amount = to_decimal(value) or Decimal("0.00")
+    return {prefix: float(amount), f"{prefix}_display": display_amount(amount), "currency": CURRENCY}
+
+def _tech_fee_facts(lang: str) -> dict[str, Any]:  # pragma: no cover
+    fee = money(TECH_REPAIR_VISIT_FEE, "technician_visit_fee")
+    if fee["technician_visit_fee"] > 0:
+        note = _tech_text(_TECH_FEE_NOTES["paid_visit"], lang).format(fee=fee["technician_visit_fee_display"])
+    else:
+        note = _tech_text(_TECH_FEE_NOTES["free_visit"], lang)
+    return {"troubleshooting_free": True, **fee, "fee_note": note}
+
 def _tech_hours(hours: int, lang: str) -> str:  # pragma: no cover
     if resolve_copy_locale(lang) == "fr-CA":
         return f"environ {hours} heure" + ("s" if hours > 1 else "")
@@ -287,6 +372,106 @@ def _tech_region(kind: str, code: str) -> str:  # pragma: no cover
     if kind == "postal":
         return REGION_BY_POSTAL_LETTER.get(code[:1], DEFAULT_REGION)
     return DEFAULT_REGION
+
+_TECH_HOW_TO: dict[str, dict[str, str]] = {  # pragma: no cover
+    "modem_restart": {
+        "en-US": "Pull the power cord out of the back of the modem, count to thirty, then plug it back in. The lights blink while it starts and turn solid within about five minutes. Your Wi-Fi name and password stay the same.",
+        "fr-CA": "Retirez le cordon d'alimentation à l'arrière du modem, comptez jusqu'à trente, puis rebranchez-le. Les voyants clignotent au démarrage et deviennent fixes en environ cinq minutes. Le nom et le mot de passe de votre Wi-Fi restent les mêmes.",
+    },
+    "speed_test": {
+        "en-US": "Plug a computer into one of the modem's network ports with a network cable, turn its Wi-Fi off, then run a speed test in a web browser.",
+        "fr-CA": "Branchez un ordinateur dans un port réseau du modem avec un câble réseau, désactivez son Wi-Fi, puis faites un test de vitesse dans un navigateur Web.",
+    },
+    "airplane_mode": {
+        "en-US": "Swipe down from the top of the screen (top-right corner on an iPhone) and tap the airplane icon; wait fifteen seconds, then tap it again.",
+        "fr-CA": "Glissez vers le bas depuis le haut de l'écran (coin supérieur droit sur un iPhone) et touchez l'icône d'avion; attendez quinze secondes, puis touchez-la de nouveau.",
+    },
+    "phone_restart": {
+        "en-US": "Hold the side or power button (with a volume button on newer phones) until the power-off slider or menu appears, turn the phone off, wait a moment, then hold the button again to turn it on.",
+        "fr-CA": "Maintenez le bouton latéral ou d'alimentation (avec un bouton de volume sur les téléphones récents) jusqu'à l'affichage du curseur ou du menu d'arrêt, éteignez le téléphone, attendez un instant, puis maintenez le bouton pour le rallumer.",
+    },
+    "network_selection": {
+        "en-US": "On an iPhone: Settings, Cellular, Network Selection, then turn Automatic on. On Android: Settings, Connections or Network and internet, Mobile networks, Network operators, then Select automatically.",
+        "fr-CA": "Sur un iPhone : Réglages, Cellulaire, Sélection du réseau, puis activez Automatique. Sur Android : Paramètres, Connexions ou Réseau et Internet, Réseaux mobiles, Opérateurs réseau, puis Sélection automatique.",
+    },
+    "sim_reseat": {
+        "en-US": "With the phone off, push a SIM tool or straightened paper clip into the small hole beside the SIM tray, slide the tray out, check the card sits flat, then push the tray back in until it clicks.",
+        "fr-CA": "Téléphone éteint, insérez l'outil SIM ou un trombone déplié dans le petit trou à côté du tiroir SIM, sortez le tiroir, vérifiez que la carte est bien à plat, puis repoussez le tiroir jusqu'au déclic.",
+    },
+    "mobile_data_check": {
+        "en-US": "On an iPhone: Settings, Cellular, then turn Cellular Data on. On Android: Settings, Network and internet or Connections, Mobile network, then turn Mobile data on.",
+        "fr-CA": "Sur un iPhone : Réglages, Cellulaire, puis activez Données cellulaires. Sur Android : Paramètres, Réseau et Internet ou Connexions, Réseau mobile, puis activez Données mobiles.",
+    },
+    "reset_network_settings": {
+        "en-US": "On an iPhone: Settings, General, Transfer or Reset iPhone, Reset, then Reset Network Settings. On Android: Settings, System or General management, Reset options, then Reset Wi-Fi, mobile and Bluetooth. Saved Wi-Fi passwords are erased; photos, contacts and apps are not.",
+        "fr-CA": "Sur un iPhone : Réglages, Général, Transférer ou réinitialiser l'iPhone, Réinitialiser, puis Réinitialiser les réglages réseau. Sur Android : Paramètres, Système ou Gestion globale, Options de réinitialisation, puis Réinitialiser Wi-Fi, mobile et Bluetooth. Les mots de passe Wi-Fi enregistrés sont effacés; les photos, contacts et applications ne le sont pas.",
+    },
+    "tv_input": {
+        "en-US": "Press Input or Source on the TV remote and choose the HDMI port the receiver's cable is plugged into, shown on the back of the TV, for example HDMI 1.",
+        "fr-CA": "Appuyez sur Entrée ou Source sur la télécommande du téléviseur et choisissez le port HDMI où le câble du récepteur est branché, indiqué à l'arrière du téléviseur, par exemple HDMI 1.",
+    },
+    "receiver_restart": {
+        "en-US": "Pull the receiver's power cord out of the outlet or the back of the receiver, wait, then plug it back in. It takes a few minutes to restart; recordings and settings are kept.",
+        "fr-CA": "Retirez le cordon d'alimentation du récepteur de la prise ou de l'arrière du récepteur, attendez, puis rebranchez-le. Le redémarrage prend quelques minutes; les enregistrements et les réglages sont conservés.",
+    },
+    "coax_tighten": {
+        "en-US": "Turn the metal connector on the round coaxial cable clockwise by hand until it is snug; don't use tools.",
+        "fr-CA": "Tournez à la main, dans le sens des aiguilles d'une montre, le connecteur métallique du câble coaxial rond jusqu'à ce qu'il soit bien serré; n'utilisez pas d'outil.",
+    },
+    "dish_signal": {
+        "en-US": "To see the signal strength, press Menu on the receiver remote, then go to Settings, System, Signal strength. A reading in the green range means the dish is aligned; if it stays low after clearing the dish, a technician realigns it.",
+        "fr-CA": "Pour voir la force du signal, appuyez sur Menu sur la télécommande du récepteur, puis allez à Paramètres, Système, Force du signal. Une lecture dans la zone verte indique que l'antenne est bien alignée; si elle reste faible après avoir dégagé l'antenne, un technicien la réaligne.",
+    },
+    "app_cache": {
+        "en-US": "On a streaming stick or Android TV: Settings, Apps, the TV app, then Clear cache. On other devices, uninstall the app and install it again from the app store.",
+        "fr-CA": "Sur une clé de diffusion ou Android TV : Paramètres, Applications, l'application télé, puis Vider le cache. Sur les autres appareils, désinstallez l'application et réinstallez-la depuis la boutique d'applications.",
+    },
+    "app_sign_out": {
+        "en-US": "In the TV app, open Settings or your profile, choose Sign out, then sign back in with your Telco account email and password.",
+        "fr-CA": "Dans l'application télé, ouvrez Paramètres ou votre profil, choisissez Se déconnecter, puis reconnectez-vous avec le courriel et le mot de passe de votre compte Telco.",
+    },
+    "app_update": {
+        "en-US": "Open your device's app store, search for the TV app, and tap Update if it appears.",
+        "fr-CA": "Ouvrez la boutique d'applications de votre appareil, cherchez l'application télé et touchez Mettre à jour si l'option s'affiche.",
+    },
+    "hub_restart": {
+        "en-US": "Unplug the hub's power adapter, count to thirty, then plug it back in; the status light turns solid when it is back online. Paired devices stay paired.",
+        "fr-CA": "Débranchez l'adaptateur du concentrateur, comptez jusqu'à trente, puis rebranchez-le; le voyant d'état devient fixe une fois en ligne. Les appareils jumelés le restent.",
+    },
+    "device_repair": {
+        "en-US": "In the smart home app, open the device, choose Remove device, then tap Add device and follow the pairing steps on the screen.",
+        "fr-CA": "Dans l'application de maison intelligente, ouvrez l'appareil, choisissez Retirer l'appareil, puis touchez Ajouter un appareil et suivez les étapes de jumelage à l'écran.",
+    },
+}
+
+_TECH_STEP_HOW_TO: dict[str, tuple[str, ...]] = {  # pragma: no cover
+    "internet_down": ("", "modem_restart", "", ""),
+    "internet_slow": ("modem_restart", "", "", "speed_test"),
+    "mobile_no_service": ("airplane_mode", "phone_restart", "network_selection", "sim_reseat"),
+    "mobile_slow_data": ("mobile_data_check", "airplane_mode", "reset_network_settings", "phone_restart"),
+    "mobile_sim": ("sim_reseat", ""),
+    "tv_no_signal:streaming": ("", "tv_input", "receiver_restart", ""),
+    "tv_no_signal:satellite": ("coax_tighten", "tv_input", "receiver_restart", "dish_signal"),
+    "tv_no_signal:streaming_only": ("", "", ""),
+    "tv_error_code:satellite": ("dish_signal", "coax_tighten", "receiver_restart", ""),
+    "tv_error_code:streaming": ("receiver_restart", "", ""),
+    "tv_error_code:streaming_only": ("app_sign_out", "app_update", ""),
+    "tv_app_freezing": ("", "app_cache", "", "speed_test"),
+    "homephone_no_dial_tone": ("", "", "", "modem_restart"),
+    "homephone_noise": ("", ""),
+    "smarthome_offline": ("", "hub_restart", "device_repair"),
+}
+
+def _tech_step_details(category: str, sub_type: str, steps: list[str], lang: str) -> list[dict[str, Any]]:  # pragma: no cover
+    """How-to detail for the steps that need it, aligned with the steps list (1-based step_number)."""
+    keys = _TECH_STEP_HOW_TO.get(f"{category}:{sub_type}") or _TECH_STEP_HOW_TO.get(category)
+    if keys is None:
+        keys = _TECH_STEP_HOW_TO.get(f"{category}:streaming", ())
+    out: list[dict[str, Any]] = []
+    for i, (step, key) in enumerate(zip(steps, keys), start=1):
+        if key:
+            out.append({"step_number": i, "step": step, "how_to": _tech_text(_TECH_HOW_TO[key], lang)})
+    return out
 
 _TECH_STEPS: dict[str, dict[str, list[str]]] = {  # pragma: no cover
     "internet_down": {
@@ -1207,6 +1392,10 @@ def run_virtual_repair_impl(  # pragma: no cover
         "sms_recommended": len(steps) > 2,
         "known_issue": known_issue,
         "if_unresolved": ["technician_visit", "live_agent"],
+        # Turn N+1 facts: how to do each step, what the reset does, what it costs (rule 33).
+        "step_details": _tech_step_details(category, sub_type, steps, lang),
+        "remote_reset_note": _tech_text(_TECH_RESET_NOTES[_TECH_REMOTE_RESET_TARGET[service]], lang) if remote_reset else "",
+        **_tech_fee_facts(lang),
     }
     if category == "mobile_slow_data":
         data.update(_tech_data_usage(lang))

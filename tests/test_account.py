@@ -548,3 +548,19 @@ def test_submitted_summary_carries_the_confirmation_number(lang: str, lob: str, 
     again = cancel_or_port_out_service_impl(lob, mode, "", True, state=state, language=lang)
     assert again["data"]["already_submitted"] is True
     assert cid in again["spoken_summary"]
+
+
+# --- manage_mfa follow-up facts (fix/14, cluster E) ---------------------------------
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_mfa_change_carries_fee_and_re_enable_notes(lang: str) -> None:
+    """VE-56 ('any fee?') and VE-13 ('how do I turn it back on?') were answered from nothing."""
+    state = _logged_in(language=lang)
+    on = manage_mfa_impl("enable", state=state, language=lang)["data"]
+    assert on["fee_note"] and on["re_enable_note"] == ""
+    state["step_up_verified"] = True
+    off = manage_mfa_impl("disable", state=state, language=lang)["data"]
+    assert off["mfa_enabled"] is False and off["fee_note"]
+    assert "0147" in off["re_enable_note"]
+    assert ("frais" in off["fee_note"]) == (lang == "fr-CA")

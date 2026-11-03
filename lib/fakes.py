@@ -204,8 +204,8 @@ PLANS: tuple[dict[str, Any], ...] = (
     {"plan_id": "INT-1G", "lob": "internet", "upload_mbps": 1000, "symmetric": True, "latency_key": "latency_fibre", "name": "Fibre 1 Gigabit", "price": "97.00", "speed_mbps": 1000, "features": ["Up to 1 Gbps download", "Unlimited usage", "Wi-Fi 6 gateway"]},
     {"plan_id": "INT-3G", "lob": "internet", "upload_mbps": 3000, "symmetric": True, "latency_key": "latency_fibre", "name": "Fibre 3 Gigabit", "price": "118.00", "speed_mbps": 3000, "features": ["Up to 3 Gbps download", "Unlimited usage", "Wi-Fi 6E gateway", "Whole-home Wi-Fi pod"]},
     {"plan_id": "INT-8G", "lob": "internet", "upload_mbps": 8000, "symmetric": True, "latency_key": "latency_fibre", "name": "Fibre 8 Gigabit", "price": "143.00", "speed_mbps": 8000, "features": ["Up to 8 Gbps download", "Unlimited usage", "Wi-Fi 7 gateway", "Two Wi-Fi pods"]},
-    {"plan_id": "TV-SPORTS", "lob": "tv", "name": "Sports Pack", "price": "16.00", "addon": True, "keywords": ["sport", "hockey", "football", "soccer", "basketball", "baseball"], "features": ["National sports networks", "Regional game coverage", "Sports on demand"], "hd_included": True, "channel_examples": ["National hockey, football and basketball broadcasts", "Regional and local team games", "International soccer", "Sports news and highlights"]},
-    {"plan_id": "TV-MOVIES", "lob": "tv", "name": "Movies Pack", "price": "13.00", "addon": True, "keywords": ["movie", "film", "cinema", "cinéma"], "features": ["Premium movie channels", "Movies on demand"], "hd_included": True, "channel_examples": ["Premium movie channels", "Recent releases on demand", "Classic film channels"]},
+    {"plan_id": "TV-SPORTS", "lob": "tv", "name": "Sports Pack", "price": "16.00", "addon": True, "channel_count": 14, "blackout_key": "blackout_sports", "keywords": ["sport", "hockey", "football", "soccer", "basketball", "baseball"], "features": ["National sports networks", "Regional game coverage", "Sports on demand"], "hd_included": True, "channel_examples": ["National hockey, football and basketball broadcasts", "Regional and local team games", "International soccer", "Sports news and highlights"]},
+    {"plan_id": "TV-MOVIES", "lob": "tv", "name": "Movies Pack", "price": "13.00", "addon": True, "channel_count": 9, "keywords": ["movie", "film", "cinema", "cinéma"], "features": ["Premium movie channels", "Movies on demand"], "hd_included": True, "channel_examples": ["Premium movie channels", "Recent releases on demand", "Classic film channels"]},
     {"plan_id": "TV-PLUS", "lob": "tv", "name": "TV Plus Package", "price": "61.00", "addon": False, "keywords": ["package", "channels", "upgrade"], "features": ["Over 150 channels", "Cloud PVR"], "hd_included": True, "channel_examples": ["National news and lifestyle channels", "Kids and family channels", "Specialty entertainment channels"]},
 )
 CURRENT_PLANS: dict[str, str] = {"mobility": "Plus 50 Legacy", "internet": "Fibre 500", "tv": "TV Basic", "homephone": "Home Phone Lite"}
@@ -297,6 +297,8 @@ SALES_GENERIC_DEVICE_WORDS: frozenset[str] = frozenset({
 # Words in target_line / current_provider meaning the number is a home phone (landline).
 SALES_LANDLINE_WORDS: tuple[str, ...] = ("landline", "home phone", "house phone", "fixe", "résidentiel", "maison")
 # Words in target_line meaning the number goes on a new line on the account.
+# A "current provider" that is us: the number is already on the caller's Telco account.
+SALES_OWN_BRAND_WORDS: tuple[str, ...] = ("telco", "you guys", "chez vous")
 SALES_NEW_LINE_WORDS: tuple[str, ...] = ("new", "add", "family", "nouvelle", "ajout", "famille")
 # Answers that mean "not provided yet".
 SALES_PLACEHOLDERS: frozenset[str] = frozenset(
@@ -392,6 +394,22 @@ SALES_COPY: dict[str, dict[str, str]] = {
         "en-US": "Fibre has low latency, typically under 10 milliseconds on a wired connection, well suited to video calls.",
         "fr-CA": "La fibre a une faible latence, habituellement moins de 10 millisecondes sur une connexion câblée, idéale pour les appels vidéo.",
     },
+    "full_channel_list": {
+        "en-US": "The full channel list for this pack is on the TV packs page of the Telco website and in the receiver's channel guide once the pack is added.",
+        "fr-CA": "La liste complète des chaînes de ce forfait se trouve sur la page des forfaits télé du site Web de Telco et dans le guide des chaînes du récepteur une fois le forfait ajouté.",
+    },
+    "blackout_sports": {
+        "en-US": "Some local and regional games can be blacked out when a local broadcaster holds the rights in your area; those games air on that broadcaster's channel instead. Blackouts depend on the league and the service address.",
+        "fr-CA": "Certains matchs locaux et régionaux peuvent être interdits de diffusion quand un diffuseur local détient les droits dans votre région; ces matchs sont alors présentés sur la chaîne de ce diffuseur. Les interdictions dépendent de la ligue et de l'adresse de service.",
+    },
+    "port_own_account": {
+        "en-US": "your own Telco account",
+        "fr-CA": "votre propre compte Telco",
+    },
+    "port_internal_move": {
+        "en-US": "This number is already on your Telco account, so it moves between your own lines: no account number or transfer PIN from another provider is needed.",
+        "fr-CA": "Ce numéro est déjà à votre compte Telco, donc il passe d'une de vos lignes à l'autre : aucun numéro de compte ni NIP de transfert d'un autre fournisseur n'est requis.",
+    },
     "new_line_pricing": {
         "en-US": "Added as an additional line, the plan adds its own price to the account and the current line keeps its plan; as a plan change, it replaces the current mobile plan.",
         "fr-CA": "Ajouté comme ligne supplémentaire, le forfait ajoute son propre prix au compte et la ligne actuelle garde son forfait; comme changement de forfait, il remplace le forfait mobile actuel.",
@@ -419,6 +437,8 @@ SLOT_WINDOWS: tuple[tuple[str, str], ...] = (("08:00", "12:00"), ("12:00", "16:0
 TECH_EN_ROUTE_ETA_MINUTES = 25
 # Service type of a visit booked on this call when the repair line is unknown.
 TECH_DEFAULT_BOOKING_SERVICE = "repair"
+# Price of a technician repair visit for Telco service or equipment (remote troubleshooting is always free).
+TECH_REPAIR_VISIT_FEE = "0.00"
 # --- end tech fixtures ---
 
 # Outage regions (BR-TV-003, DESIGN_RULES rule 40: classes, not literals).

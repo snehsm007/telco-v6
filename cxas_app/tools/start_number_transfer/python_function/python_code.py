@@ -61,9 +61,76 @@ SALES_LANDLINE_WORDS: tuple[str, ...] = ("landline", "home phone", "house phone"
 
 SALES_NEW_LINE_WORDS: tuple[str, ...] = ("new", "add", "family", "nouvelle", "ajout", "famille")  # pragma: no cover
 
+SALES_OWN_BRAND_WORDS: tuple[str, ...] = ("telco", "you guys", "chez vous")  # pragma: no cover
+
 def _sales_has(text: str, words: tuple[str, ...] | frozenset[str]) -> bool:  # pragma: no cover
     low = str(text or "").lower()
     return any(w in low for w in words)
+
+ACCOUNTS: tuple[dict[str, Any], ...] = (  # pragma: no cover
+    {
+        "account_id": "A1001",
+        "phone": "2025550186",
+        "first_name": "Morgan",
+        "email": "m.okafor@mailprovider.example",
+        "status": "active",
+        "preferred_language": "en-US",
+        "card_last4": "7742",
+        "card_brand": "Visa",
+        "customer_type": "Existing",
+        "postal_code": "K2P 1L4",
+        "service_address_last_line": "Ottawa, ON K2P 1L4",
+        "lines_of_business": ["mobility", "internet", "tv", "homephone"],
+        "business_flag": False,
+    },
+    {
+        "account_id": "A1002",
+        "phone": "2025550198",
+        "first_name": "Taylor",
+        "email": "taylor.r@mailprovider.example",
+        "status": "active",
+        "preferred_language": "fr-CA",
+        "card_last4": "8853",
+        "card_brand": "Mastercard",
+        "customer_type": "Existing",
+        "postal_code": "K1A 0B1",
+        "service_address_last_line": "Ottawa, ON K1A 0B1",
+        "lines_of_business": ["mobility", "internet"],
+        "business_flag": False,
+    },
+)
+
+def account_record(state: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover
+    """The active account record, falling back to the default account."""
+    account_id = str(state.get("account_id") or "")
+    for record in ACCOUNTS:
+        if record["account_id"] == account_id:
+            return dict(record)
+    base = dict(ACCOUNTS[0])
+    if account_id:
+        base["account_id"] = account_id
+    return base
+
+def normalize_code(value: Any) -> str:  # pragma: no cover
+    """Coerce ints, floats (e.g. 5903.0), and formatted strings into a clean digit string."""
+    if value is None or isinstance(value, bool):
+        return ""
+    if isinstance(value, int):
+        return str(abs(value))
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(abs(value)))
+        return re.sub(r"\D", "", str(value))
+    text = str(value).strip()
+    if re.fullmatch(r"[+-]?\d+\.0+", text):
+        text = text.split(".", 1)[0]
+    return "".join(ch for ch in text if ch.isdigit())
+
+def _sales_own_number(state: dict[str, Any], number: str) -> bool:  # pragma: no cover
+    """True when the number to transfer is the logged-in account's own phone number."""
+    own = {str(state.get(k) or "") for k in ("phone_last4", "caller_provided_phone_last4")} - {""}
+    record_phone = normalize_code(account_record(state).get("phone", ""))
+    return number == record_phone or number[-4:] in own
 
 SALES_PLACEHOLDERS: frozenset[str] = frozenset(  # pragma: no cover
     {"", "unknown", "external", "none", "n/a", "na", "tbd", "pending", "not sure", "?", "inconnu", "aucun", "other", "autre"}
@@ -160,6 +227,22 @@ SALES_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
     "latency_fibre": {
         "en-US": "Fibre has low latency, typically under 10 milliseconds on a wired connection, well suited to video calls.",
         "fr-CA": "La fibre a une faible latence, habituellement moins de 10 millisecondes sur une connexion câblée, idéale pour les appels vidéo.",
+    },
+    "full_channel_list": {
+        "en-US": "The full channel list for this pack is on the TV packs page of the Telco website and in the receiver's channel guide once the pack is added.",
+        "fr-CA": "La liste complète des chaînes de ce forfait se trouve sur la page des forfaits télé du site Web de Telco et dans le guide des chaînes du récepteur une fois le forfait ajouté.",
+    },
+    "blackout_sports": {
+        "en-US": "Some local and regional games can be blacked out when a local broadcaster holds the rights in your area; those games air on that broadcaster's channel instead. Blackouts depend on the league and the service address.",
+        "fr-CA": "Certains matchs locaux et régionaux peuvent être interdits de diffusion quand un diffuseur local détient les droits dans votre région; ces matchs sont alors présentés sur la chaîne de ce diffuseur. Les interdictions dépendent de la ligue et de l'adresse de service.",
+    },
+    "port_own_account": {
+        "en-US": "your own Telco account",
+        "fr-CA": "votre propre compte Telco",
+    },
+    "port_internal_move": {
+        "en-US": "This number is already on your Telco account, so it moves between your own lines: no account number or transfer PIN from another provider is needed.",
+        "fr-CA": "Ce numéro est déjà à votre compte Telco, donc il passe d'une de vos lignes à l'autre : aucun numéro de compte ni NIP de transfert d'un autre fournisseur n'est requis.",
     },
     "new_line_pricing": {
         "en-US": "Added as an additional line, the plan adds its own price to the account and the current line keeps its plan; as a plan change, it replaces the current mobile plan.",
@@ -560,50 +643,6 @@ def check_mock_error(state: dict[str, Any], lang: str = "en-US", tool_name: str 
         )
     return None
 
-ACCOUNTS: tuple[dict[str, Any], ...] = (  # pragma: no cover
-    {
-        "account_id": "A1001",
-        "phone": "2025550186",
-        "first_name": "Morgan",
-        "email": "m.okafor@mailprovider.example",
-        "status": "active",
-        "preferred_language": "en-US",
-        "card_last4": "7742",
-        "card_brand": "Visa",
-        "customer_type": "Existing",
-        "postal_code": "K2P 1L4",
-        "service_address_last_line": "Ottawa, ON K2P 1L4",
-        "lines_of_business": ["mobility", "internet", "tv", "homephone"],
-        "business_flag": False,
-    },
-    {
-        "account_id": "A1002",
-        "phone": "2025550198",
-        "first_name": "Taylor",
-        "email": "taylor.r@mailprovider.example",
-        "status": "active",
-        "preferred_language": "fr-CA",
-        "card_last4": "8853",
-        "card_brand": "Mastercard",
-        "customer_type": "Existing",
-        "postal_code": "K1A 0B1",
-        "service_address_last_line": "Ottawa, ON K1A 0B1",
-        "lines_of_business": ["mobility", "internet"],
-        "business_flag": False,
-    },
-)
-
-def account_record(state: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover
-    """The active account record, falling back to the default account."""
-    account_id = str(state.get("account_id") or "")
-    for record in ACCOUNTS:
-        if record["account_id"] == account_id:
-            return dict(record)
-    base = dict(ACCOUNTS[0])
-    if account_id:
-        base["account_id"] = account_id
-    return base
-
 def dispatch_sms(state: dict[str, Any], purpose: str) -> dict[str, Any]:  # pragma: no cover
     """Record a text message to the mobile number on file; returns its delivery facts."""
     dest = str(state.get("phone_last4") or account_record(state)["phone"][-4:])
@@ -634,21 +673,6 @@ def is_plausible_phone(digits: str) -> bool:  # pragma: no cover
     if len(digits) != 10 or not digits.isdigit():
         return False
     return not is_weak_code(digits) and digits not in DUMMY_NUMBERS
-
-def normalize_code(value: Any) -> str:  # pragma: no cover
-    """Coerce ints, floats (e.g. 5903.0), and formatted strings into a clean digit string."""
-    if value is None or isinstance(value, bool):
-        return ""
-    if isinstance(value, int):
-        return str(abs(value))
-    if isinstance(value, float):
-        if value.is_integer():
-            return str(int(abs(value)))
-        return re.sub(r"\D", "", str(value))
-    text = str(value).strip()
-    if re.fullmatch(r"[+-]?\d+\.0+", text):
-        text = text.split(".", 1)[0]
-    return "".join(ch for ch in text if ch.isdigit())
 
 def normalize_identifier(raw: object) -> dict[str, str]:  # pragma: no cover
     """Postel normalizer for caller-provided identifiers (DESIGN_RULES rule 43).
@@ -1002,18 +1026,31 @@ def start_number_transfer_impl(  # pragma: no cover
     else:
         target = "existing_line"
 
-    missing = [name for name, val in (("current_account_number", account_number),) if not val]
+    # The caller's own Telco number (e.g. their landline onto their mobile) is an internal
+    # move: there is no losing provider, so no outside account number is needed.
+    internal_move = (
+        number_type == "landline"
+        and _sales_own_number(state, number)
+        and (provider_found_by_lookup or _sales_has(provider, SALES_OWN_BRAND_WORDS))
+    )
+    if internal_move:
+        provider = _sales_text("port_own_account", lang)
+    missing = [] if internal_move else [name for name, val in (("current_account_number", account_number),) if not val]
     eta = _sales_port_eta(number_type, lang)
     data: dict[str, Any] = {
         "number_last4": number[-4:],
         "number_type": number_type,
         "current_provider": provider,
-        "provider_found_by_lookup": provider_found_by_lookup,
+        "provider_found_by_lookup": provider_found_by_lookup and not internal_move,
+        "internal_move": internal_move,
         "current_account_number_last4": account_number[-4:] if account_number else "",
         "transfer_pin_received": bool(pin_digits),
         "target": target,
         "keep_old_service_note": _sales_text("port_keep_active", lang),
     }
+    if internal_move:
+        data["internal_move_note"] = _sales_text("port_internal_move", lang)
+        del data["keep_old_service_note"]
     if target_last4:
         data["target_line_last4"] = target_last4
     if missing:

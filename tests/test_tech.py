@@ -478,3 +478,50 @@ def test_repair_slow_mobile_data_carries_usage_and_throttling_facts() -> None:
 def test_data_usage_reports_reduced_speed_over_allowance(monkeypatch) -> None:
     monkeypatch.setattr(tech, "CURRENT_DATA_USED_GB", tech.CURRENT_DATA_GB)
     assert tech._tech_data_usage("en-US")["data_speed_reduced"] is True
+
+
+# --- follow-up facts in run_virtual_repair (fix/14, cluster E) -------------------
+
+
+def test_repair_step_details_explain_how_to_reset_network_settings() -> None:
+    """VE-40: 'how do I reset the network settings?' had no answer in the payload."""
+    data = run_virtual_repair_impl("mobility", "slow data, pages won't load", state=_logged_in())["data"]
+    by_step = {d["step_number"]: d for d in data["step_details"]}
+    reset = next(d for d in data["step_details"] if "network settings" in d["step"].lower())
+    assert "Reset Network Settings" in reset["how_to"]
+    for number, detail in by_step.items():
+        assert data["steps"][number - 1] == detail["step"]
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_every_step_table_has_aligned_how_to_keys(lang: str) -> None:
+    for key, table in tech._TECH_STEPS.items():
+        keys = tech._TECH_STEP_HOW_TO[key]
+        assert len(table[lang]) == len(keys), key
+        assert all(k in tech._TECH_HOW_TO for k in keys if k), key
+
+
+def test_satellite_error_steps_say_where_the_signal_meter_is() -> None:
+    """VE-42: the caller asked how to find the signal strength meter."""
+    data = run_virtual_repair_impl("tv", "error 101", "satellite", state=_logged_in())["data"]
+    assert any("Signal strength" in d["how_to"] for d in data["step_details"])
+
+
+def test_receiver_reset_note_says_recordings_are_kept_and_fee_note_is_grounded() -> None:
+    """VE-67 (recordings / what a reset does) and VE-42 ('no charge?')."""
+    data = run_virtual_repair_impl("tv", "no signal", "streaming", state=_logged_in())["data"]
+    assert "recordings" in data["remote_reset_note"]
+    assert data["troubleshooting_free"] is True
+    assert data["technician_visit_fee_display"] == "0.00" and data["currency"] == "CAD"
+    assert "free" in data["fee_note"]
+    fr = run_virtual_repair_impl("tv", "pas de signal", "streaming", state=_logged_in(), language="fr-CA")["data"]
+    assert "enregistrements" in fr["remote_reset_note"] and "gratuits" in fr["fee_note"]
+    assert not [k for k in _walk_keys(fr) if k.endswith(("_en", "_fr"))]
+
+
+def test_app_only_tv_has_no_remote_reset_note(monkeypatch) -> None:
+    data = run_virtual_repair_impl("tv", "app freezing", "streaming_only", state=_logged_in())["data"]
+    assert data["remote_reset_sent"] is False and data["remote_reset_note"] == ""
+    monkeypatch.setattr(tech, "TECH_REPAIR_VISIT_FEE", "49.95")
+    paid = run_virtual_repair_impl("internet", "slow", state=_logged_in())["data"]
+    assert paid["technician_visit_fee_display"] == "49.95" and "49.95" in paid["fee_note"]

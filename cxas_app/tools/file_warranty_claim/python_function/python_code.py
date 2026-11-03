@@ -104,6 +104,19 @@ SALES_GENERIC_DEVICE_WORDS: frozenset[str] = frozenset({  # pragma: no cover
     "cellulaire", "appareil", "portable", "intelligent",
 })
 
+def _sales_model_tokens(text: Any) -> set[str]:  # pragma: no cover
+    """Model-number tokens the caller named: letters+digits ("s22", "8a") or a short number ("13").
+
+    Storage sizes ("128gb") and long numbers (years, codes) are not model numbers.
+    """
+    tokens = re.findall(r"[^\W_]+", str(text or "").lower())
+    return {
+        t for t in tokens
+        if re.search(r"\d", t) and len(t) <= 6
+        and not re.fullmatch(r"\d+(?:gb|go|tb|to|g)", t)
+        and not (t.isdigit() and len(t) > 2)
+    }
+
 SALES_PLACEHOLDERS: frozenset[str] = frozenset(  # pragma: no cover
     {"", "unknown", "external", "none", "n/a", "na", "tbd", "pending", "not sure", "?", "inconnu", "aucun", "other", "autre"}
 )
@@ -144,9 +157,14 @@ def _sales_device(device: Any, issue: Any) -> tuple[dict[str, Any], bool]:  # pr
     own; only a generic "my phone" falls back to the most recent purchase.
     """
     text = f"{device or ''} {issue or ''}".lower()
+    named_tokens = _sales_model_tokens(device)
     for dev in DEVICES_ON_FILE:
-        if any(k in text for k in dev.get("keywords", [])) or str(dev["model"]).lower() in text:
-            return dev, True
+        if not (any(k in text for k in dev.get("keywords", [])) or str(dev["model"]).lower() in text):
+            continue
+        # Same brand, different model ("Galaxy S22" vs the S24 on file): not this device.
+        if named_tokens - _sales_model_tokens(dev["model"]):
+            continue
+        return dev, True
     newest = min(DEVICES_ON_FILE, key=lambda d: int(d["purchased_days_ago"]))
     named = " ".join(str(device or "").split())[:60]
     words = re.findall(r"[^\W_]+", named.lower())
@@ -247,6 +265,22 @@ SALES_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
     "latency_fibre": {
         "en-US": "Fibre has low latency, typically under 10 milliseconds on a wired connection, well suited to video calls.",
         "fr-CA": "La fibre a une faible latence, habituellement moins de 10 millisecondes sur une connexion câblée, idéale pour les appels vidéo.",
+    },
+    "full_channel_list": {
+        "en-US": "The full channel list for this pack is on the TV packs page of the Telco website and in the receiver's channel guide once the pack is added.",
+        "fr-CA": "La liste complète des chaînes de ce forfait se trouve sur la page des forfaits télé du site Web de Telco et dans le guide des chaînes du récepteur une fois le forfait ajouté.",
+    },
+    "blackout_sports": {
+        "en-US": "Some local and regional games can be blacked out when a local broadcaster holds the rights in your area; those games air on that broadcaster's channel instead. Blackouts depend on the league and the service address.",
+        "fr-CA": "Certains matchs locaux et régionaux peuvent être interdits de diffusion quand un diffuseur local détient les droits dans votre région; ces matchs sont alors présentés sur la chaîne de ce diffuseur. Les interdictions dépendent de la ligue et de l'adresse de service.",
+    },
+    "port_own_account": {
+        "en-US": "your own Telco account",
+        "fr-CA": "votre propre compte Telco",
+    },
+    "port_internal_move": {
+        "en-US": "This number is already on your Telco account, so it moves between your own lines: no account number or transfer PIN from another provider is needed.",
+        "fr-CA": "Ce numéro est déjà à votre compte Telco, donc il passe d'une de vos lignes à l'autre : aucun numéro de compte ni NIP de transfert d'un autre fournisseur n'est requis.",
     },
     "new_line_pricing": {
         "en-US": "Added as an additional line, the plan adds its own price to the account and the current line keeps its plan; as a plan change, it replaces the current mobile plan.",
@@ -1049,8 +1083,15 @@ def file_warranty_claim_impl(  # pragma: no cover
         )
     if not urgent and (physical is None or water is None):
         missing = [name for name, val in (("physical_damage", physical), ("water_damage", water)) if val is None]
-        reply = ok_reply({**base, "claim_filed": False, "damage_check_needed": True, "missing": missing}, reference, language=lang)
-        reply["agent_action"] = "Confirm the device model and ask about physical or water damage, then call again."
+        check = {
+            **base,
+            "claim_filed": False,
+            "damage_check_needed": True,
+            "missing": missing,
+            # Turn N+1: the caller can confirm where the replacement goes before the claim is filed.
+        }
+        reply = ok_reply(check, reference, language=lang)
+        reply["agent_action"] = "Confirm the device model, ask about cracks or water damage, then call again."
         return reply
     if not urgent and not str(issue or "").strip():
         return validation_error(state, "No fault described.", "Ask what is wrong with the device.", reference, lang)
