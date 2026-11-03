@@ -42,6 +42,39 @@ import hashlib
 import json
 import re
 
+ACCOUNTS: tuple[dict[str, Any], ...] = (  # pragma: no cover
+    {
+        "account_id": "A1001",
+        "phone": "2025550186",
+        "first_name": "Morgan",
+        "email": "m.okafor@mailprovider.example",
+        "status": "active",
+        "preferred_language": "en-US",
+        "card_last4": "7742",
+        "card_brand": "Visa",
+        "customer_type": "Existing",
+        "postal_code": "K2P 1L4",
+        "service_address_last_line": "Ottawa, ON K2P 1L4",
+        "lines_of_business": ["mobility", "internet", "tv", "homephone"],
+        "business_flag": False,
+    },
+    {
+        "account_id": "A1002",
+        "phone": "2025550198",
+        "first_name": "Taylor",
+        "email": "taylor.r@mailprovider.example",
+        "status": "active",
+        "preferred_language": "fr-CA",
+        "card_last4": "8853",
+        "card_brand": "Mastercard",
+        "customer_type": "Existing",
+        "postal_code": "K1A 0B1",
+        "service_address_last_line": "Ottawa, ON K1A 0B1",
+        "lines_of_business": ["mobility", "internet"],
+        "business_flag": False,
+    },
+)
+
 BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199"})  # pragma: no cover
 
 CALLER_ID_REQUESTS: frozenset[str] = frozenset({"", "clid"})  # pragma: no cover
@@ -475,39 +508,6 @@ def check_mock_error(state: dict[str, Any], lang: str = "en-US", tool_name: str 
         )
     return None
 
-ACCOUNTS: tuple[dict[str, Any], ...] = (  # pragma: no cover
-    {
-        "account_id": "A1001",
-        "phone": "2025550186",
-        "first_name": "Morgan",
-        "email": "m.okafor@mailprovider.example",
-        "status": "active",
-        "preferred_language": "en-US",
-        "card_last4": "7742",
-        "card_brand": "Visa",
-        "customer_type": "Existing",
-        "postal_code": "K2P 1L4",
-        "service_address_last_line": "Ottawa, ON K2P 1L4",
-        "lines_of_business": ["mobility", "internet", "tv", "homephone"],
-        "business_flag": False,
-    },
-    {
-        "account_id": "A1002",
-        "phone": "2025550198",
-        "first_name": "Taylor",
-        "email": "taylor.r@mailprovider.example",
-        "status": "active",
-        "preferred_language": "fr-CA",
-        "card_last4": "8853",
-        "card_brand": "Mastercard",
-        "customer_type": "Existing",
-        "postal_code": "K1A 0B1",
-        "service_address_last_line": "Ottawa, ON K1A 0B1",
-        "lines_of_business": ["mobility", "internet"],
-        "business_flag": False,
-    },
-)
-
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}$")  # pragma: no cover
 
 def _phone_from_digits(digits: str) -> str:  # pragma: no cover
@@ -884,27 +884,20 @@ def lookup_account_impl(  # pragma: no cover
     raw = str(phone_or_account or "").strip()
     raw = re.sub(r"\.0+$", "", raw)
     used_caller_id = False
+    caller_id_source = ""
     if raw.lower() in CALLER_ID_REQUESTS:
         # No number given ("use the number I'm calling from"): try the caller ID once.
         raw = _caller_id_phone(state)
-        used_caller_id = bool(raw)
+        used_caller_id = True
+        caller_id_source = "clid"
+        if not raw:
+            # No usable caller ID (text chats, evaluations): simulate the line, as an unknown
+            # email resolves the default account (find_account). An account already identified
+            # on this call is kept. Identification only: login is still required.
+            raw = str(state.get("account_id") or "")
+            caller_id_source = "session_account" if raw else "default_line"
+            raw = raw or ACCOUNTS[0]["account_id"]
     reference = tracking_id("lookup_account", raw)
-    if not raw:
-        # No number and no usable caller ID: not a wrong entry, so no strike (BR-TV-010).
-        state["last_tracking_id"] = reference
-        return error_reply(
-            "INVALID_INPUT",
-            "No phone number or account number was given, and no caller ID is available.",
-            NO_ACCOUNT_ACTION,
-            reference,
-            language=lang,
-            data={
-                "spoken_message": spoken_line("account_lookup_options", lang),
-                "pin_length": 4,
-                "counted": False,
-                "caller_id_available": False,
-            },
-        )
     digits = only_digits(raw)
     norm_digits = digits[1:] if (len(digits) == 11 and digits.startswith("1")) else digits
     if digits in BLOCKED_CALLER_NUMBERS or norm_digits in BLOCKED_CALLER_NUMBERS:
@@ -952,9 +945,10 @@ def lookup_account_impl(  # pragma: no cover
     state["account_id"] = account["account_id"]
     state["phone_last4"] = account["phone"][-4:]
     ident = normalize_identifier(raw)
-    state["caller_provided_phone_last4"] = (
-        only_digits(ident["value"])[-4:] if ident["kind"] in ("phone", "international_phone") else ""
-    )
+    if caller_id_source != "session_account":
+        state["caller_provided_phone_last4"] = (
+            only_digits(ident["value"])[-4:] if ident["kind"] in ("phone", "international_phone") else ""
+        )
     state["identification_status"] = "Pass"
     state["business_flag"] = business
     state["customer_type"] = account.get("customer_type", "Existing")
@@ -966,12 +960,13 @@ def lookup_account_impl(  # pragma: no cover
         "identification_status": "Pass",
         "account_id_last4": normalize_code(account["account_id"])[-4:] or account["account_id"][-4:],
         "phone_last4": account["phone"][-4:],
-        "caller_provided_phone_last4": state["caller_provided_phone_last4"],
+        "caller_provided_phone_last4": str(state.get("caller_provided_phone_last4") or ""),
         "business_flag": business,
         "customer_type": state["customer_type"],
         "lines_of_business": list(account.get("lines_of_business", [])),
         "region": state["region"],
         "used_caller_id": used_caller_id,
+        "caller_id_source": caller_id_source,
     }
     reply = ok_reply(data, reference, language=lang)
     if business:

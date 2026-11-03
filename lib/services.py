@@ -42,6 +42,7 @@ from lib.core import (
     validation_error,
 )
 from lib.fakes import (
+    ACCOUNTS,
     BLOCKED_CALLER_NUMBERS,
     OTP_EXPIRES_IN_SEC,
     REGION_BY_POSTAL_LETTER,
@@ -186,27 +187,20 @@ def lookup_account_impl(
     raw = str(phone_or_account or "").strip()
     raw = re.sub(r"\.0+$", "", raw)
     used_caller_id = False
+    caller_id_source = ""
     if raw.lower() in CALLER_ID_REQUESTS:
         # No number given ("use the number I'm calling from"): try the caller ID once.
         raw = _caller_id_phone(state)
-        used_caller_id = bool(raw)
+        used_caller_id = True
+        caller_id_source = "clid"
+        if not raw:
+            # No usable caller ID (text chats, evaluations): simulate the line, as an unknown
+            # email resolves the default account (find_account). An account already identified
+            # on this call is kept. Identification only: login is still required.
+            raw = str(state.get("account_id") or "")
+            caller_id_source = "session_account" if raw else "default_line"
+            raw = raw or ACCOUNTS[0]["account_id"]
     reference = tracking_id("lookup_account", raw)
-    if not raw:
-        # No number and no usable caller ID: not a wrong entry, so no strike (BR-TV-010).
-        state["last_tracking_id"] = reference
-        return error_reply(
-            "INVALID_INPUT",
-            "No phone number or account number was given, and no caller ID is available.",
-            NO_ACCOUNT_ACTION,
-            reference,
-            language=lang,
-            data={
-                "spoken_message": spoken_line("account_lookup_options", lang),
-                "pin_length": 4,
-                "counted": False,
-                "caller_id_available": False,
-            },
-        )
     digits = only_digits(raw)
     norm_digits = digits[1:] if (len(digits) == 11 and digits.startswith("1")) else digits
     if digits in BLOCKED_CALLER_NUMBERS or norm_digits in BLOCKED_CALLER_NUMBERS:
@@ -254,9 +248,10 @@ def lookup_account_impl(
     state["account_id"] = account["account_id"]
     state["phone_last4"] = account["phone"][-4:]
     ident = normalize_identifier(raw)
-    state["caller_provided_phone_last4"] = (
-        only_digits(ident["value"])[-4:] if ident["kind"] in ("phone", "international_phone") else ""
-    )
+    if caller_id_source != "session_account":
+        state["caller_provided_phone_last4"] = (
+            only_digits(ident["value"])[-4:] if ident["kind"] in ("phone", "international_phone") else ""
+        )
     state["identification_status"] = "Pass"
     state["business_flag"] = business
     state["customer_type"] = account.get("customer_type", "Existing")
@@ -268,12 +263,13 @@ def lookup_account_impl(
         "identification_status": "Pass",
         "account_id_last4": normalize_code(account["account_id"])[-4:] or account["account_id"][-4:],
         "phone_last4": account["phone"][-4:],
-        "caller_provided_phone_last4": state["caller_provided_phone_last4"],
+        "caller_provided_phone_last4": str(state.get("caller_provided_phone_last4") or ""),
         "business_flag": business,
         "customer_type": state["customer_type"],
         "lines_of_business": list(account.get("lines_of_business", [])),
         "region": state["region"],
         "used_caller_id": used_caller_id,
+        "caller_id_source": caller_id_source,
     }
     reply = ok_reply(data, reference, language=lang)
     if business:

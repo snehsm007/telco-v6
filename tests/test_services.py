@@ -116,18 +116,30 @@ def test_lookup_by_name_or_address_is_not_a_strike(raw: str) -> None:
 
 @pytest.mark.parametrize("raw", ["", "clid", "CLID", None])
 @pytest.mark.parametrize("clid", ["", "12345", "5555555555", "1234567890", "not a number"])
-def test_lookup_without_a_number_and_no_usable_caller_id_offers_options(raw, clid: str) -> None:
-    """prd.md §5 `clid`: no number given and no valid caller ID -> INVALID_INPUT, the options line, no strike."""
+def test_lookup_without_a_number_and_no_usable_caller_id_uses_the_default_line(raw, clid: str) -> None:
+    """No number and no valid caller ID (text chats, evaluations): the line is simulated as the
+    default account, like an unknown email (docs/tdd.md §4). Identification only, no login."""
     state: dict = {"clid": clid}
-    for _ in range(4):
-        reply = lookup_account_impl(raw, state=state)
-        assert reply["error"] == "INVALID_INPUT" and reply["data"]["counted"] is False
-    assert reply["data"]["caller_id_available"] is False
-    assert reply["data"]["spoken_message"] == SPOKEN_LINES["account_lookup_options"]["en-US"]
-    assert read_count(state, "global_err_count") == 0 and "account_id" not in state
-    assert len(reply["agent_action"]) <= 120
-    fr = lookup_account_impl(raw, state={"clid": clid, "language": "fr-CA"})
-    assert fr["data"]["spoken_message"] == SPOKEN_LINES["account_lookup_options"]["fr-CA"]
+    reply = lookup_account_impl(raw, state=state)
+    assert reply["status"] == "ok"
+    assert reply["data"]["used_caller_id"] is True and reply["data"]["caller_id_source"] == "default_line"
+    assert state["account_id"] == ACCOUNTS[0]["account_id"]
+    assert reply["data"]["phone_last4"] == ACCOUNTS[0]["phone"][-4:]
+    assert reply["data"]["caller_provided_phone_last4"] == ""
+    assert state.get("logged_in") is not True and state.get("auth_status", "none") == "none"
+    assert read_count(state, "global_err_count") == 0
+    assert "agent_action" not in reply
+
+
+def test_lookup_without_a_number_keeps_an_account_already_identified() -> None:
+    """A second empty lookup never swaps the caller onto the default account or drops a login."""
+    state: dict = {}
+    lookup_account_impl("416 555 0123", state=state)
+    state.update({"logged_in": True, "auth_status": "verified"})
+    reply = lookup_account_impl("", state=state)
+    assert reply["status"] == "ok" and reply["data"]["caller_id_source"] == "session_account"
+    assert state["account_id"] != ACCOUNTS[0]["account_id"] and reply["data"]["phone_last4"] == "0123"
+    assert state["logged_in"] is True and state["caller_provided_phone_last4"] == "0123"
 
 
 @pytest.mark.parametrize("clid", ["2025550186", "+1 (202) 555-0186", "1-202-555-0186", 2025550186.0])
@@ -137,6 +149,7 @@ def test_lookup_without_a_number_uses_a_valid_caller_id(clid) -> None:
         state: dict = {"clid": clid}
         reply = lookup_account_impl(raw, state=state)
         assert reply["status"] == "ok" and reply["data"]["used_caller_id"] is True
+        assert reply["data"]["caller_id_source"] == "clid"
         assert state["account_id"] == ACCOUNTS[0]["account_id"]
         assert reply["data"]["phone_last4"] == "0186"
         assert state["caller_provided_phone_last4"] == "0186"
@@ -153,6 +166,7 @@ def test_lookup_caller_id_unknown_number_and_blocked_caller() -> None:
 def test_lookup_a_stated_number_wins_over_the_caller_id() -> None:
     reply = lookup_account_impl("416 555 0123", state={"clid": "2025550186"})
     assert reply["data"]["phone_last4"] == "0123" and reply["data"]["used_caller_id"] is False
+    assert reply["data"]["caller_id_source"] == ""
 
 
 @pytest.mark.parametrize("raw", ["123", "ACC-12", "not-an-email@", "555-01"])
