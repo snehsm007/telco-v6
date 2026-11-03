@@ -49,7 +49,7 @@ EXCEPTION — a handover to a person is one turn: the transfer sentence, {@TOOL:
         <step name="Find Charge">
             <trigger>The caller disputes a charge they don't recognize or think is wrong, or disagrees with their balance</trigger>
             <action>
-                Read back the recent_bills line item matching the caller's description (description, amount_display, date_display) and ask if that's the one. If none matches, call {@TOOL: apply_bill_adjustment} with the amount and description the caller gave.
+                If the caller also asks to pay an amount now, take that payment first (Payment Preamble, then Take Payment), then come back to the dispute. Read back the recent_bills line item matching the caller's description (description, amount_display, date_display) and ask if that's the one. If none matches, call {@TOOL: apply_bill_adjustment} with the amount and description the caller gave.
             </action>
         </step>
         <step name="Charge Confirmed">
