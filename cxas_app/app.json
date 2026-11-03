@@ -414,6 +414,15 @@
       }
     },
     {
+      "name": "call_channel",
+      "description": "voice on a live phone call (set by the before-model callback from the phone gateway's session-start event or keypad input); empty in text chats.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
       "name": "sms_sent",
       "description": "Comma list of text messages sent on this call.",
       "schema": {

@@ -19,6 +19,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import re
 from typing import Any
+import unicodedata
 
 SUPPORTED_LOCALES: tuple[str, ...] = ("en-US", "fr-CA")
 
@@ -102,6 +103,21 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {
     "pin_alternative": {
         "en-US": "Or, if you prefer, you can use your 4-digit PIN instead.",
         "fr-CA": "Ou, si vous préférez, vous pouvez plutôt utiliser votre NIP à 4 chiffres.",
+    },
+    # Texted and emailed codes may be spoken (appended after the PRD verbatim lines).
+    "say_code_aloud": {
+        "en-US": "Please say the 6 digits out loud.",
+        "fr-CA": "Dites les 6 chiffres à voix haute.",
+    },
+    # prd.md PIN flow: on a phone call the PIN is accepted from the keypad only
+    # (voice-spelled PINs are refused); check_secret_pin texts a code instead.
+    "pin_keypad_required": {
+        "en-US": "For your security, your PIN can only be entered on the keypad, so I just texted a 6-digit code to the mobile on file instead. Please say the 6 digits out loud.",
+        "fr-CA": "Pour votre sécurité, votre NIP ne peut être entré qu'au clavier; je viens donc d'envoyer un code à 6 chiffres par texto au mobile au dossier. Dites les 6 chiffres à voix haute.",
+    },
+    "pin_keypad_code_pending": {
+        "en-US": "For your security, your PIN can only be entered on the keypad. Please say the 6-digit code I texted you out loud instead.",
+        "fr-CA": "Pour votre sécurité, votre NIP ne peut être entré qu'au clavier. Dites plutôt à voix haute le code à 6 chiffres que je vous ai envoyé par texto.",
     },
     # Operational line (no account number at hand); interim wording PENDING LEGAL APPROVAL.
     "account_lookup_options": {
@@ -727,6 +743,155 @@ def normalize_code(value: Any) -> str:
     return "".join(ch for ch in text if ch.isdigit())
 
 
+# Spoken number words (live speech-to-text writes "one two three four", "twelve
+# thirty-four", "quatre quatre cinq deux"); keys are lowercase without accents.
+_SPOKEN_UNITS: dict[str, int] = {
+    "zero": 0, "oh": 0, "o": 0, "nought": 0, "one": 1, "two": 2, "three": 3, "four": 4,
+    "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+    "un": 1, "une": 1, "deux": 2, "trois": 3, "quatre": 4, "cinq": 5, "sept": 7, "huit": 8, "neuf": 9,
+}
+_SPOKEN_TEENS: dict[str, int] = {
+    "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15,
+    "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+    "dix": 10, "onze": 11, "douze": 12, "treize": 13, "quatorze": 14, "quinze": 15, "seize": 16,
+}
+_SPOKEN_TENS: dict[str, int] = {
+    "twenty": 20, "thirty": 30, "forty": 40, "fourty": 40, "fifty": 50, "sixty": 60,
+    "seventy": 70, "eighty": 80, "ninety": 90,
+    "vingt": 20, "vingts": 20, "trente": 30, "quarante": 40, "cinquante": 50, "soixante": 60,
+}
+_SPOKEN_SCALES: dict[str, int] = {"hundred": 100, "cent": 100, "cents": 100, "thousand": 1000, "mille": 1000}
+_SPOKEN_REPEATS: dict[str, int] = {"double": 2, "triple": 3}
+_SPOKEN_JOINERS = frozenset({"and", "et"})
+_SPOKEN_TOKEN_RE = re.compile(r"[a-z]+|[0-9]+")
+
+
+def _is_number_token(tok: str) -> bool:
+    return tok.isdigit() or tok in _SPOKEN_UNITS or tok in _SPOKEN_TEENS or tok in _SPOKEN_TENS or tok in _SPOKEN_SCALES or tok in _SPOKEN_REPEATS
+
+
+def _cardinal_digits(run: list[str]) -> str:
+    """'one thousand two hundred thirty four' -> '1234' (additive, French 'quatre vingt' = 80)."""
+    total = current = 0
+    prev = ""
+    for tok in run:
+        if tok in _SPOKEN_SCALES:
+            if _SPOKEN_SCALES[tok] == 1000:
+                total += (current or 1) * 1000
+                current = 0
+            else:
+                current = (current or 1) * 100
+        elif tok.startswith("vingt") and prev == "quatre":
+            current += 80 - 4
+        elif tok.isdigit():
+            current += int(tok)
+        else:
+            current += _SPOKEN_UNITS.get(tok, _SPOKEN_TEENS.get(tok, _SPOKEN_TENS.get(tok, 0)))
+        prev = tok
+    return str(total + current)
+
+
+def _grouped_digits(run: list[str]) -> str:
+    """Digit-by-digit or grouped speech: 'one two three four', 'twelve thirty four', 'double five'."""
+    out: list[str] = []
+    i, n = 0, len(run)
+    while i < n:
+        tok = run[i]
+        nxt = run[i + 1] if i + 1 < n else ""
+        if tok.isdigit():
+            out.append(tok)
+        elif tok in _SPOKEN_REPEATS and (nxt in _SPOKEN_UNITS or (nxt.isdigit() and len(nxt) == 1)):
+            out.append((nxt if nxt.isdigit() else str(_SPOKEN_UNITS[nxt])) * _SPOKEN_REPEATS[tok])
+            i += 1
+        elif tok == "quatre" and nxt.startswith("vingt") or tok in _SPOKEN_TENS:
+            value = 80 if tok == "quatre" else _SPOKEN_TENS[tok]
+            i += 1 if tok == "quatre" else 0
+            rest = run[i + 1 : i + 4]
+            if rest[:1] and rest[0] in _SPOKEN_JOINERS and len(rest) > 1 and rest[1] in ("un", "une", "onze"):
+                value += 1 if rest[1] != "onze" else 11
+                i += 2
+            elif value in (60, 80) and rest[:1] and rest[0] in _SPOKEN_TEENS:
+                value += _SPOKEN_TEENS[rest[0]]
+                i += 1
+                if rest[0] == "dix" and len(rest) > 1 and rest[1] in ("sept", "huit", "neuf"):
+                    value += _SPOKEN_UNITS[rest[1]]
+                    i += 1
+            elif rest[:1] and rest[0] in _SPOKEN_UNITS and _SPOKEN_UNITS[rest[0]] > 0 and rest[0] not in ("oh", "o"):
+                value += _SPOKEN_UNITS[rest[0]]
+                i += 1
+            out.append(str(value))
+        elif tok == "dix" and nxt in ("sept", "huit", "neuf"):
+            out.append(str(10 + _SPOKEN_UNITS[nxt]))
+            i += 1
+        elif tok in _SPOKEN_TEENS:
+            out.append(str(_SPOKEN_TEENS[tok]))
+        elif tok in _SPOKEN_UNITS:
+            out.append(str(_SPOKEN_UNITS[tok]))
+        i += 1
+    return "".join(out)
+
+
+def _number_runs(text: str) -> tuple[list[list[str]], bool]:
+    """Split text into runs of number tokens; also report whether any other word appeared."""
+    folded = unicodedata.normalize("NFKD", text.lower())
+    folded = "".join(ch for ch in folded if not unicodedata.combining(ch))
+    runs: list[list[str]] = [[]]
+    other_words = False
+    for tok in _SPOKEN_TOKEN_RE.findall(folded):
+        if _is_number_token(tok) or (tok in _SPOKEN_JOINERS and runs[-1]):
+            runs[-1].append(tok)
+        else:
+            other_words = True
+            if runs[-1]:
+                runs.append([])
+    cleaned = []
+    for run in runs:
+        while run and run[-1] in _SPOKEN_JOINERS:
+            run.pop()
+        if run:
+            cleaned.append(run)
+    return cleaned, other_words
+
+
+def spoken_digits(value: Any) -> str:
+    """The digits a caller said, in any spoken or typed form (live speech-to-text).
+
+    "one two three four", "12 34", "1-2-3-4", "twelve thirty-four", "one thousand
+    two hundred thirty-four", "double five", "quatre quatre cinq deux" and
+    "my PIN is 5903" all give their digits. Ints/floats go through normalize_code.
+    Inside other words, a lone number word ("I have one PIN, ...") is ignored when
+    another number run exists. Tools still apply their strict length checks.
+    """
+    if not isinstance(value, str):
+        return normalize_code(value)
+    if not any(ch.isalpha() for ch in value):
+        return normalize_code(value)
+    runs, other_words = _number_runs(value)
+    if other_words and len(runs) > 1:
+        runs = [r for r in runs if len(r) > 1 or r[0].isdigit()] or runs
+    parts = []
+    for run in runs:
+        if run in (["oh"], ["o"]) and other_words:
+            continue
+        parts.append(_cardinal_digits(run) if any(t in _SPOKEN_SCALES for t in run) else _grouped_digits(run))
+    return "".join(parts)
+
+
+def spoken_number_text(raw: Any) -> str:
+    """Rewrite an identifier said only in number words ("five one four ...") as its digits.
+
+    Text with any other word (a name, address or email) comes back unchanged, so
+    classify_identifier and the name/address check still see it as given.
+    """
+    text = str(raw or "").strip()
+    if not any(ch.isalpha() for ch in text) or "@" in text:
+        return text
+    runs, other_words = _number_runs(text)
+    if other_words or not runs:
+        return text
+    return spoken_digits(text)
+
+
 def only_digits(text: Any) -> str:
     """Keep the digits of what the caller said ("(202) 555-0143" -> "2025550143")."""
     return normalize_code(text)
@@ -825,7 +990,7 @@ def classify_identifier(raw: Any) -> tuple[str, str]:
     Returns (kind, digits): kind is phone, intl_phone, account_number,
     account_reference, or "" when no pattern matches.
     """
-    text = re.sub(r"\.0+$", "", str(raw or "").strip())
+    text = spoken_number_text(re.sub(r"\.0+$", "", str(raw or "").strip()))
     digits = normalize_code(text)
     compact = SPOKEN_DIGIT_SEPARATORS_RE.sub("", text)
     if compact and ALL_DIGITS_RE.fullmatch(compact) and not compact.startswith("00") and not PHONE_NANP_RE.fullmatch(text):

@@ -55,6 +55,8 @@ from lib.fakes import (
     is_plausible_phone,
     login_code_accepted,
     normalize_code,
+    spoken_digits,
+    spoken_number_text,
     normalize_identifier,
     only_digits,
     read_count,
@@ -184,7 +186,7 @@ def lookup_account_impl(
     if err:
         return err
     raw = str(phone_or_account or "").strip()
-    raw = re.sub(r"\.0+$", "", raw)
+    raw = spoken_number_text(re.sub(r"\.0+$", "", raw))
     used_caller_id = False
     caller_id_source = ""
     if raw.lower() in CALLER_ID_REQUESTS:
@@ -368,13 +370,13 @@ def send_login_code_impl(
         email = str(record.get("email", ""))
         user, _, domain = email.partition("@")
         data["email_masked"] = (user[:1] + "***@" + domain) if domain else "on file"
-        data["spoken_message"] = spoken_line("email_code_sent", lang)
+        data["spoken_message"] = spoken_line("email_code_sent", lang) + " " + spoken_line("say_code_aloud", lang)
     else:
         data["destination_last4"] = str(
             state.get("caller_provided_phone_last4")
             or ("" if state.get("phone_derived") else (state.get("phone_last4") or record["phone"][-4:]))
         )
-        data["spoken_message"] = spoken_line("id_verification_otp", lang)
+        data["spoken_message"] = spoken_line("id_verification_otp", lang) + " " + spoken_line("say_code_aloud", lang)
     reply = ok_reply(data, reference, language=lang)
     if chan == "email" and purpose == "login":
         # The login code went to the email on file (the caller can't get a text).
@@ -396,7 +398,7 @@ def check_login_code_impl(
     if err:
         return err
     account_id = ensure_account(state)
-    reference = tracking_id("check_login_code", account_id, normalize_code(code))
+    reference = tracking_id("check_login_code", account_id, spoken_digits(code))
     state["last_tracking_id"] = reference
     step_up = state.get("code_purpose") == "step_up" and state.get("auth_status") == "pass"
     if state.get("auth_status") == "pass" and not step_up:
@@ -404,7 +406,7 @@ def check_login_code_impl(
         return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
     if state.get("auth_status") == "locked" or _failures(state) >= MAX_LOGIN_ATTEMPTS:
         return _locked_reply(state, reference, lang)
-    digits = normalize_code(code) or normalize_code(state.get("dtmf_digits"))
+    digits = spoken_digits(code) or normalize_code(state.get("dtmf_digits"))
     if PIN_RE.fullmatch(digits) and not step_up:
         # The caller gave their 4-digit PIN instead of the texted code.
         return check_secret_pin_impl(digits, state=state, language=lang)
@@ -414,11 +416,11 @@ def check_login_code_impl(
             return validation_error(
                 state,
                 "The emailed code has 6 digits.",
-                "Say the code sent to their email has 6 digits, ask them to read all of them, and offer to resend it by email.",
+                "Say the code sent to their email has 6 digits, ask them to say all of them out loud, and offer to resend it by email.",
                 reference,
                 lang,
             )
-        return validation_error(state, "A verification code has 6 digits.", "Ask the caller to say or key in the 6-digit code again.", reference, lang)
+        return validation_error(state, "A verification code has 6 digits.", "Ask the caller to say the 6-digit code out loud again.", reference, lang)
     if not _credential_ok(state, digits, "code"):
         return _record_failure(state, reference, lang, "code")
     state["auth_failure_count"] = 0
@@ -431,6 +433,35 @@ def check_login_code_impl(
     state["auth_status"] = "pass"
     state["logged_in"] = True
     return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
+
+
+def is_voice_call(state: dict[str, Any]) -> bool:
+    """True on a live phone call (the before-model callback sets call_channel; text chats stay "")."""
+    return str(state.get("call_channel") or "").strip().lower() == "voice"
+
+
+def _pin_keypad_required(state: dict[str, Any], reference: str, lang: str) -> dict[str, Any]:
+    """Refuse a spoken PIN on a phone call and text a login code instead (one agent turn)."""
+    data: dict[str, Any] = {"keypad_only": True, "code_length": 6}
+    if state.get("login_code_sent") and state.get("login_channel") == "sms":
+        data["sent"] = False
+        data["spoken_message"] = spoken_line("pin_keypad_code_pending", lang)
+    else:
+        sent = send_login_code_impl("sms", state=state, language=lang)
+        if sent.get("status") != "ok":
+            return sent
+        data["sent"] = True
+        data["destination_last4"] = sent["data"].get("destination_last4", "")
+        data["spoken_message"] = spoken_line("pin_keypad_required", lang)
+    state["last_tracking_id"] = reference
+    return error_reply(
+        "PIN_KEYPAD_REQUIRED",
+        "On a phone call the PIN can only be keyed in; a login code was texted instead.",
+        "Say spoken_message word for word, then check the 6-digit code the caller says. Never ask for the PIN again.",
+        reference,
+        language=lang,
+        data=data,
+    )
 
 
 def check_secret_pin_impl(
@@ -447,7 +478,7 @@ def check_secret_pin_impl(
     if err:
         return err
     account_id = ensure_account(state)
-    reference = tracking_id("check_secret_pin", account_id, normalize_code(pin))
+    reference = tracking_id("check_secret_pin", account_id, spoken_digits(pin))
     state["last_tracking_id"] = reference
     if state.get("code_purpose") == "step_up" and state.get("auth_status") == "pass":
         # A step-up code is pending: digits given here are the emailed code.
@@ -457,10 +488,17 @@ def check_secret_pin_impl(
         return ok_reply({"verified": True, "logged_in": True}, reference, language=lang)
     if state.get("auth_status") == "locked" or _failures(state) >= MAX_LOGIN_ATTEMPTS:
         return _locked_reply(state, reference, lang)
-    digits = normalize_code(pin) or normalize_code(state.get("dtmf_digits"))
+    keyed = normalize_code(state.get("dtmf_digits"))
+    digits = spoken_digits(pin) or keyed
     if OTP_RE.fullmatch(digits) and state.get("login_code_sent"):
         # The caller read back the 6-digit texted code.
         return check_login_code_impl(digits, state=state, language=lang)
+    if is_voice_call(state):
+        # prd.md PIN flow: on a phone call only keypad digits count; a voice-spelled
+        # PIN is refused (never a strike) and a texted code is offered in the same turn.
+        if not PIN_RE.fullmatch(keyed):
+            return _pin_keypad_required(state, reference, lang)
+        digits = keyed
     if not PIN_RE.fullmatch(digits):
         return validation_error(state, "A PIN has 4 digits.", "Ask the caller to key in their 4-digit PIN again.", reference, lang)
     if not _credential_ok(state, digits, "pin"):

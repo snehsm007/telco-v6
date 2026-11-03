@@ -33,3 +33,15 @@ def test_check_login_code_no_session_and_mock_error(monkeypatch) -> None:
     assert tool.check_login_code("12")["error"] == "INVALID_INPUT"
     monkeypatch.setattr(tool, "context", SimpleNamespace(state={"mock_error": "x"}), raising=False)
     assert tool.check_login_code("271846")["error"] == "SYSTEM_UNAVAILABLE"
+
+
+def test_check_login_code_accepts_spoken_codes(monkeypatch) -> None:
+    for said in ("two seven one eight four six", "twenty-seven eighteen forty-six", "deux sept un huit quatre six", "the code is 27 18 46"):
+        state = {"account_id": "A1001", "auth_status": "code_sent", "fx_otp_on_file": "271846"}
+        monkeypatch.setattr(tool, "context", state, raising=False)
+        assert tool.check_login_code(said)["status"] == "ok", said
+
+
+def test_check_login_code_spoken_code_keeps_strict_length(monkeypatch) -> None:
+    monkeypatch.setattr(tool, "context", {"account_id": "A1001", "auth_status": "code_sent"}, raising=False)
+    assert tool.check_login_code("two seven one eight four")["error"] == "INVALID_INPUT"

@@ -320,12 +320,87 @@ def build_language_sheet(locale: str, agent_name: str = "router") -> str:
     return "\n".join(lines)
 
 
+# prd.md §6.1 DTMF capture: keypad input reaches the model as user text such as
+# "<context>user pressed 1234 on keypad.</context>" or "user pressed 1234".
+_RE_DTMF_PRESSED = re.compile(r"\buser\s+pressed\s+([0-9*#](?:[\s,.\-]*[0-9*#])*)", re.IGNORECASE)
+# The live phone gateway opens every call with this platform event; text chats never send it.
+_RE_PHONE_SESSION_START = re.compile(r"<event\b[^>]*>\s*session\s+start\s*</event>", re.IGNORECASE)
+
+
+def _content_texts(content: Any) -> list[str]:
+    """Text of every part of one request content (or a bare text content)."""
+    texts: list[str] = []
+    parts = getattr(content, "parts", None)
+    if isinstance(parts, (list, tuple)):
+        for part in parts:
+            txt = getattr(part, "text", None)
+            if isinstance(txt, str) and txt.strip():
+                texts.append(txt)
+            native = getattr(part, "dtmf", None)
+            if isinstance(native, str) and native.strip():
+                texts.append(f"user pressed {native}")
+    elif isinstance(getattr(content, "text", None), str):
+        texts.append(content.text)
+    return texts
+
+
+def _latest_user_texts(callback_context: Any, llm_request: Any) -> list[str]:
+    """The caller's latest turn: callback_context.user_content, else the last user text in the request."""
+    current = [t for t in _content_texts(getattr(callback_context, "user_content", None)) if not _RE_RELAY_PREFIX.match(t.strip())]
+    if current:
+        return current
+    contents = getattr(llm_request, "contents", None)
+    if not isinstance(contents, (list, tuple)):
+        return []
+    for item in reversed(contents):
+        if getattr(item, "role", "") != "user":
+            continue
+        texts = [t for t in _content_texts(item) if not _is_relay_or_quoted_part(t) or _RE_DTMF_PRESSED.search(t)]
+        if texts:
+            return texts
+    return []
+
+
+def parse_dtmf_digits(text: Any) -> str:
+    """Keypad digits from 'user pressed 1234' text ('' when the turn has none); * and # are dropped."""
+    found = _RE_DTMF_PRESSED.findall(str(text or ""))
+    return "".join(ch for ch in "".join(found) if ch.isdigit())
+
+
+def _is_phone_session(llm_request: Any) -> bool:
+    contents = getattr(llm_request, "contents", None)
+    if not isinstance(contents, (list, tuple)):
+        return False
+    return any(_RE_PHONE_SESSION_START.search(t) for item in contents if getattr(item, "role", "") == "user" for t in _content_texts(item))
+
+
+def capture_turn_input(callback_context: Any, llm_request: Any) -> None:
+    """prd.md §6.1: write this turn's keypad digits to dtmf_digits ("" without DTMF) and mark phone calls.
+
+    Writes only dtmf_digits and call_channel ("voice" once the phone gateway's
+    session-start event or keypad input is seen; never cleared), and only when
+    the value changes.
+    """
+    state = getattr(callback_context, "state", None)
+    if state is None or not callable(getattr(state, "get", None)):
+        return
+    digits = parse_dtmf_digits(" ".join(_latest_user_texts(callback_context, llm_request)))
+    try:
+        if str(state.get("dtmf_digits") or "") != digits:
+            state["dtmf_digits"] = digits
+        if state.get("call_channel") != "voice" and (digits or _is_phone_session(llm_request)):
+            state["call_channel"] = "voice"
+    except (TypeError, AttributeError):  # pragma: no cover - read-only state objects
+        return
+
+
 def apply_language_prompt_filter(
     callback_context: Any,
     llm_request: Any,
     agent_name: str = "router",
 ) -> None:
-    """Inject language rules and verbatim lines into system instruction in-place without touching state."""
+    """Capture keypad digits (capture_turn_input), then inject language rules and verbatim lines in place."""
+    capture_turn_input(callback_context, llm_request)
     state = getattr(callback_context, "state", None)
     state_dict = state if callable(getattr(state, "get", None)) else {}
     locale = detect_active_call_language(state_dict, llm_request)

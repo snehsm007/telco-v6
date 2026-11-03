@@ -22,6 +22,7 @@ def before_model_callback(
 from datetime import datetime, timedelta, timezone
 from typing import Any
 import re
+import unicodedata
 
 LANGUAGE_SHEET_SENTINEL = "<!-- ACTIVE_LANGUAGE_SHEET -->"  # pragma: no cover
 
@@ -123,6 +124,21 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "Or, if you prefer, you can use your 4-digit PIN instead.",
         "fr-CA": "Ou, si vous préférez, vous pouvez plutôt utiliser votre NIP à 4 chiffres.",
     },
+    # Texted and emailed codes may be spoken (appended after the PRD verbatim lines).
+    "say_code_aloud": {
+        "en-US": "Please say the 6 digits out loud.",
+        "fr-CA": "Dites les 6 chiffres à voix haute.",
+    },
+    # prd.md PIN flow: on a phone call the PIN is accepted from the keypad only
+    # (voice-spelled PINs are refused); check_secret_pin texts a code instead.
+    "pin_keypad_required": {
+        "en-US": "For your security, your PIN can only be entered on the keypad, so I just texted a 6-digit code to the mobile on file instead. Please say the 6 digits out loud.",
+        "fr-CA": "Pour votre sécurité, votre NIP ne peut être entré qu'au clavier; je viens donc d'envoyer un code à 6 chiffres par texto au mobile au dossier. Dites les 6 chiffres à voix haute.",
+    },
+    "pin_keypad_code_pending": {
+        "en-US": "For your security, your PIN can only be entered on the keypad. Please say the 6-digit code I texted you out loud instead.",
+        "fr-CA": "Pour votre sécurité, votre NIP ne peut être entré qu'au clavier. Dites plutôt à voix haute le code à 6 chiffres que je vous ai envoyé par texto.",
+    },
     # Operational line (no account number at hand); interim wording PENDING LEGAL APPROVAL.
     "account_lookup_options": {
         "en-US": "To find your account, I can use its phone number or account number, your email on file, or your 4-digit PIN.",
@@ -208,6 +224,97 @@ def build_language_sheet(locale: str, agent_name: str = "router") -> str:  # pra
 
     lines.append("</active_language_sheet>")
     return "\n".join(lines)
+
+_RE_PHONE_SESSION_START = re.compile(r"<event\b[^>]*>\s*session\s+start\s*</event>", re.IGNORECASE)  # pragma: no cover
+
+def _content_texts(content: Any) -> list[str]:  # pragma: no cover
+    """Text of every part of one request content (or a bare text content)."""
+    texts: list[str] = []
+    parts = getattr(content, "parts", None)
+    if isinstance(parts, (list, tuple)):
+        for part in parts:
+            txt = getattr(part, "text", None)
+            if isinstance(txt, str) and txt.strip():
+                texts.append(txt)
+            native = getattr(part, "dtmf", None)
+            if isinstance(native, str) and native.strip():
+                texts.append(f"user pressed {native}")
+    elif isinstance(getattr(content, "text", None), str):
+        texts.append(content.text)
+    return texts
+
+def _is_phone_session(llm_request: Any) -> bool:  # pragma: no cover
+    contents = getattr(llm_request, "contents", None)
+    if not isinstance(contents, (list, tuple)):
+        return False
+    return any(_RE_PHONE_SESSION_START.search(t) for item in contents if getattr(item, "role", "") == "user" for t in _content_texts(item))
+
+_RE_DTMF_PRESSED = re.compile(r"\buser\s+pressed\s+([0-9*#](?:[\s,.\-]*[0-9*#])*)", re.IGNORECASE)  # pragma: no cover
+
+_RE_RELAY_PREFIX = re.compile(  # pragma: no cover
+    r"^(?:For context|\s*\[[^\]]+\]\s*(?:said:|thought:|called tool |`[^`]*` tool returned result:))",
+    re.IGNORECASE,
+)
+
+_RE_PLATFORM_EVENT = re.compile(r"<event\b[^>]*>[\s\S]*?</event>|<state_update\b[^>]*>[\s\S]*?</state_update>", re.IGNORECASE)  # pragma: no cover
+
+_RE_QUOTED_AGENT_BLOCK = re.compile(  # pragma: no cover
+    r"<<<BEGIN_QUOTED_AGENT_CONTENT>>>[\s\S]*?<<<END_QUOTED_AGENT_CONTENT>>>"
+)
+
+def _is_relay_or_quoted_part(txt: str) -> bool:  # pragma: no cover
+    """Return True if txt is an ADK relay part, agent event, or quoted content block."""
+    s = txt.strip()
+    if not s:
+        return True
+    if _RE_RELAY_PREFIX.match(s):
+        return True
+    cleaned = _RE_PLATFORM_EVENT.sub("", _RE_QUOTED_AGENT_BLOCK.sub("", s)).strip()
+    if not cleaned:
+        return True
+    if _RE_RELAY_PREFIX.match(cleaned):
+        return True
+    return False
+
+def _latest_user_texts(callback_context: Any, llm_request: Any) -> list[str]:  # pragma: no cover
+    """The caller's latest turn: callback_context.user_content, else the last user text in the request."""
+    current = [t for t in _content_texts(getattr(callback_context, "user_content", None)) if not _RE_RELAY_PREFIX.match(t.strip())]
+    if current:
+        return current
+    contents = getattr(llm_request, "contents", None)
+    if not isinstance(contents, (list, tuple)):
+        return []
+    for item in reversed(contents):
+        if getattr(item, "role", "") != "user":
+            continue
+        texts = [t for t in _content_texts(item) if not _is_relay_or_quoted_part(t) or _RE_DTMF_PRESSED.search(t)]
+        if texts:
+            return texts
+    return []
+
+def parse_dtmf_digits(text: Any) -> str:  # pragma: no cover
+    """Keypad digits from 'user pressed 1234' text ('' when the turn has none); * and # are dropped."""
+    found = _RE_DTMF_PRESSED.findall(str(text or ""))
+    return "".join(ch for ch in "".join(found) if ch.isdigit())
+
+def capture_turn_input(callback_context: Any, llm_request: Any) -> None:  # pragma: no cover
+    """prd.md §6.1: write this turn's keypad digits to dtmf_digits ("" without DTMF) and mark phone calls.
+
+    Writes only dtmf_digits and call_channel ("voice" once the phone gateway's
+    session-start event or keypad input is seen; never cleared), and only when
+    the value changes.
+    """
+    state = getattr(callback_context, "state", None)
+    if state is None or not callable(getattr(state, "get", None)):
+        return
+    digits = parse_dtmf_digits(" ".join(_latest_user_texts(callback_context, llm_request)))
+    try:
+        if str(state.get("dtmf_digits") or "") != digits:
+            state["dtmf_digits"] = digits
+        if state.get("call_channel") != "voice" and (digits or _is_phone_session(llm_request)):
+            state["call_channel"] = "voice"
+    except (TypeError, AttributeError):  # pragma: no cover - read-only state objects
+        return
 
 KEYPAD_FRENCH_CHOICES: frozenset[str] = frozenset({"2", "deux"})  # pragma: no cover
 
@@ -344,31 +451,6 @@ def detect_utterance_language(utterance: str, current_language: str = "en-US") -
 
     return resolve_locale(current_language)
 
-_RE_PLATFORM_EVENT = re.compile(r"<event\b[^>]*>[\s\S]*?</event>|<state_update\b[^>]*>[\s\S]*?</state_update>", re.IGNORECASE)  # pragma: no cover
-
-_RE_QUOTED_AGENT_BLOCK = re.compile(  # pragma: no cover
-    r"<<<BEGIN_QUOTED_AGENT_CONTENT>>>[\s\S]*?<<<END_QUOTED_AGENT_CONTENT>>>"
-)
-
-_RE_RELAY_PREFIX = re.compile(  # pragma: no cover
-    r"^(?:For context|\s*\[[^\]]+\]\s*(?:said:|thought:|called tool |`[^`]*` tool returned result:))",
-    re.IGNORECASE,
-)
-
-def _is_relay_or_quoted_part(txt: str) -> bool:  # pragma: no cover
-    """Return True if txt is an ADK relay part, agent event, or quoted content block."""
-    s = txt.strip()
-    if not s:
-        return True
-    if _RE_RELAY_PREFIX.match(s):
-        return True
-    cleaned = _RE_PLATFORM_EVENT.sub("", _RE_QUOTED_AGENT_BLOCK.sub("", s)).strip()
-    if not cleaned:
-        return True
-    if _RE_RELAY_PREFIX.match(cleaned):
-        return True
-    return False
-
 def extract_user_utterances(llm_request: Any) -> list[str]:  # pragma: no cover
     """Safely extract genuine user utterance strings from LLM request contents, skipping relay parts."""
     utterances: list[str] = []
@@ -434,7 +516,8 @@ def apply_language_prompt_filter(  # pragma: no cover
     llm_request: Any,
     agent_name: str = "router",
 ) -> None:
-    """Inject language rules and verbatim lines into system instruction in-place without touching state."""
+    """Capture keypad digits (capture_turn_input), then inject language rules and verbatim lines in place."""
+    capture_turn_input(callback_context, llm_request)
     state = getattr(callback_context, "state", None)
     state_dict = state if callable(getattr(state, "get", None)) else {}
     locale = detect_active_call_language(state_dict, llm_request)

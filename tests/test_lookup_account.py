@@ -43,3 +43,14 @@ def test_lookup_account_uses_the_session_caller_id(monkeypatch) -> None:
     reply = tool.lookup_account("")
     assert reply["status"] == "ok" and reply["data"]["used_caller_id"] is True
     assert session.state["account_id"] == "A1001"
+
+
+def test_lookup_account_accepts_spoken_numbers(monkeypatch) -> None:
+    state = {}
+    monkeypatch.setattr(tool, "context", state, raising=False)
+    reply = tool.lookup_account("two zero two five five five zero one eight six")
+    assert reply["status"] == "ok" and state["account_id"] == "A1001"
+    state = {}
+    monkeypatch.setattr(tool, "context", state, raising=False)
+    reply = tool.lookup_account("cinq un quatre, cinq cinq cinq, zéro un neuf neuf")
+    assert reply["status"] == "ok" and state["caller_provided_phone_last4"] == "0199"

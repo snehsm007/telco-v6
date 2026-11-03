@@ -39,6 +39,7 @@ import contextvars
 import hashlib
 import json
 import re
+import unicodedata
 
 MAX_LOGIN_ATTEMPTS = 3  # pragma: no cover
 
@@ -96,6 +97,7 @@ ERROR_CODES = (  # pragma: no cover
     "CARD_EXPIRED",
     "NOT_SUSPENDED",
     "DELIVERY_FAILED",
+    "PIN_KEYPAD_REQUIRED",
 )
 
 ERROR_CODE_DEFAULTS: dict[str, tuple[str, str]] = {  # pragma: no cover
@@ -251,6 +253,10 @@ ERROR_CODE_DEFAULTS: dict[str, tuple[str, str]] = {  # pragma: no cover
         "The text message could not be delivered.",
         "Apologize and offer a transfer to a representative.",
     ),
+    "PIN_KEYPAD_REQUIRED": (
+        "On a phone call the PIN can only be keyed in.",
+        "Say spoken_message word for word, then check the 6-digit code the caller says.",
+    ),
 }
 
 ERROR_MESSAGES_FR: dict[str, str] = {  # pragma: no cover
@@ -292,6 +298,7 @@ ERROR_MESSAGES_FR: dict[str, str] = {  # pragma: no cover
     "CARD_EXPIRED": "La carte au dossier est expirée.",
     "NOT_SUSPENDED": "Le service n'est pas suspendu.",
     "DELIVERY_FAILED": "Le texto n'a pas pu être livré.",
+    "PIN_KEYPAD_REQUIRED": "Au téléphone, le NIP ne peut être entré qu'au clavier.",
 }
 
 class _StatusStr(str):  # pragma: no cover
@@ -638,6 +645,21 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "Or, if you prefer, you can use your 4-digit PIN instead.",
         "fr-CA": "Ou, si vous préférez, vous pouvez plutôt utiliser votre NIP à 4 chiffres.",
     },
+    # Texted and emailed codes may be spoken (appended after the PRD verbatim lines).
+    "say_code_aloud": {
+        "en-US": "Please say the 6 digits out loud.",
+        "fr-CA": "Dites les 6 chiffres à voix haute.",
+    },
+    # prd.md PIN flow: on a phone call the PIN is accepted from the keypad only
+    # (voice-spelled PINs are refused); check_secret_pin texts a code instead.
+    "pin_keypad_required": {
+        "en-US": "For your security, your PIN can only be entered on the keypad, so I just texted a 6-digit code to the mobile on file instead. Please say the 6 digits out loud.",
+        "fr-CA": "Pour votre sécurité, votre NIP ne peut être entré qu'au clavier; je viens donc d'envoyer un code à 6 chiffres par texto au mobile au dossier. Dites les 6 chiffres à voix haute.",
+    },
+    "pin_keypad_code_pending": {
+        "en-US": "For your security, your PIN can only be entered on the keypad. Please say the 6-digit code I texted you out loud instead.",
+        "fr-CA": "Pour votre sécurité, votre NIP ne peut être entré qu'au clavier. Dites plutôt à voix haute le code à 6 chiffres que je vous ai envoyé par texto.",
+    },
     # Operational line (no account number at hand); interim wording PENDING LEGAL APPROVAL.
     "account_lookup_options": {
         "en-US": "To find your account, I can use its phone number or account number, your email on file, or your 4-digit PIN.",
@@ -718,13 +740,13 @@ def send_login_code_impl(  # pragma: no cover
         email = str(record.get("email", ""))
         user, _, domain = email.partition("@")
         data["email_masked"] = (user[:1] + "***@" + domain) if domain else "on file"
-        data["spoken_message"] = spoken_line("email_code_sent", lang)
+        data["spoken_message"] = spoken_line("email_code_sent", lang) + " " + spoken_line("say_code_aloud", lang)
     else:
         data["destination_last4"] = str(
             state.get("caller_provided_phone_last4")
             or ("" if state.get("phone_derived") else (state.get("phone_last4") or record["phone"][-4:]))
         )
-        data["spoken_message"] = spoken_line("id_verification_otp", lang)
+        data["spoken_message"] = spoken_line("id_verification_otp", lang) + " " + spoken_line("say_code_aloud", lang)
     reply = ok_reply(data, reference, language=lang)
     if chan == "email" and purpose == "login":
         # The login code went to the email on file (the caller can't get a text).

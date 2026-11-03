@@ -1,3 +1,5 @@
+import pytest
+
 from lib.fakes import (
     ACCOUNTS,
     ALWAYS_WRONG_LOGIN_CODES,
@@ -5,6 +7,7 @@ from lib.fakes import (
     SUPPORTED_LOCALES,
     VALID_OTPS,
     VALID_PINS,
+    classify_identifier,
     find_account,
     is_plausible_phone,
     is_weak_code,
@@ -16,7 +19,9 @@ from lib.fakes import (
     relative_date,
     resolve_locale,
     secret_pin_accepted,
+    spoken_digits,
     spoken_line,
+    spoken_number_text,
 )
 
 
@@ -242,3 +247,48 @@ def test_speech_to_text_digit_formats(raw: str, kind: str, digits: str) -> None:
 def test_comma_digits_still_reject_dummy_and_short() -> None:
     assert find_account("123,456,789,0") is None
     assert classify_identifier("12,34")[0] == ""
+
+
+@pytest.mark.parametrize(
+    ("said", "digits"),
+    [
+        ("one two three four", "1234"),
+        ("twelve thirty four", "1234"),
+        ("twelve thirty-four", "1234"),
+        ("one thousand two hundred thirty-four", "1234"),
+        ("five hundred and six", "506"),
+        ("nineteen eighty four", "1984"),
+        ("twenty twenty", "2020"),
+        ("double five nine oh", "5590"),
+        ("triple 7 two", "7772"),
+        ("my PIN is one two three four", "1234"),
+        ("I have one PIN, it's five nine oh three", "5903"),
+        ("one two three, four five six", "123456"),
+        ("the code is 123456", "123456"),
+        ("12 34", "1234"),
+        ("1-2-3-4", "1234"),
+        ("quatre quatre cinq deux", "4452"),
+        ("Zéro un deux trois quatre cinq", "012345"),
+        ("soixante-dix-sept", "77"),
+        ("quatre-vingt-dix-sept vingt et un", "9721"),
+        ("deux mille vingt-quatre", "2024"),
+        ("dix-huit", "18"),
+        (5903.0, "5903"),
+        (None, ""),
+        ("", ""),
+        ("no idea", ""),
+    ],
+)
+def test_spoken_digits_converts_live_speech(said, digits) -> None:
+    assert spoken_digits(said) == digits
+
+
+def test_spoken_number_text_only_rewrites_pure_number_speech() -> None:
+    assert spoken_number_text("five one four five five five zero one nine nine") == "5145550199"
+    assert spoken_number_text("five one four, 555 0199") == "5145550199"
+    assert spoken_number_text("123 Main Street") == "123 Main Street"
+    assert spoken_number_text("jo@example.com") == "jo@example.com"
+    assert spoken_number_text("514 555 0199") == "514 555 0199"
+    assert spoken_number_text("and") == "and"
+    assert classify_identifier("five one four five five five zero one nine nine") == ("phone", "5145550199")
+    assert classify_identifier("Main Street")[0] == ""

@@ -47,9 +47,9 @@ Easy to mix up:
     </subtask>
     <subtask name="M1 Account Lookup">
         <step name="Look Up Account">
-            <trigger>The caller has given a phone number or account number</trigger>
+            <trigger>The caller has given a phone number or account number, in any form (digits or number words, in groups or spaced)</trigger>
             <action>
-                Call {@TOOL: lookup_account} with phone_or_account set to the number exactly as the caller gave it. If they gave both, use the phone number.
+                Call {@TOOL: lookup_account} with phone_or_account set to the number as digits, right away. If they gave both, use the phone number.
             </action>
         </step>
         <step name="No Number">
