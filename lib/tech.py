@@ -38,6 +38,7 @@ from lib.fakes import (
     TECH_DEFAULT_BOOKING_SERVICE,
     TECH_EN_ROUTE_ETA_MINUTES,
     TECH_REPAIR_VISIT_FEE,
+    TECH_VISIT_LENGTH_HOURS,
     TICKETS,
     relative_date,
     resolve_copy_locale,
@@ -859,6 +860,34 @@ _TECH_VISIT_TYPES: dict[str, dict[str, str]] = {
 }
 
 
+# What the caller prepares for a visit (Turn N+1 facts, DESIGN_RULES rule 33).
+_TECH_VISIT_PREP: dict[str, tuple[str, ...]] = {
+    "en-US": (
+        "An adult needs to be home for the whole arrival window.",
+        "Keep clear access to the equipment: the modem, receiver or phone jack, and the satellite dish for satellite TV.",
+        "No documents or paperwork are needed.",
+        "You'll get a text when the technician is on the way.",
+    ),
+    "fr-CA": (
+        "Un adulte doit être à la maison pendant toute la plage d'arrivée.",
+        "Gardez un accès dégagé à l'équipement : le modem, le récepteur ou la prise téléphonique, et l'antenne parabolique pour la télé par satellite.",
+        "Aucun document n'est requis.",
+        "Vous recevrez un texto quand le technicien sera en route.",
+    ),
+}
+
+
+def _tech_visit_facts(lang: str) -> dict[str, Any]:
+    """What to prepare and how long a visit takes, so a booking follow-up stays grounded."""
+    low, high = TECH_VISIT_LENGTH_HOURS
+    if resolve_copy_locale(lang) == "fr-CA":
+        length = f"environ {low} à {high} heures"
+    else:
+        length = f"about {low} to {high} hours"
+    prep = _TECH_VISIT_PREP.get(resolve_copy_locale(lang)) or _TECH_VISIT_PREP["en-US"]
+    return {"visit_prep": list(prep), "visit_length_display": length, "documents_needed": False}
+
+
 def _tech_slots(lang: str) -> list[dict[str, Any]]:
     """The three bookable slots (rule 34: bundled with the status lookup)."""
     slots = []
@@ -1022,6 +1051,7 @@ def get_appointment_and_ticket_status_impl(
         "tickets": tickets,
         "ticket_count": len(tickets),
         "available_slots": _tech_public_slots(lang),
+        **_tech_visit_facts(lang),
     }
     return ok_reply(data, reference, language=lang)
 
@@ -1133,7 +1163,8 @@ def manage_appointment_impl(
 
 def _tech_slot_required(appt_id: str, reference: str, lang: str) -> dict[str, Any]:
     reply = ok_reply(
-        {"appointment_id": appt_id, "slot_required": True, "available_slots": _tech_public_slots(lang)},
+        {"appointment_id": appt_id, "slot_required": True, "available_slots": _tech_public_slots(lang),
+         **_tech_visit_facts(lang)},
         reference, language=lang,
     )
     reply["agent_action"] = "Offer these slots and ask which one suits the caller."
@@ -1163,7 +1194,8 @@ def _tech_reschedule(
         state["appt_slot_id"] = slot["slot_id"]
     state["pending_confirmation"] = ""
     sms = _tech_sms_once(state, f"appointment_rescheduled_{slot['slot_id'].lower()}")
-    confirmation = tracking_id("reschedule", state.get("account_id", ""), appt["appointment_id"], slot["slot_id"])
+    # One reference per visit: the confirmation number is the appointment id.
+    confirmation = appt["appointment_id"]
     state["last_tracking_id"] = confirmation
     return ok_reply(
         {
@@ -1176,6 +1208,7 @@ def _tech_reschedule(
             "confirmation_id": confirmation,
             "sms_confirmation_sent": True,
             "destination_last4": sms["destination_last4"],
+            **_tech_visit_facts(lang),
         },
         confirmation,
         language=lang,
@@ -1236,7 +1269,7 @@ def _tech_book(state: dict[str, Any], slot_id: Any, reference: str, lang: str) -
         return _tech_bad_slot(state, reference, lang)
     state["booked_slot_id"] = slot["slot_id"]
     sms = _tech_sms_once(state, f"appointment_booked_{slot['slot_id'].lower()}")
-    confirmation = tracking_id("book", state.get("account_id", ""), slot["slot_id"])
+    confirmation = new_id  # one reference per visit
     state["last_tracking_id"] = confirmation
     service = str(state.get("lob") or TECH_DEFAULT_BOOKING_SERVICE)
     return ok_reply(
@@ -1251,6 +1284,7 @@ def _tech_book(state: dict[str, Any], slot_id: Any, reference: str, lang: str) -
             "confirmation_id": confirmation,
             "sms_confirmation_sent": True,
             "destination_last4": sms["destination_last4"],
+            **_tech_visit_facts(lang),
         },
         confirmation,
         language=lang,

@@ -167,7 +167,7 @@ Transfers to other agents are silent.
     <step name="Change Done">
       <trigger>{@TOOL: manage_appointment} returned rescheduled, booked, cancelled or note_added true, or error="INVALID_INPUT"</trigger>
       <action>
-        Confirm the change, with new_date_display and new_window_display for a new time, say a text confirmation is on its way, and ask if there is anything else. On error="INVALID_INPUT", offer the open slots again.
+        Confirm the change, with new_date_display and new_window_display for a new time, give confirmation_id if they ask for a reference, say a text confirmation is on its way, and ask if there is anything else. Answer what to prepare or how long the visit takes only from visit_prep and visit_length_display. On error="INVALID_INPUT", offer the open slots again.
       </action>
     </step>
   </subtask>
