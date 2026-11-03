@@ -492,6 +492,15 @@ def handover_to_person_impl(
         "service_status": state.get("service_status") or "",
         "last_tracking_id": state.get("last_tracking_id") or "",
         "applied_adjustments": state.get("applied_adjustments") or "",
+        "phone_last4": str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or "")[-4:],
+        "customer_type": state.get("customer_type") or "",
+        "region": state.get("region") or "",
+        "lob": state.get("lob") or "",
+        "route": state.get("route") or "",
+        "global_err_count": read_count(state, "global_err_count"),
+        "auth_failure_count": read_count(state, "auth_failure_count"),
+        "queue": queue,
+        "queue_open": open_now,
     }
     reference = tracking_id("handover_to_person", state.get("account_id", ""), code, lang)
     state["language"] = lang

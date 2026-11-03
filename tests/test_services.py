@@ -537,3 +537,22 @@ def test_handoff_context_summary_carries_no_full_pii() -> None:
         assert secret not in sent
     for kept in ("0199", "5678", "1111", "j***@example.com", "$120.00"):
         assert kept in sent
+
+
+def test_handoff_context_carries_the_session_variables() -> None:
+    # BR-TV-015: every escalation carries the session variables to the live agent.
+    import json
+
+    from lib import services as svc
+
+    state = {
+        "account_id": "A1001", "phone_last4": "0186", "caller_provided_phone_last4": "0199",
+        "customer_type": "Existing", "region": "Region-A", "lob": "internet", "route": "tech_support",
+        "global_err_count": 2, "auth_failure_count": 1,
+    }
+    svc.handover_to_person_impl("too_many_errors", "", state=state)
+    ctx = json.loads(state["handoff_context"])
+    assert ctx["phone_last4"] == "0199"
+    assert (ctx["customer_type"], ctx["region"], ctx["lob"], ctx["route"]) == ("Existing", "Region-A", "internet", "tech_support")
+    assert (ctx["global_err_count"], ctx["auth_failure_count"]) == (2, 1)
+    assert ctx["queue"] == "general" and ctx["queue_open"] is True
