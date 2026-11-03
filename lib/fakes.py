@@ -266,6 +266,8 @@ SALES_WARRANTY_REPLACEMENT_COST = "0.00"  # in-warranty replacement: no fee, no 
 SALES_PORT_DAYS: dict[str, int] = {"mobile": 0, "landline": 3}
 # Longest a transfer usually takes, in business days (SALES_PORT_DAYS is the usual completion).
 SALES_PORT_MAX_DAYS: dict[str, int] = {"mobile": 2, "landline": 5}
+# Mobility data after the plan's high-speed allowance is used (no overage fees).
+SALES_REDUCED_SPEED_KBPS = 512
 # An IMEI (the phone's serial number) can stand in for the old provider's account number on a port-in.
 SALES_IMEI_DIGITS = 15
 
@@ -355,6 +357,10 @@ SALES_COPY: dict[str, dict[str, str]] = {
     "after_data_cap": {
         "en-US": "After the high-speed data is used, data continues at a reduced speed with no overage fees.",
         "fr-CA": "Une fois les données haute vitesse utilisées, les données continuent à vitesse réduite, sans frais d'excédent.",
+    },
+    "hotspot_included": {
+        "en-US": "Mobile hotspot is included at no extra cost and uses the plan's high-speed data; there is no separate hotspot limit.",
+        "fr-CA": "Le partage de connexion est inclus sans frais supplémentaires et utilise les données haute vitesse du forfait; il n'y a pas de limite distincte pour le partage de connexion.",
     },
     "proration": {
         "en-US": "This month's bill is prorated for the days on each plan.",

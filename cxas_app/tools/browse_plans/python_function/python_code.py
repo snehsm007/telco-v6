@@ -24,7 +24,8 @@ def browse_plans(
 
     Returns:
       status, data (lob, plans[] {plan_id, name, price_display, key_features,
-        data_display or speed_display, price_difference_display, price_change,
+        data_display or speed_display, reduced_speed_display, hotspot_note,
+        price_difference_display, price_change,
         new_monthly_total_display, new_account_monthly_total_display}, current_plan,
         coverage_checked, coverage_available, max_speed_display, contract_terms,
         activation_display, effective_date_display, no_plan_within_budget),
@@ -101,6 +102,10 @@ SALES_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
     "after_data_cap": {
         "en-US": "After the high-speed data is used, data continues at a reduced speed with no overage fees.",
         "fr-CA": "Une fois les données haute vitesse utilisées, les données continuent à vitesse réduite, sans frais d'excédent.",
+    },
+    "hotspot_included": {
+        "en-US": "Mobile hotspot is included at no extra cost and uses the plan's high-speed data; there is no separate hotspot limit.",
+        "fr-CA": "Le partage de connexion est inclus sans frais supplémentaires et utilise les données haute vitesse du forfait; il n'y a pas de limite distincte pour le partage de connexion.",
     },
     "proration": {
         "en-US": "This month's bill is prorated for the days on each plan.",
@@ -426,6 +431,8 @@ SALES_PLACEHOLDERS: frozenset[str] = frozenset(  # pragma: no cover
 def _sales_placeholder(value: Any) -> bool:  # pragma: no cover
     return str(value if value is not None else "").strip().lower() in SALES_PLACEHOLDERS
 
+SALES_REDUCED_SPEED_KBPS = 512  # pragma: no cover
+
 SALES_FEATURES_FR: dict[str, str] = {  # pragma: no cover
     "20 GB high-speed data": "20 Go de données haute vitesse",
     "50 GB high-speed data": "50 Go de données haute vitesse",
@@ -465,6 +472,9 @@ SALES_FEATURES_FR: dict[str, str] = {  # pragma: no cover
 
 def _sales_feature(text: str, lang: str) -> str:  # pragma: no cover
     return SALES_FEATURES_FR.get(text, text) if resolve_copy_locale(lang) == "fr-CA" else text
+
+def _sales_kbps_display(kbps: int, lang: str) -> str:  # pragma: no cover
+    return f"{kbps} kbit/s" if resolve_copy_locale(lang) == "fr-CA" else f"{kbps} kbps"
 
 def _sales_account_total(state: dict[str, Any]) -> Decimal:  # pragma: no cover
     return sum(
@@ -508,6 +518,9 @@ def _sales_plan_view(state: dict[str, Any], plan: dict[str, Any], current: dict[
         view["data_display"] = _sales_data_display(int(plan["data_gb"]), lang)
     if plan.get("speed_mbps"):
         view["speed_display"] = _sales_speed_display(int(plan["speed_mbps"]), lang)
+    if plan["lob"] == "mobility":  # follow-up facts: speed after the allowance, hotspot (rule 33)
+        view["reduced_speed_display"] = _sales_kbps_display(SALES_REDUCED_SPEED_KBPS, lang)
+        view["hotspot_note"] = _sales_text("hotspot_included", lang)
     if plan.get("upload_mbps"):  # follow-up facts: upload, symmetry, latency (DESIGN_RULES rule 33)
         view["upload_speed_display"] = _sales_speed_display(int(plan["upload_mbps"]), lang)
         view["symmetric"] = bool(plan.get("symmetric"))

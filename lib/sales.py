@@ -58,6 +58,7 @@ from lib.fakes import (
     SALES_PORT_DAYS,
     SALES_PORT_MAX_DAYS,
     SALES_PRICE_WORDS,
+    SALES_REDUCED_SPEED_KBPS,
     SALES_REPAIR_FEE,
     SALES_RETURN_WINDOW_DAYS,
     SALES_SAFETY_WORDS,
@@ -134,6 +135,10 @@ def _sales_speed_display(mbps: int, lang: str) -> str:
     if mbps >= 1000 and mbps % 1000 == 0:
         return f"{mbps // 1000} Gbit/s" if fr else f"{mbps // 1000} Gbps"
     return f"{mbps} Mbit/s" if fr else f"{mbps} Mbps"
+
+
+def _sales_kbps_display(kbps: int, lang: str) -> str:
+    return f"{kbps} kbit/s" if resolve_copy_locale(lang) == "fr-CA" else f"{kbps} kbps"
 
 
 def _sales_feature(text: str, lang: str) -> str:
@@ -239,6 +244,9 @@ def _sales_plan_view(state: dict[str, Any], plan: dict[str, Any], current: dict[
         view["data_display"] = _sales_data_display(int(plan["data_gb"]), lang)
     if plan.get("speed_mbps"):
         view["speed_display"] = _sales_speed_display(int(plan["speed_mbps"]), lang)
+    if plan["lob"] == "mobility":  # follow-up facts: speed after the allowance, hotspot (rule 33)
+        view["reduced_speed_display"] = _sales_kbps_display(SALES_REDUCED_SPEED_KBPS, lang)
+        view["hotspot_note"] = _sales_text("hotspot_included", lang)
     if plan.get("upload_mbps"):  # follow-up facts: upload, symmetry, latency (DESIGN_RULES rule 33)
         view["upload_speed_display"] = _sales_speed_display(int(plan["upload_mbps"]), lang)
         view["symmetric"] = bool(plan.get("symmetric"))

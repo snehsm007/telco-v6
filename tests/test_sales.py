@@ -565,3 +565,17 @@ def test_transfer_pending_target_is_not_given_until_the_caller_says() -> None:
     assert named["target"] == "new_line"
     existing = start_number_transfer_impl("4165550123", "", "", "", "existing_line", state=_logged_in())["data"]
     assert existing["target"] == "existing_line"
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_mobility_plans_carry_reduced_speed_and_hotspot_facts(lang: str) -> None:
+    """VE-46: "I cannot confirm exact throttled speed numbers or hotspot limits"."""
+    plans = browse_plans_impl("mobility", budget="60", state=_identified(), language=lang)["data"]["plans"]
+    assert plans
+    for plan in plans:
+        assert str(sales.SALES_REDUCED_SPEED_KBPS) in plan["reduced_speed_display"]
+        assert plan["hotspot_note"] == SALES_COPY["hotspot_included"][lang]
+    quote = place_order_impl("MOB-50", False, state=_logged_in(), language=lang)["data"]
+    assert quote["reduced_speed_display"] and quote["hotspot_note"]
+    internet = browse_plans_impl("internet", state=_identified(), language=lang)["data"]["plans"]
+    assert all("reduced_speed_display" not in p and "hotspot_note" not in p for p in internet)

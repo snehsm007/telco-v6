@@ -159,6 +159,10 @@ SALES_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "After the high-speed data is used, data continues at a reduced speed with no overage fees.",
         "fr-CA": "Une fois les données haute vitesse utilisées, les données continuent à vitesse réduite, sans frais d'excédent.",
     },
+    "hotspot_included": {
+        "en-US": "Mobile hotspot is included at no extra cost and uses the plan's high-speed data; there is no separate hotspot limit.",
+        "fr-CA": "Le partage de connexion est inclus sans frais supplémentaires et utilise les données haute vitesse du forfait; il n'y a pas de limite distincte pour le partage de connexion.",
+    },
     "proration": {
         "en-US": "This month's bill is prorated for the days on each plan.",
         "fr-CA": "La facture de ce mois-ci est calculée au prorata des jours passés sur chaque forfait.",
