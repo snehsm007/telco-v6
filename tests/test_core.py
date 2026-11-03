@@ -157,3 +157,11 @@ def test_queue_open_follows_queue_hours() -> None:
     for queue in ("fraud", "outage", "general"):
         assert core.queue_open(queue, sunday_12) is True
     assert isinstance(core.queue_open("sales"), bool)
+
+
+def test_mock_error_off_values_mean_no_fault() -> None:
+    # A scenario that seeds mock_error="false" must not break every tool.
+    for off in ("false", "False", "none", "0", "off", "no", "null", " "):
+        assert core.check_mock_error({"mock_error": off}, "en-US", "x") is None
+    for on in ("SYSTEM_DOWN", "true", "INTERNAL_ERROR"):
+        assert core.check_mock_error({"mock_error": on}, "en-US", "x")["error"] == "SYSTEM_UNAVAILABLE"

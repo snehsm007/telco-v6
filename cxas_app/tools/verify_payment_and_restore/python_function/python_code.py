@@ -358,6 +358,8 @@ def _bill_save(state: dict[str, Any], balance: Decimal, past_due: Decimal) -> No
     state["balance_due"] = display_amount(max(balance, _BILL_ZERO))
     state["past_due_amount"] = display_amount(max(min(past_due, balance), _BILL_ZERO))
 
+MOCK_ERROR_OFF: frozenset[str] = frozenset({"false", "none", "0", "off", "no", "null"})  # pragma: no cover
+
 ERROR_CODES = (  # pragma: no cover
     "INVALID_INPUT",
     "NOT_FOUND",
@@ -673,8 +675,13 @@ def error_reply(  # pragma: no cover
     return reply
 
 def check_mock_error(state: dict[str, Any], lang: str = "en-US", tool_name: str = "tool") -> dict[str, Any] | None:  # pragma: no cover
-    """Fault injection: `mock_error` set in session state makes every tool return a system error."""
+    """Fault injection: `mock_error` set in session state makes every tool return a system error.
+
+    "false", "none", "0", "off", "no" and "null" mean no fault, like an empty value.
+    """
     if str(state.get("mock_error") or "").strip():
+        if str(state.get("mock_error")).strip().lower() in MOCK_ERROR_OFF:
+            return None
         ref = tracking_id(tool_name, "mock_error", state.get("account_id", ""))
         state["last_tracking_id"] = ref
         return error_reply(
