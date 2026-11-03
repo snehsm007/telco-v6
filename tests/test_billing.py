@@ -941,3 +941,25 @@ def test_past_due_breakdown_falls_back_to_one_line_when_items_do_not_fit():
     items = data["past_due_breakdown"]["items"]
     assert len(items) == 1 and items[0]["amount_display"] == "300.00"
     assert items[0]["description"] == PAST_DUE_FALLBACK_LABEL[0]
+
+
+def _billing_prompt_block(tag: str, name: str) -> str:
+    import re
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[1] / "cxas_app" / "agents" / "billing" / "instruction.txt").read_text(encoding="utf-8")
+    match = re.search(rf'<{tag} name="{name}">(.*?)</{tag}>', text, re.S)
+    assert match, name
+    return " ".join(match.group(1).split())
+
+
+def test_billing_prompt_keeps_balance_disagreement_a_dispute_and_takeover_fraud():
+    # VE-16: a caller disputing their balance was escalated as fraud. Fraud is takeover only.
+    rule = _billing_prompt_block("constraint", "Fraud Versus Dispute")
+    assert "only account takeover or unauthorized access" in rule
+    assert "hacked" in rule and "global fraud step" in rule  # sim__report_fraud_mid_call_switch
+    assert "disagrees with the balance" in rule and "apply_bill_adjustment" in rule
+    assert "never a fraud handover" in rule
+    assert "pay any amount they choose" in rule
+    assert "disagrees with their balance" in _billing_prompt_block("step", "Find Charge")
+    assert "any amount the caller chooses" in _billing_prompt_block("step", "Payment Preamble")
