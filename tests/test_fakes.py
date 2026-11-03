@@ -191,3 +191,11 @@ def test_credential_formats() -> None:
     assert OTP_RE.fullmatch("482913") and not OTP_RE.fullmatch("48291") and not OTP_RE.fullmatch("4829130")
     assert PIN_RE.fullmatch("5903") and not PIN_RE.fullmatch("590") and not PIN_RE.fullmatch("59031")
     assert not login_code_accepted("59031", attempts=0)  # neither a PIN nor a code
+
+
+def test_default_world_serves_scenarios_without_overrides() -> None:
+    """External graders run the public scenarios without fx_* overrides (docs/requirements.md
+    §Defaults vs. overrides): the defaults must carry each scenario's backend fact."""
+    from lib.fakes import FIXTURE_DEFAULTS
+
+    assert FIXTURE_DEFAULTS["fx_duplicate_payment"] == "true"

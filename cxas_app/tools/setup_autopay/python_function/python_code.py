@@ -255,7 +255,7 @@ FIXTURE_DEFAULTS: dict[str, str] = {  # pragma: no cover
     "fx_business_account": "false",
     "fx_outage_status": "",
     "fx_technician_status": "scheduled",
-    "fx_duplicate_payment": "false",
+    "fx_duplicate_payment": "true",  # the ledger holds a duplicate payment; refunded only when a caller claims it
     "fx_extra_bill_line": "",
     "fx_device_warranty": "in_warranty",
     "fx_mfa_enabled": "false",

@@ -556,10 +556,26 @@ def test_duplicate_found_from_description_when_type_differs():
 
 
 def test_duplicate_claim_without_ledger_proof_is_not_refunded():
-    reply = apply_bill_adjustment_impl("duplicate_payment", DUPLICATE_PAYMENT["amount"], "paid twice", state=logged_in())
+    no_dup = {"fx_duplicate_payment": "false"}
+    reply = apply_bill_adjustment_impl("duplicate_payment", DUPLICATE_PAYMENT["amount"], "paid twice", state=logged_in(**no_dup))
     assert reply["error"] == "REFUND_THRESHOLD_EXCEEDED"
-    small = apply_bill_adjustment_impl("duplicate_payment", "", "paid twice", state=logged_in())
+    small = apply_bill_adjustment_impl("duplicate_payment", "", "paid twice", state=logged_in(**no_dup))
     assert small["data"]["dispute_opened"] is True
+
+
+def test_default_ledger_holds_a_duplicate_refunded_only_on_a_claim():
+    # Default world (no fx_* overrides): the duplicate is in the ledger, so a caller who
+    # says they paid twice gets it back; nobody else is refunded anything.
+    state = logged_in()
+    payments = get_billing_summary_impl(state=state)["data"]["recent_payments"]
+    assert sum(1 for p in payments if p.get("duplicate")) == 1
+    assert state.get("applied_adjustments", "") == ""
+    reply = apply_bill_adjustment_impl("duplicate_payment", "", "j'ai payé deux fois", state=state, language="fr-CA")
+    assert reply["data"]["amount_display"] == DUPLICATE_PAYMENT["amount"]
+    assert reply["data"]["applied_to"] == "original_payment_method"
+    # A different amount than the ledger's duplicate is not a verified duplicate.
+    other = apply_bill_adjustment_impl("duplicate_payment", "60.00", "paid twice", state=logged_in())
+    assert other["error"] == "REFUND_THRESHOLD_EXCEEDED"
 
 
 def test_adjustment_amount_validation():
