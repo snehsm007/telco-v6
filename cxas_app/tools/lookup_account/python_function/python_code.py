@@ -447,11 +447,15 @@ ACCOUNT_REFERENCE_RE = re.compile(  # pragma: no cover
     r"^(?=(?:[^0-9]*[0-9]){4})(?=.*[A-Za-z])[A-Za-z0-9](?:[A-Za-z0-9]|[\s\-](?=[A-Za-z0-9])){3,24}$"
 )
 
+ALL_DIGITS_RE = re.compile(r"^[0-9]+$")  # pragma: no cover
+
 PHONE_INTL_RE = re.compile(r"^(?:\+|00)[1-9](?:[\s.\-]?[0-9]){9,14}$")  # pragma: no cover
 
 PHONE_LOCAL_PAIRS_RE = re.compile(r"^0[1-9](?:[\s.\-]?[0-9]{2}){4}$")  # pragma: no cover
 
 PHONE_NANP_RE = re.compile(r"^(?:\+?1[\s.\-]?)?\(?[0-9]{3}\)?[\s.\-]?[0-9]{3}[\s.\-]?[0-9]{4}$")  # pragma: no cover
+
+SPOKEN_DIGIT_SEPARATORS_RE = re.compile(r"[\s,.\-()]+")  # pragma: no cover
 
 def normalize_code(value: Any) -> str:  # pragma: no cover
     """Coerce ints, floats (e.g. 5903.0), and formatted strings into a clean digit string."""
@@ -471,11 +475,24 @@ def normalize_code(value: Any) -> str:  # pragma: no cover
 def classify_identifier(raw: Any) -> tuple[str, str]:  # pragma: no cover
     """Match a caller identifier against the format patterns.
 
+    Phone speech-to-text writes numbers as "888,777,666" or "5 1 4 5 5 5 0 1 9 9";
+    when only separators (spaces, commas, dots, dashes, brackets) sit between the
+    digits, the digit string itself is classified by length with the same rules.
     Returns (kind, digits): kind is phone, intl_phone, account_number,
     account_reference, or "" when no pattern matches.
     """
     text = re.sub(r"\.0+$", "", str(raw or "").strip())
     digits = normalize_code(text)
+    compact = SPOKEN_DIGIT_SEPARATORS_RE.sub("", text)
+    if compact and ALL_DIGITS_RE.fullmatch(compact) and not compact.startswith("00") and not PHONE_NANP_RE.fullmatch(text):
+        if len(compact) == 11 and compact.startswith("1"):
+            return "phone", compact[1:]
+        if len(compact) == 10 and not compact.startswith("0"):
+            return "phone", compact
+        if PHONE_LOCAL_PAIRS_RE.fullmatch(text):
+            return "phone", compact
+        if ACCOUNT_NUMBER_RE.fullmatch(compact):
+            return "account_number", compact
     if PHONE_NANP_RE.fullmatch(text):
         return "phone", digits[-10:]
     if PHONE_LOCAL_PAIRS_RE.fullmatch(text):

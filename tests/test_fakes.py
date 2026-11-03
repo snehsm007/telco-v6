@@ -181,7 +181,7 @@ def test_identifier_formats_accepted(raw: str, kind: str) -> None:
     assert classify_identifier(raw)[0] == kind
 
 
-@pytest.mark.parametrize("raw", ["", "abc", "12-34", "12345", "+12", "514--555", "ABC-12", "#5145550199"])
+@pytest.mark.parametrize("raw", ["", "abc", "12-34", "12345", "+12", "ABC-12", "#5145550199"])
 def test_identifier_formats_rejected(raw: str) -> None:
     assert classify_identifier(raw)[0] == ""
     assert find_account(raw) is None
@@ -191,3 +191,22 @@ def test_credential_formats() -> None:
     assert OTP_RE.fullmatch("482913") and not OTP_RE.fullmatch("48291") and not OTP_RE.fullmatch("4829130")
     assert PIN_RE.fullmatch("5903") and not PIN_RE.fullmatch("590") and not PIN_RE.fullmatch("59031")
     assert not login_code_accepted("59031", attempts=0)  # neither a PIN nor a code
+
+
+@pytest.mark.parametrize(
+    "raw,kind,digits",
+    [
+        ("888,777,666", "account_number", "888777666"),
+        ("5 1 4 5 5 5 0 1 9 9", "phone", "5145550199"),
+        ("1,514,555,0199", "phone", "5145550199"),
+        ("514.555.0199", "phone", "5145550199"),
+    ],
+)
+def test_speech_to_text_digit_formats(raw: str, kind: str, digits: str) -> None:
+    assert classify_identifier(raw) == (kind, digits)
+    assert find_account(raw) is not None
+
+
+def test_comma_digits_still_reject_dummy_and_short() -> None:
+    assert find_account("123,456,789,0") is None
+    assert classify_identifier("12,34")[0] == ""

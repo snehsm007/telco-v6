@@ -653,7 +653,7 @@ def classify_identifier(raw: Any) -> tuple[str, str]:
     text = re.sub(r"\.0+$", "", str(raw or "").strip())
     digits = normalize_code(text)
     compact = SPOKEN_DIGIT_SEPARATORS_RE.sub("", text)
-    if compact and ALL_DIGITS_RE.fullmatch(compact) and not PHONE_NANP_RE.fullmatch(text):
+    if compact and ALL_DIGITS_RE.fullmatch(compact) and not compact.startswith("00") and not PHONE_NANP_RE.fullmatch(text):
         if len(compact) == 11 and compact.startswith("1"):
             return "phone", compact[1:]
         if len(compact) == 10 and not compact.startswith("0"):

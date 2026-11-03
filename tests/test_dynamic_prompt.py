@@ -290,3 +290,11 @@ def test_a_later_keypad_two_never_switches_language() -> None:
     """A '2' after the first turn is a menu or slot choice (telco-v5 defect)."""
     assert detect_active_call_language({}, _req("I need to reschedule", "2")) == "en-US"
     assert detect_active_call_language({"language": "en-US"}, _req("2")) == "en-US"
+
+
+def test_platform_session_event_is_not_a_caller_turn() -> None:
+    """The live phone gateway sends <event>session start</event> as a user turn before the caller speaks."""
+    req = _req("<event>session start</event>", "Bonjour, je veux payer ma facture")
+    assert extract_user_utterances(req) == ["Bonjour, je veux payer ma facture"]
+    assert detect_active_call_language({}, req) == "fr-CA"
+    assert detect_active_call_language({}, _req("<event>session start</event>", "2")) == "fr-CA"
