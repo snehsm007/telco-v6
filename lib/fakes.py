@@ -493,15 +493,20 @@ REGION_BY_POSTAL_LETTER: dict[str, str] = {
 }
 DEFAULT_REGION = "Region-C"
 # Outages hit a postal district, not a whole province (rule 40: district classes,
-# never full postal codes). A district is the first two characters of a Canadian
-# postal code: the province letter plus the district digit. Active today: a
-# Quebec City district and Montreal's centre-west district; the rest of Quebec
-# (other Montreal districts, the J suburbs), every other province and every ZIP
-# have none.
-OUTAGE_DISTRICT_LENGTH = 2
+# never full postal codes). A district is a Canadian forward sortation area (FSA):
+# the first three characters of a postal code (province letter, district digit,
+# area letter). Today's outage footprint is two contiguous city cores, each served
+# by one network hub (docs/requirements.md §Defaults vs. overrides):
+#   - central Quebec City: Saint-Roch / Basse-Ville, Vieux-Quebec / Saint-Jean-Baptiste, Montcalm;
+#   - Montreal centre-west: downtown west, Shaughnessy Village, Westmount.
+# Downtown-east Montreal (H3A/H3B/H3C), the rest of G1/H3, other Montreal districts
+# (H1, H2, H4...), G2+, the J suburbs, every other province and every ZIP have none.
+OUTAGE_DISTRICT_LENGTH = 3
+_QUEBEC_CITY_CORE_OUTAGE = {"outage_id": "OUT-G1-27", "services": ["internet", "tv"], "eta_hours": 4}
+_MONTREAL_CENTRE_WEST_OUTAGE = {"outage_id": "OUT-H3-27", "services": ["internet", "tv"], "eta_hours": 4}
 ACTIVE_OUTAGES_BY_DISTRICT: dict[str, dict[str, Any]] = {
-    "G1": {"outage_id": "OUT-G1-27", "services": ["internet", "tv"], "eta_hours": 4},
-    "H3": {"outage_id": "OUT-H3-27", "services": ["internet", "tv"], "eta_hours": 4},
+    **{fsa: _QUEBEC_CITY_CORE_OUTAGE for fsa in ("G1K", "G1R", "G1S")},
+    **{fsa: _MONTREAL_CENTRE_WEST_OUTAGE for fsa in ("H3G", "H3H", "H3Y", "H3Z")},
 }
 FIXTURE_OUTAGE = {"outage_id": "OUT-LOCAL-09", "services": ["internet", "tv"], "eta_hours": 3}
 

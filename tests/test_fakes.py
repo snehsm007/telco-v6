@@ -211,12 +211,18 @@ def test_default_world_serves_scenarios_without_overrides() -> None:
     assert FIXTURE_DEFAULTS["fx_outage_status"] == ""
     from lib.fakes import ACTIVE_OUTAGES_BY_DISTRICT, OUTAGE_DISTRICT_LENGTH, REGION_BY_POSTAL_LETTER
 
-    # Outages are by postal district class (letter + digit), never full postal codes,
-    # and only some Quebec districts: the service regions stay province-wide.
-    assert all(len(d) == OUTAGE_DISTRICT_LENGTH and d[0].isalpha() and d[1].isdigit() for d in ACTIVE_OUTAGES_BY_DISTRICT)
-    assert {d[0] for d in ACTIVE_OUTAGES_BY_DISTRICT} <= {"G", "H"}
+    # Outages are by postal district class (FSA: letter + digit + letter), never full postal
+    # codes, and only a few Quebec districts: the service regions stay province-wide.
+    assert OUTAGE_DISTRICT_LENGTH == 3
+    assert all(
+        len(d) == 3 and d[0].isalpha() and d[1].isdigit() and d[2].isalpha() for d in ACTIVE_OUTAGES_BY_DISTRICT
+    )
+    assert {d[:2] for d in ACTIVE_OUTAGES_BY_DISTRICT} == {"G1", "H3"}
     assert all(REGION_BY_POSTAL_LETTER[d[0]] == "Region-A" for d in ACTIVE_OUTAGES_BY_DISTRICT)
-    assert "H2" not in ACTIVE_OUTAGES_BY_DISTRICT and "J4" not in ACTIVE_OUTAGES_BY_DISTRICT
+    # Each area is a footprint of several districts, not one district per scenario (rule 40).
+    assert all(sum(d.startswith(p) for d in ACTIVE_OUTAGES_BY_DISTRICT) >= 3 for p in ("G1", "H3"))
+    assert not {"H3A", "H3B", "H3C"} & set(ACTIVE_OUTAGES_BY_DISTRICT)
+    assert not any(d.startswith(("H1", "H2", "H4", "J")) for d in ACTIVE_OUTAGES_BY_DISTRICT)
 
 
 @pytest.mark.parametrize(

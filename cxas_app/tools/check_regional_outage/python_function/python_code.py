@@ -44,9 +44,13 @@ from typing import Any
 import hashlib
 import re
 
+_MONTREAL_CENTRE_WEST_OUTAGE = {"outage_id": "OUT-H3-27", "services": ["internet", "tv"], "eta_hours": 4}  # pragma: no cover
+
+_QUEBEC_CITY_CORE_OUTAGE = {"outage_id": "OUT-G1-27", "services": ["internet", "tv"], "eta_hours": 4}  # pragma: no cover
+
 ACTIVE_OUTAGES_BY_DISTRICT: dict[str, dict[str, Any]] = {  # pragma: no cover
-    "G1": {"outage_id": "OUT-G1-27", "services": ["internet", "tv"], "eta_hours": 4},
-    "H3": {"outage_id": "OUT-H3-27", "services": ["internet", "tv"], "eta_hours": 4},
+    **{fsa: _QUEBEC_CITY_CORE_OUTAGE for fsa in ("G1K", "G1R", "G1S")},
+    **{fsa: _MONTREAL_CENTRE_WEST_OUTAGE for fsa in ("H3G", "H3H", "H3Y", "H3Z")},
 }
 
 FIXTURE_OUTAGE = {"outage_id": "OUT-LOCAL-09", "services": ["internet", "tv"], "eta_hours": 3}  # pragma: no cover
@@ -96,10 +100,10 @@ def _tech_area_outage(state: dict[str, Any], district: str) -> dict[str, Any] | 
     found = ACTIVE_OUTAGES_BY_DISTRICT.get(district)
     return dict(found) if found else None
 
-OUTAGE_DISTRICT_LENGTH = 2  # pragma: no cover
+OUTAGE_DISTRICT_LENGTH = 3  # pragma: no cover
 
 def _tech_district(kind: str, code: str) -> str:  # pragma: no cover
-    """Postal district of a Canadian postal code (province letter + district digit); "" for a ZIP."""
+    """Postal district (FSA: the first three characters) of a Canadian postal code; "" for a ZIP."""
     return code[:OUTAGE_DISTRICT_LENGTH] if kind == "postal" else ""
 
 def resolve_locale(language: str | None) -> str:  # pragma: no cover

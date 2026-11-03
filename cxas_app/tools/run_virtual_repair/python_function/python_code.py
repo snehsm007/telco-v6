@@ -102,9 +102,13 @@ _TECH_RESET_NOTES: dict[str, dict[str, str]] = {  # pragma: no cover
 
 _TECH_SUB_TYPES = ("streaming", "satellite", "streaming_only")  # pragma: no cover
 
+_MONTREAL_CENTRE_WEST_OUTAGE = {"outage_id": "OUT-H3-27", "services": ["internet", "tv"], "eta_hours": 4}  # pragma: no cover
+
+_QUEBEC_CITY_CORE_OUTAGE = {"outage_id": "OUT-G1-27", "services": ["internet", "tv"], "eta_hours": 4}  # pragma: no cover
+
 ACTIVE_OUTAGES_BY_DISTRICT: dict[str, dict[str, Any]] = {  # pragma: no cover
-    "G1": {"outage_id": "OUT-G1-27", "services": ["internet", "tv"], "eta_hours": 4},
-    "H3": {"outage_id": "OUT-H3-27", "services": ["internet", "tv"], "eta_hours": 4},
+    **{fsa: _QUEBEC_CITY_CORE_OUTAGE for fsa in ("G1K", "G1R", "G1S")},
+    **{fsa: _MONTREAL_CENTRE_WEST_OUTAGE for fsa in ("H3G", "H3H", "H3Y", "H3Z")},
 }
 
 FIXTURE_OUTAGE = {"outage_id": "OUT-LOCAL-09", "services": ["internet", "tv"], "eta_hours": 3}  # pragma: no cover
@@ -256,10 +260,10 @@ def _tech_data_usage(lang: str) -> dict[str, Any]:  # pragma: no cover
     )
     return {"data_speed_reduced": slowed, "data_usage_note": usage, "throttling_note": _tech_text(_TECH_DATA_NOTES["throttling"], lang)}
 
-OUTAGE_DISTRICT_LENGTH = 2  # pragma: no cover
+OUTAGE_DISTRICT_LENGTH = 3  # pragma: no cover
 
 def _tech_district(kind: str, code: str) -> str:  # pragma: no cover
-    """Postal district of a Canadian postal code (province letter + district digit); "" for a ZIP."""
+    """Postal district (FSA: the first three characters) of a Canadian postal code; "" for a ZIP."""
     return code[:OUTAGE_DISTRICT_LENGTH] if kind == "postal" else ""
 
 TECH_REPAIR_VISIT_FEE = "0.00"  # pragma: no cover

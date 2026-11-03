@@ -152,7 +152,7 @@ def _tech_region(kind: str, code: str) -> str:
 
 
 def _tech_district(kind: str, code: str) -> str:
-    """Postal district of a Canadian postal code (province letter + district digit); "" for a ZIP."""
+    """Postal district (FSA: the first three characters) of a Canadian postal code; "" for a ZIP."""
     return code[:OUTAGE_DISTRICT_LENGTH] if kind == "postal" else ""
 
 
