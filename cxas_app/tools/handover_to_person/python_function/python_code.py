@@ -45,9 +45,11 @@ import hashlib
 import json
 import re
 
+DEFAULT_HANDOVER_LINES: tuple[str, ...] = ("live_agent_handoff", "handoff_context_note")  # pragma: no cover
+
 HANDOVER_LINES: dict[str, tuple[str, ...]] = {  # pragma: no cover
-    "business_handoff": ("business_handoff",),
-    "fraud_escalation": ("empathy_protocol", "live_agent_handoff"),
+    "business_handoff": ("business_handoff", "handoff_context_note"),
+    "fraud_escalation": ("empathy_protocol", "fraud_team_transfer"),
     "refund_threshold_exceeded": ("refund_over_limit", "transfer_to_specialist"),
 }
 
@@ -61,6 +63,13 @@ HANDOVER_QUEUES: dict[str, str] = {  # pragma: no cover
 }
 
 SELF_SERVE_ADJUSTMENT_LIMIT = "25.00"  # pragma: no cover
+
+_DISTRESS_RE = re.compile(  # pragma: no cover
+    r"frustrat|angry|upset|annoy|furious|mad at|fed up|sick of|tired of|ridiculous|"
+    r"in circles|going around|worried|stress|anxious|disconnect|cut off|"
+    r"fâch|fach|en col[eè]re|tann[eé]|écœur|ecoeur|en rond|inqui[eè]t|énerv|enerv",
+    re.IGNORECASE,
+)
 
 _HANDOVER_FR_WORDS = re.compile(  # pragma: no cover
     r"\b(?:bonjour|merci|compte|facture|facturation|paiement|transf[eé]rer|repr[eé]sentant|"
@@ -691,6 +700,21 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "I'll connect you to a representative who can help. Please hold.",
         "fr-CA": "Je vais vous mettre en relation avec un représentant qui pourra vous aider. Veuillez patienter.",
     },
+    # Operational handover lines (scorecard: transfer context, fraud team, distress);
+    # spoken by handover_to_person around the verbatim §7 lines, never instead of them.
+    # Interim French PENDING LEGAL APPROVAL (docs/requirements.md decision A6).
+    "fraud_team_transfer": {
+        "en-US": "I'm transferring you now to our fraud prevention team; they'll have the details you've shared, and they're available 24/7.",
+        "fr-CA": "Je vous transfère maintenant à notre équipe de prévention de la fraude; elle aura les détails que vous avez fournis, et elle est disponible 24 heures sur 24, 7 jours sur 7.",
+    },
+    "handoff_context_note": {
+        "en-US": "I've passed along what we've discussed so you won't need to repeat it.",
+        "fr-CA": "J'ai transmis ce dont nous avons discuté, vous n'aurez donc pas à le répéter.",
+    },
+    "distress_acknowledgement": {
+        "en-US": "I understand this has been frustrating, and I'm sorry for the trouble.",
+        "fr-CA": "Je comprends que la situation soit frustrante, et je suis désolé pour ces inconvénients.",
+    },
     "business_handoff": {
         "en-US": "To get you the best support for your business account, I'll transfer you to an agent. You'll need to use your phone keypad instead of talking to the virtual assistant. Just a moment while I connect you.",
         "fr-CA": "Pour vous offrir le meilleur soutien pour votre compte d'affaires, je vais vous transférer à un agent. Vous devrez utiliser le clavier de votre téléphone au lieu de parler à l'assistant virtuel. Un instant pendant que je vous mets en relation.",
@@ -790,14 +814,19 @@ def handover_to_person_impl(  # pragma: no cover
     err = check_mock_error(state, lang, "handover_to_person")
     if err and code != "system_unavailable":
         return err
-    keys = HANDOVER_LINES.get(code, ("live_agent_handoff",))
-    limit = display_amount(SELF_SERVE_ADJUSTMENT_LIMIT)
-    message = " ".join(spoken_line(k, lang, limit=limit) for k in keys)
+    keys = HANDOVER_LINES.get(code, DEFAULT_HANDOVER_LINES)
     queue = HANDOVER_QUEUES.get(code, "general")
     open_now = queue_open(queue)
     if not open_now:
         # The queue is closed (BR-TV-014): say the callback, never "please hold".
-        message = spoken_line("callback_next_business_day", lang)
+        keys = ("callback_next_business_day", "handoff_context_note")
+    distressed = code != "fraud_escalation" and bool(
+        _DISTRESS_RE.search(" ".join(str(t or "") for t in (reason, summary, state.get("utterance"))))
+    )
+    if distressed:
+        keys = ("distress_acknowledgement", *keys)
+    limit = display_amount(SELF_SERVE_ADJUSTMENT_LIMIT)
+    message = " ".join(spoken_line(k, lang, limit=limit) for k in keys)
     context = {
         "reason": code,
         "summary": redact_pii(" ".join(str(summary or "").split()))[:300],
@@ -837,6 +866,7 @@ def handover_to_person_impl(  # pragma: no cover
             "handover_id": reference,
             "handoff_message": message,
             "session_context_attached": True,
+            "distress_acknowledged": distressed,
             "action_fulfilled": True,
             "task_completed": True,
             "user_goal_fulfilled": True,

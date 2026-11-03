@@ -30,7 +30,7 @@ Every `BR-TV-*` in `prd.md` §18 is a requirement here, plus the module rules fr
 | REQ-22 | §11 | P0 | Outage check before diagnostics; TV sub-type before TV steps; SMS for >2 steps | tech tools + prompt |
 | REQ-23 | §12 | P0 | ≤3 plan options; order number + ETA + SMS receipt | `browse_plans`, `place_order` |
 | REQ-24 | §13 | P0 | Appointment rules: 2–3 slots, same-day cancel confirmed twice, en-route cannot cancel, SMS confirmation | `manage_appointment` |
-| REQ-25 | §14 | P0 | Password reset link (30 min, identified only), MFA step-up, lost/stolen suspend first, cancel/port-out disclosure + two-step confirm | account tools |
+| REQ-25 | §14 | P0 | Password reset link (30 min, login required: PIN or code), MFA step-up, lost/stolen suspend first, cancel/port-out disclosure + two-step confirm | account tools |
 | REQ-26 | §15 | P1 | Secondary-language tech fallback, `secondary_language_live_agent` | tech prompt |
 | REQ-27 | CUJ-6 | P0 | Never restore before the balance is cleared or a payment is verified | `process_bill_payment`, `verify_payment_and_restore`, `setup_payment_arrangement` |
 
@@ -39,7 +39,7 @@ Every `BR-TV-*` in `prd.md` §18 is a requirement here, plus the module rules fr
 | # | Question | Decision | Why |
 |---|---|---|---|
 | A1 | Refund threshold | `SELF_SERVE_ADJUSTMENT_LIMIT = 25.00` per adjustment. Verified duplicate-payment refunds return the caller's own money and are not goodwill adjustments, so they are refunded in full after ledger verification. Outage credits are adjustments and count against the limit. | The public refund-escalation scenario states the threshold as $25.00. Duplicate refunds still require a matching duplicate in the ledger. |
-| A2 | Password reset auth level | Identified only, link sent to the mobile number on file. | PRD §4 routing table; the public password scenarios identify by phone number only. Sending only to the number on file keeps it safe. |
+| A2 | Password reset auth level | Login required (PIN or login code) before the link is sent, then the link goes only to the mobile number on file. (Revised from "identified only".) | PRD §19 CUJ-1 expects "Agent must authenticate before dispatching the link", and the Academy live-grading scorecard lists password resets under AUTH_GATING (PIN or OTP before account mutations). `send_password_reset_link` gates on `require_login` like every other mutation tool. |
 | A3 | Auth before outage check | Outage status by postal code is public and needs no login. Diagnostics, tickets and account data need login. Port-in checklist (what to bring) needs no login; starting a transfer does. | Area outage status contains no account data. |
 | A4 | Languages | Primary `en-US`, secondary `fr-CA`. | All 70 public scenarios are English or Canadian French. |
 | A5 | M8 trigger | French tech calls are served by `tech_support` in French when the symptom is in the repair catalogue; anything else → `live_agent_handoff` in French with `secondary_language_live_agent`. | No symptom list in the brief. |

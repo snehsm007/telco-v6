@@ -399,8 +399,8 @@ def test_handover_reason_normalization(raw: str, code: str) -> None:
 
 
 EXPECTED_LINES = {
-    "fraud_escalation": ("empathy_protocol", "live_agent_handoff"),
-    "business_handoff": ("business_handoff",),
+    "fraud_escalation": ("empathy_protocol", "fraud_team_transfer"),
+    "business_handoff": ("business_handoff", "handoff_context_note"),
     "refund_threshold_exceeded": ("refund_over_limit", "transfer_to_specialist"),
 }
 
@@ -413,7 +413,7 @@ def test_handover_speaks_the_verbatim_line_for_each_reason(reason: str, lang: st
     monkeypatch.setattr(svc, "queue_open", lambda queue, now=None: True)  # time-of-day independent
     state: dict = {}
     reply = handover_to_person_impl(reason=reason, summary="s", state=state, language=lang)
-    keys = EXPECTED_LINES.get(reason, ("live_agent_handoff",))
+    keys = EXPECTED_LINES.get(reason, ("live_agent_handoff", "handoff_context_note"))
     limit = display_amount(SELF_SERVE_ADJUSTMENT_LIMIT)
     expected = " ".join(SPOKEN_LINES[k][lang].replace("[limit]", limit) for k in keys)
     assert reply["status"] == "ok"
@@ -423,11 +423,16 @@ def test_handover_speaks_the_verbatim_line_for_each_reason(reason: str, lang: st
     assert reply["data"]["language"] == lang and state["language"] == lang
 
 
-def test_fraud_is_empathy_then_live_agent_and_always_open() -> None:
-    reply = handover_to_person_impl(reason="fraud_escalation", state={}, language="en-US")
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_fraud_is_empathy_then_fraud_team_transfer_and_always_open(lang: str) -> None:
+    """BR-TV-013 + scorecard FRAUD_DEFLECTION: verbatim empathy, then name the fraud team."""
+    reply = handover_to_person_impl(reason="fraud_escalation", summary="caller is upset", state={}, language=lang)
     msg = reply["data"]["handoff_message"]
-    assert msg.startswith(SPOKEN_LINES["empathy_protocol"]["en-US"])
-    assert msg.endswith(SPOKEN_LINES["live_agent_handoff"]["en-US"])
+    assert msg.startswith(SPOKEN_LINES["empathy_protocol"][lang])
+    assert msg.endswith(SPOKEN_LINES["fraud_team_transfer"][lang])
+    assert SPOKEN_LINES["live_agent_handoff"][lang] not in msg
+    assert ("fraud prevention" if lang == "en-US" else "prévention de la fraude") in msg
+    assert reply["data"]["distress_acknowledged"] is False  # empathy_protocol already covers it
     assert reply["data"]["queue"] == "fraud" and reply["data"]["queue_open"] is True
     assert reply["data"]["handoff_status"] == "completed_via_specialist_queue"
 
@@ -439,6 +444,28 @@ def test_refund_threshold_handover_says_why_then_the_verbatim_transfer_line(lang
     assert "[limit]" in reason_line
     assert msg.startswith(reason_line.replace("[limit]", display_amount(SELF_SERVE_ADJUSTMENT_LIMIT)))
     assert msg.endswith(SPOKEN_LINES["transfer_to_specialist"][lang]) and "[" not in msg
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+@pytest.mark.parametrize(
+    "summary",
+    ["Caller is frustrated, going in circles", "angry, wants a human", "worried the line will be disconnected", "client fâché, tourne en rond"],
+)
+def test_frustrated_person_request_acknowledges_distress_first(summary: str, lang: str, monkeypatch) -> None:
+    """Scorecard: explicitly acknowledge distress before the verbatim transfer line."""
+    monkeypatch.setattr(services, "queue_open", lambda queue, now=None: True)
+    reply = handover_to_person_impl(reason="user_requested_agent", summary=summary, state={}, language=lang)
+    assert reply["data"]["distress_acknowledged"] is True
+    assert reply["data"]["handoff_message"] == " ".join(
+        SPOKEN_LINES[k][lang] for k in ("distress_acknowledgement", "live_agent_handoff", "handoff_context_note")
+    )
+
+
+def test_calm_person_request_has_no_distress_line(monkeypatch) -> None:
+    monkeypatch.setattr(services, "queue_open", lambda queue, now=None: True)
+    reply = handover_to_person_impl(reason="user_requested_agent", summary="wants a representative", state={})
+    assert reply["data"]["distress_acknowledged"] is False
+    assert reply["data"]["handoff_message"].startswith(SPOKEN_LINES["live_agent_handoff"]["en-US"])
 
 
 def test_handover_writes_handoff_context_json() -> None:
@@ -475,7 +502,7 @@ def test_handover_language_turn_one_french_and_lock() -> None:
     state: dict = {}
     reply = handover_to_person_impl(reason="user_requested_agent", summary="Je veux parler à un représentant", state=state)
     assert reply["data"]["language"] == "fr-CA"
-    assert reply["data"]["handoff_message"] == SPOKEN_LINES["live_agent_handoff"]["fr-CA"]
+    assert reply["data"]["handoff_message"].startswith(SPOKEN_LINES["live_agent_handoff"]["fr-CA"])
     assert state["language"] == "fr-CA"
     # The caller's own words in state count too.
     st2 = {"utterance": "Bonjour, je veux un agent"}
@@ -689,7 +716,10 @@ def test_closed_queue_handover_says_the_callback_not_please_hold(monkeypatch) ->
     monkeypatch.setattr(svc, "queue_open", lambda queue, now=None: False)
     reply = svc.handover_to_person_impl(reason="sales_specialist", state={})
     assert reply["data"]["handoff_status"] == "callback_next_business_day"
-    assert reply["data"]["handoff_message"] == SPOKEN_LINES["callback_next_business_day"]["en-US"]
+    assert reply["data"]["handoff_message"] == (
+        SPOKEN_LINES["callback_next_business_day"]["en-US"] + " " + SPOKEN_LINES["handoff_context_note"]["en-US"]
+    )
+    assert "hold" not in reply["data"]["handoff_message"].lower()
 
 
 @pytest.mark.parametrize("identifier", ["882940012", "ACC-0199"])

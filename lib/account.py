@@ -1,6 +1,6 @@
 """Account management tools (docs/tdd.md §4 Account, PRD §14).
 
-Password reset (identified only), two-step verification (MFA) with an email
+Password reset (login required), two-step verification (MFA) with an email
 step-up for disabling, lost/stolen and travel suspensions, cancellation and
 port-out with a two-step confirmation, and contact-detail updates.
 
@@ -142,23 +142,18 @@ def send_password_reset_link_impl(
     language: str = "",
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Text a password reset link to the mobile number on file (identified callers; no login needed)."""
+    """Text a password reset link to the mobile number on file (needs login: PIN or code)."""
     state = get_state(state, session_state)
     lang = session_language(state, language)
     err = check_mock_error(state, lang, "send_password_reset_link")
     if err:
         return err
+    # PRD §19 CUJ-1 / docs/requirements.md A2: a reset is an account change, so it
+    # needs a verified caller (PIN or login code) like every other mutation.
+    gate = require_login(state, lang, "send_password_reset_link")
+    if gate:
+        return gate
     account_id = str(state.get("account_id") or "")
-    if not account_id or str(state.get("identification_status") or "") != "Pass":
-        reference = tracking_id("send_password_reset_link", "not_identified")
-        state["last_tracking_id"] = reference
-        return error_reply(
-            "NOT_IDENTIFIED",
-            "The caller's account has not been found yet.",
-            "Ask for the phone or account number, call lookup_account, then retry.",
-            reference,
-            language=lang,
-        )
     count = read_count(state, "password_reset_count") + 1
     state["password_reset_count"] = count
     reference = tracking_id("send_password_reset_link", account_id, count)

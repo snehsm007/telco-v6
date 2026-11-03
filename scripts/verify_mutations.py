@@ -164,8 +164,8 @@ MUTATIONS = [
         "id": "handover_fraud_without_empathy",
         "description": "Fraud handover skips the empathy_protocol line (BR-TV-013)",
         "file": "lib/services.py",
-        "target": '"fraud_escalation": ("empathy_protocol", "live_agent_handoff"),',
-        "replacement": '"fraud_escalation": ("live_agent_handoff",),',
+        "target": '"fraud_escalation": ("empathy_protocol", "fraud_team_transfer"),',
+        "replacement": '"fraud_escalation": ("fraud_team_transfer",),',
         "required": True,
     },
     {

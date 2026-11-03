@@ -19,7 +19,7 @@ goldens:
       - user: "Someone hacked my account and swapped my SIM card. I need help right now."
         expected_tool_calls:
           - name: handover_to_person
-        agent: "I'm very sorry to hear that you are facing challenges. I will ensure we handle your request with the utmost care. I'll connect you to a representative who can help. Please hold."
+        agent: "I'm very sorry to hear that you are facing challenges. I will ensure we handle your request with the utmost care. I'm transferring you now to our fraud prevention team; they'll have the details you've shared, and they're available 24/7."
 
   - id: golden_business_handoff_en
     cuj: CUJ-1
@@ -34,7 +34,7 @@ goldens:
         expected_tool_calls:
           - name: lookup_account
           - name: handover_to_person
-        agent: "To get you the best support for your business account, I'll transfer you to an agent. You'll need to use your phone keypad instead of talking to the virtual assistant. Just a moment while I connect you."
+        agent: "To get you the best support for your business account, I'll transfer you to an agent. You'll need to use your phone keypad instead of talking to the virtual assistant. Just a moment while I connect you. I've passed along what we've discussed so you won't need to repeat it."
 
   - id: golden_live_agent_request_fr
     cuj: CUJ-1
@@ -44,4 +44,4 @@ goldens:
       - user: "Bonjour, je veux parler à un représentant, s'il vous plaît."
         expected_tool_calls:
           - name: handover_to_person
-        agent: "Je vais vous mettre en relation avec un représentant qui pourra vous aider. Veuillez patienter."
+        agent: "Je vais vous mettre en relation avec un représentant qui pourra vous aider. Veuillez patienter. J'ai transmis ce dont nous avons discuté, vous n'aurez donc pas à le répéter."

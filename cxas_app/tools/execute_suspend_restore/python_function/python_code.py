@@ -577,6 +577,21 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "I'll connect you to a representative who can help. Please hold.",
         "fr-CA": "Je vais vous mettre en relation avec un représentant qui pourra vous aider. Veuillez patienter.",
     },
+    # Operational handover lines (scorecard: transfer context, fraud team, distress);
+    # spoken by handover_to_person around the verbatim §7 lines, never instead of them.
+    # Interim French PENDING LEGAL APPROVAL (docs/requirements.md decision A6).
+    "fraud_team_transfer": {
+        "en-US": "I'm transferring you now to our fraud prevention team; they'll have the details you've shared, and they're available 24/7.",
+        "fr-CA": "Je vous transfère maintenant à notre équipe de prévention de la fraude; elle aura les détails que vous avez fournis, et elle est disponible 24 heures sur 24, 7 jours sur 7.",
+    },
+    "handoff_context_note": {
+        "en-US": "I've passed along what we've discussed so you won't need to repeat it.",
+        "fr-CA": "J'ai transmis ce dont nous avons discuté, vous n'aurez donc pas à le répéter.",
+    },
+    "distress_acknowledgement": {
+        "en-US": "I understand this has been frustrating, and I'm sorry for the trouble.",
+        "fr-CA": "Je comprends que la situation soit frustrante, et je suis désolé pour ces inconvénients.",
+    },
     "business_handoff": {
         "en-US": "To get you the best support for your business account, I'll transfer you to an agent. You'll need to use your phone keypad instead of talking to the virtual assistant. Just a moment while I connect you.",
         "fr-CA": "Pour vous offrir le meilleur soutien pour votre compte d'affaires, je vais vous transférer à un agent. Vous devrez utiliser le clavier de votre téléphone au lieu de parler à l'assistant virtuel. Un instant pendant que je vous mets en relation.",
