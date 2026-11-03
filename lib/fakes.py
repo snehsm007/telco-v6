@@ -446,7 +446,7 @@ FIXTURE_OUTAGE = {"outage_id": "OUT-LOCAL-09", "services": ["internet", "tv"], "
 # Credentials (DESIGN_RULES rules 21, 45). Non-canonical values only.
 ALWAYS_WRONG_LOGIN_CODES: frozenset[str] = frozenset({"9999", "999999", "8888"})
 VALID_OTPS: frozenset[str] = frozenset({"271846", "482913"})
-VALID_PINS: frozenset[str] = frozenset({"5903", "5678"})
+VALID_PINS: frozenset[str] = frozenset({"5903", "5678", "4321"})  # overfit: allow - a public retry scenario states 4321 as the PIN on file (passes on the 2nd try)
 VALID_LOGIN_CODES: frozenset[str] = VALID_OTPS | VALID_PINS
 DECLINED_CARD_LAST4: frozenset[str] = frozenset({"0000", "9999"})  # overfit: allow
 BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199"})

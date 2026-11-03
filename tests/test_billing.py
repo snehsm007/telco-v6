@@ -469,18 +469,35 @@ def test_fixture_extra_line_is_matched_by_amount():
     assert reply["data"]["amount_display"] == "15.00"
 
 
-def test_partial_overcharge_on_a_service_opens_a_dispute():
+def test_overcharge_on_a_named_service_gets_a_provisional_credit_and_a_review_case():
+    """Fix 16 (sim__dispute_charge_auth_retry without its fx_extra_bill_line override): a stated
+    overcharge within the limit on a service the caller names is credited now and reviewed."""
     state = logged_in()
-    reply = apply_bill_adjustment_impl("incorrect_charge", "15", "internet overcharge", state=state)
+    reply = apply_bill_adjustment_impl("incorrect_charge", "15", "overcharged on my internet bill", state=state)
     data = reply["data"]
-    assert data["approved"] is False
-    assert data["dispute_opened"] is True
-    assert data["dispute_ticket_id"].startswith("DSP-")
-    assert data["eta_business_days"] > 0
+    assert data["approved"] is True and data["provisional"] is True
+    assert data["charge_id"] == "CH-SVC-INTERNET"
     assert data["amount_display"] == "15.00"
+    assert data["dispute_ticket_id"].startswith("DSP-") and data["review_eta_business_days"] > 0
+    assert "15.00" in data["refund_confirmation_line"]
+    assert data["balance_due_display"] == str(expected_balance() - 15)
+    assert "dispute_opened" in state["sms_sent"]
     again = apply_bill_adjustment_impl("incorrect_charge", "15", "internet overcharge", state=state)
     assert again["error"] == "ALREADY_APPLIED"
-    assert again["data"]["dispute_ticket_id"] == data["dispute_ticket_id"]
+
+
+def test_overcharge_without_a_clear_service_or_above_the_line_still_opens_a_dispute():
+    vague = apply_bill_adjustment_impl("incorrect_charge", "15", "overcharge", state=logged_in())
+    assert vague["data"]["approved"] is False and vague["data"]["dispute_opened"] is True
+    assert vague["data"]["eta_business_days"] > 0 and vague["data"]["amount_display"] == "15.00"
+    again = apply_bill_adjustment_impl("incorrect_charge", "15", "overcharge", state=logged_in(applied_adjustments=""))
+    assert again["data"]["dispute_ticket_id"] == vague["data"]["dispute_ticket_id"]
+    # A service that is not on the account is not a named service line.
+    two = logged_in(account_id=ACCOUNTS[1]["account_id"])
+    assert apply_bill_adjustment_impl("incorrect_charge", "24", "tv overcharge", state=two)["data"]["dispute_opened"] is True
+    # A duplicate-payment claim never takes this path (ledger proof only).
+    dup = apply_bill_adjustment_impl("duplicate_payment", "15", "internet paid twice", state=logged_in(fx_duplicate_payment="false"))
+    assert dup["data"]["dispute_opened"] is True
 
 
 def test_unmatched_description_opens_dispute_in_french():

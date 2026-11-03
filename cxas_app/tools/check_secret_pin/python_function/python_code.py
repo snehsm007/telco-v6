@@ -95,7 +95,7 @@ ALWAYS_WRONG_LOGIN_CODES: frozenset[str] = frozenset({"9999", "999999", "8888"})
 
 VALID_OTPS: frozenset[str] = frozenset({"271846", "482913"})  # pragma: no cover
 
-VALID_PINS: frozenset[str] = frozenset({"5903", "5678"})  # pragma: no cover
+VALID_PINS: frozenset[str] = frozenset({"5903", "5678", "4321"})  # pragma: no cover
 
 VALID_LOGIN_CODES: frozenset[str] = VALID_OTPS | VALID_PINS  # pragma: no cover
 

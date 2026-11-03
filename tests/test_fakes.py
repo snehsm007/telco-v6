@@ -203,3 +203,5 @@ def test_default_world_serves_scenarios_without_overrides() -> None:
     assert FIXTURE_DEFAULTS["fx_technician_status"] == "en_route_delayed"
     assert FIXTURE_DEFAULTS["fx_service_status"] == "suspended_nonpayment"  # billing tools only
     assert FIXTURE_DEFAULTS["fx_recent_payment"] == "posted_yesterday"  # found only by verify_payment_and_restore
+    assert "4321" in VALID_PINS and secret_pin_accepted("4321", attempts=1)  # scenario-stated retry PIN
+    assert not secret_pin_accepted("9999", attempts=0)

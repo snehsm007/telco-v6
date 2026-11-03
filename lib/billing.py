@@ -800,6 +800,15 @@ def _bill_find_line(lines: list[dict[str, Any]], charge_id: str, amount: Decimal
     return top[0] if len(top) == 1 else None
 
 
+def _bill_named_service_line(lines: list[dict[str, Any]], description: str) -> dict[str, Any] | None:
+    """The one monthly service line the caller's words name (e.g. "my internet bill"), else None."""
+    named = [
+        line for line in lines
+        if line["kind"] == "service" and any(_bill_match(description, kw) for kw in line.get("keywords", ()))
+    ]
+    return named[0] if len(named) == 1 else None
+
+
 def _bill_outage_lob(description: str, state: dict[str, Any]) -> str:
     record = account_record(state)
     lobs = [lob for lob in record.get("lines_of_business", []) if lob in SERVICE_PRICES]
@@ -969,6 +978,33 @@ def apply_bill_adjustment_impl(
     # (5) Nothing matched: open a dispute case for the billing team.
     key = "dispute:" + tracking_id("dispute", kind, asked, desc)
     ticket = tracking_id("DISPUTE", account_id, kind, asked, desc).replace("R", "DSP-", 1)
+    # (5a) An overcharge of a stated amount within the self-serve limit on a service the
+    # caller names (one monthly service line on the bill, at least that amount) gets a
+    # provisional credit now, with the case kept open for the billing team to review
+    # (prd.md §10: self-serve adjustments up to the limit). Never for a duplicate-payment
+    # claim: those need the ledger match above.
+    service_line = _bill_named_service_line(lines, desc) if asked is not None and not dup_claim else None
+    if service_line is not None and asked is not None and asked <= Decimal(str(service_line["amount"])):
+        prov_key = f"provisional:{service_line['charge_id']}"
+        if prov_key in applied:
+            return _already(prov_key)
+        append_list(st, "applied_adjustments", key)
+        dispatch_sms(st, "dispute_opened")
+        return _bill_credit_reply(
+            st,
+            lang,
+            kind,
+            asked,
+            prov_key,
+            {
+                "provisional": True,
+                "charge_id": service_line["charge_id"],
+                "charge_description": service_line["description"],
+                "charge_date_display": service_line["date_display"],
+                "dispute_ticket_id": ticket,
+                "review_eta_business_days": DISPUTE_ETA_BUSINESS_DAYS,
+            },
+        )
     if key in applied:
         return _bill_finish(
             st,

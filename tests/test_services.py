@@ -22,7 +22,7 @@ from lib.services import (
 KNOWN_PHONE = "202 555 0186"
 OTHER_PHONE = "303 555 0188"
 OTP = sorted(VALID_OTPS)[0]
-PIN = sorted(VALID_PINS)[0]
+PIN = max(VALID_PINS)  # not the 4321 that the exact-PIN tests put on file
 
 
 def identified(**extra) -> dict:
@@ -572,3 +572,14 @@ def test_suspended_default_leaves_unrelated_journeys_unchanged() -> None:
         text = json.dumps(reply, ensure_ascii=False).lower()
         assert reply["status"] == "ok" or reply.get("error") == "CONFIRMATION_REQUIRED", reply
         assert not any(w in text for w in ("suspended", "nonpayment", "non_payment", "past due", "past_due")), reply
+
+
+def test_default_ladder_wrong_then_scenario_pin_on_the_second_try() -> None:
+    """Fix 16: without fx_pin_on_file, a wrong first PIN then the scenario-stated PIN logs in."""
+    state = identified()
+    assert check_secret_pin_impl("9999", state=state)["error"] == "WRONG_PIN"
+    assert check_secret_pin_impl("4321", state=state)["status"] == "ok"
+    assert state["auth_status"] == "pass"
+    other = identified()
+    check_secret_pin_impl("9999", state=other)
+    assert check_secret_pin_impl("4322", state=other)["error"] == "WRONG_PIN"  # any other PIN still fails
