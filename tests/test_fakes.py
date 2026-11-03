@@ -205,3 +205,11 @@ def test_default_world_serves_scenarios_without_overrides() -> None:
     assert FIXTURE_DEFAULTS["fx_recent_payment"] == "posted_yesterday"  # found only by verify_payment_and_restore
     assert "4321" in VALID_PINS and secret_pin_accepted("4321", attempts=1)  # scenario-stated retry PIN
     assert not secret_pin_accepted("9999", attempts=0)
+    # Trade-offs kept on purpose (docs/requirements.md §Defaults vs. overrides): the saved
+    # card works, and outages follow the regional table (Quebec letters active, others none).
+    assert FIXTURE_DEFAULTS["fx_card_on_file_status"] == "valid"
+    assert FIXTURE_DEFAULTS["fx_outage_status"] == ""
+    from lib.fakes import ACTIVE_OUTAGES, REGION_BY_POSTAL_LETTER
+
+    assert all(REGION_BY_POSTAL_LETTER[letter] in ACTIVE_OUTAGES for letter in "GHJ")
+    assert all(REGION_BY_POSTAL_LETTER[letter] not in ACTIVE_OUTAGES for letter in "KLMNP")

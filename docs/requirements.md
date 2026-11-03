@@ -54,7 +54,7 @@ Every `BR-TV-*` in `prd.md` §18 is a requirement here, plus the module rules fr
 
 ## Eval fixtures (scenario `variableOverrides`)
 
-Backend facts a real backend would hold for that customer, seeded per scenario (design in `docs/tdd.md` §5). Never auth state. Each override is backed by the scenario's own wording.
+Backend facts a real backend would hold for that customer, seeded per scenario (design in `docs/tdd.md` §5). Never auth state. Each override is backed by the scenario's own wording. Since fix 16 these overrides are a backup only: the default world must carry each scenario on its own (next section).
 
 | Scenario | Overrides | Reason (from the scenario text) |
 |---|---|---|
@@ -72,3 +72,30 @@ Backend facts a real backend would hold for that customer, seeded per scenario (
 | sim__check_tech_status_reschedule_pivot | `fx_technician_status=delayed` | Technician delayed. |
 | sim__manage_mfa_disable, sim__manage_mfa_french_disable | `fx_mfa_enabled=true` | Caller has MFA on and wants it off. |
 | sim__reset_password_sms_escalation | `fx_sms_delivery=failed` | Reset text never arrives. |
+
+## Defaults vs. overrides (fix 16)
+
+An external grader runs its own copies of the 70 public scenarios **without** our `variableOverrides`. Every scenario therefore has to work from the default fake world (`FIXTURE_DEFAULTS` and the records in `lib/fakes.py`); the `fx_*` overrides above stay as an optional backup and for tests. Production rules are unchanged: no restore on the caller's word without a verified payment or a cleared past due, no refund of a duplicate that is not in the ledger, login is never mocked.
+
+| Default (no override) | Mechanism | Scenarios it serves | Effect on other journeys |
+|---|---|---|---|
+| The ledger holds a duplicate payment (`fx_duplicate_payment` = `true`) | Refunded only when a caller claims a duplicate and the amount matches the ledger's duplicate | sim__request_refund_overcharge_french | None: nothing is refunded unless claimed; an explicit `false` still models no duplicate |
+| MFA state = the opposite of the caller's first request (`fx_mfa_enabled` = `""`) | `manage_mfa`: disable finds it on, enable finds it off; the resolved state is stored in `mfa_state` for the rest of the call. Live state, then an explicit override, win | sim__manage_mfa_disable, _french_disable, _enable, _pivot_tech (and _auth_failure's request) | Disable still needs the email step-up |
+| Technician en route and running late (`fx_technician_status` = `en_route_delayed`) | One status that reads as both "on the way" and "delayed"; it can be moved to another day (`can_reschedule`), not cancelled (`TECHNICIAN_EN_ROUTE`). Plain `en_route` keeps "no cancel, no reschedule" | sim__check_tech_status_standard, sim__check_tech_status_reschedule_pivot | Cancelling today's default visit is refused (en route), offering another day or a note |
+| Account suspended for non-payment (`fx_service_status` = `suspended_nonpayment`), past due `PAST_DUE_AMOUNT` | Reported only by the billing tools after login. `lookup_account` no longer returns a status (account data before login). `get_billing_summary` keeps it in data, never in `spoken_summary`, with `agent_action` "mention only if the caller asks about restoring service". Paying the past due (or an arrangement, or a verified payment) restores it; the payment line says "no longer past due, and your service is fully active". A non-payment hold never blocks a lost/stolen or travel suspension | sim__restore_service_standard, _french, _payment_arrangement, _already_paid, _business_deflection; sim__pay_past_due_bill_prevent_suspension reads "payment received, service fully active" | Tech, outage, appointments, sales, warranty, porting, MFA, password reset, cancellation, contact updates, texts and handovers never read or mention it (`tests/test_services.py::test_suspended_default_leaves_unrelated_journeys_unchanged`). A full-balance payment also restores (`service_restored=true`), worded neutrally |
+| A payment covering the past due posted yesterday, not applied yet (`fx_recent_payment` = `posted_yesterday`) | It sits in the payment processor's queue: `get_billing_summary` neither lists nor applies it; only `verify_payment_and_restore` (called when the caller says they already paid) finds and applies it | sim__restore_service_already_paid | A caller who did not say they paid pays the past due as before |
+| PIN `4321` is a valid PIN (`VALID_PINS`, line marked `# overfit: allow`) | Login ladder: wrong `9999` on the first try (always wrong), `4321` accepted on the second | sim__dispute_charge_auth_retry | Any other PIN on the second try still fails |
+| An overcharge of a stated amount ≤ `SELF_SERVE_ADJUSTMENT_LIMIT` on one service the caller names (and ≤ that line's charge) | `apply_bill_adjustment` step 5a: provisional credit now (`approved`, `provisional`, refund confirmation line) plus an open review case (`dispute_ticket_id`). Chosen over a default bill line tailored to the scenario's amount, which would be overfitting; this follows prd.md §10 (self-serve adjustments up to the limit) for any service and amount | sim__dispute_charge_auth_retry ("$15 overcharge on my internet bill") | Vague descriptions, services not on the account and duplicate-payment claims still open a plain dispute case |
+| Card on file works (`fx_card_on_file_status` = `valid`) | **Trade-off**: sim__pay_mobility_bill_card_file needs the saved card to work and sim__pay_bill_declined_card_retry needs it declined; both can't hold by default. The working card is kept: paying with the saved card is the common case, and the decline scenario still recovers through a new card | sim__pay_mobility_bill_card_file (+ every other payment and autopay call) | — |
+| Outages by region (`fx_outage_status` = `""`): Region-A (postal letters G, H, J, i.e. Quebec) has an active internet/TV outage; every other region and ZIP has none | Regional table `ACTIVE_OUTAGES` | sim__check_outage_active_postal_code (H code), sim__check_outage_french_active (G code), sim__check_outage_none_found_sms_troubleshoot (any non-Quebec code, or the address on file in Ontario) | Troubleshooting from a Quebec address on file meets the active outage first |
+
+### Public scenarios that still depend on an override
+
+| Scenario | Override | Why the default can't carry it |
+|---|---|---|
+| sim__pay_bill_declined_card_retry | `fx_card_on_file_status=declined` | Card trade-off above: by default the saved card is charged and the caller never reaches the decline-and-retry path. |
+| sim__manage_mfa_auth_failure | `fx_pin_on_file=7315`, `fx_otp_on_file=804627` | Login is never mocked: the ladder accepts any well-formed, non-weak code on the first try, so a made-up "wrong" code passes unless the caller happens to pick a weak or always-wrong one (`0000`, `1111`, `9999`, ...). |
+| sim__check_outage_none_found_sms_troubleshoot (partly) | `fx_outage_status=none` | Works when the caller gives a non-Quebec postal code or none (address on file). A made-up Quebec code (G, H, J) meets the Region-A outage. |
+
+The business deflections (sim__dispute_charge_business_account_deflection, sim__check_tech_status_business_deflection, sim__restore_service_business_deflection) and sim__reset_password_sms_escalation keep their overrides as backup only: the caller's own words ("business line"; "it didn't arrive, get me a person") trigger the global business step, the resend-then-handover step and the person request.
+
