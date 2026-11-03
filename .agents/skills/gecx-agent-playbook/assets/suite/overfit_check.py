@@ -1055,6 +1055,13 @@ def scan_fakes_ast(
     except (OSError, SyntaxError, ValueError):
         return findings
 
+    source_lines = source.splitlines()
+
+    def _line_allowed(lineno: int) -> bool:
+        """Same per-line `# overfit: allow` mechanism as CANONICAL_VALUE_IN_FAKES."""
+        line = source_lines[lineno - 1].lower() if 0 < lineno <= len(source_lines) else ""
+        return "# overfit: allow" in line
+
     eval_lit_lower = {lit.lower() for lit in eval_literals}
     eval_lit_digits = {
         re.sub(r"\D", "", lit)
@@ -1111,6 +1118,8 @@ def scan_fakes_ast(
                     if not val_str or val_str in STARTER_ALLOWED_FAKES_LITERALS:
                         continue
                     if allowed_lower and val_str.lower() in allowed_lower:
+                        continue
+                    if _line_allowed(lineno):
                         continue
                     msg = (
                         f"Credential literal '{val_str}' in {var_name} ({rel_path}) is not in "

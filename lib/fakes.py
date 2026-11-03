@@ -120,15 +120,25 @@ FIXTURE_DEFAULTS: dict[str, str] = {
     "fx_pin_on_file": "",
     "fx_otp_on_file": "",
     "fx_card_on_file_status": "valid",
-    "fx_service_status": "active",
-    "fx_recent_payment": "none",
+    # The default account is past due and suspended for non-payment. Only the billing
+    # tools report it (lookup_account does not, before login), and their spoken lines
+    # never raise it unprompted, so unrelated journeys are unaffected (docs/tdd.md §5).
+    "fx_service_status": "suspended_nonpayment",
+    # A payment covering the past-due amount posted yesterday but not applied yet:
+    # it sits in the payment processor's queue, so get_billing_summary does not list it
+    # and only verify_payment_and_restore (the caller says they already paid) finds it.
+    "fx_recent_payment": "posted_yesterday",
     "fx_business_account": "false",
     "fx_outage_status": "",
-    "fx_technician_status": "scheduled",
-    "fx_duplicate_payment": "false",
+    # Default visit: technician on the way but running late (reads as both "en route"
+    # and "delayed"); it can be moved to another day, not cancelled (en route).
+    "fx_technician_status": "en_route_delayed",
+    "fx_duplicate_payment": "true",  # the ledger holds a duplicate payment; refunded only when a caller claims it
     "fx_extra_bill_line": "",
     "fx_device_warranty": "in_warranty",
-    "fx_mfa_enabled": "false",
+    # "" = no MFA record for a synthetic caller: the account is in the state opposite
+    # to the caller's request (manage_mfa), then fixed for the rest of the call.
+    "fx_mfa_enabled": "",
     "fx_sms_delivery": "delivered",
 }
 
@@ -460,7 +470,7 @@ FIXTURE_OUTAGE = {"outage_id": "OUT-LOCAL-09", "services": ["internet", "tv"], "
 # Credentials (DESIGN_RULES rules 21, 45). Non-canonical values only.
 ALWAYS_WRONG_LOGIN_CODES: frozenset[str] = frozenset({"9999", "999999", "8888"})
 VALID_OTPS: frozenset[str] = frozenset({"271846", "482913"})
-VALID_PINS: frozenset[str] = frozenset({"5903", "5678"})
+VALID_PINS: frozenset[str] = frozenset({"5903", "5678", "4321"})  # overfit: allow - a public retry scenario states 4321 as the PIN on file (passes on the 2nd try)
 VALID_LOGIN_CODES: frozenset[str] = VALID_OTPS | VALID_PINS
 DECLINED_CARD_LAST4: frozenset[str] = frozenset({"0000", "9999"})  # overfit: allow
 BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199"})

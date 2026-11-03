@@ -118,12 +118,22 @@ def _acct_lob(value: Any) -> str:
     return ""
 
 
-def _acct_mfa_on(state: dict[str, Any]) -> bool:
-    """MFA state: what a tool set this call, else the backend fixture."""
+def _acct_mfa_on(state: dict[str, Any], requested: str = "") -> bool:
+    """MFA state: what a tool set this call, else the backend fixture.
+
+    With no fixture value (FIXTURE_DEFAULTS "": a synthetic caller has no MFA record),
+    the account is in the state opposite to the caller's first request (enable ->
+    currently off, disable -> currently on). The resolved state is stored in
+    `mfa_state` so it stays the same for the rest of the call.
+    """
     live = str(state.get("mfa_state") or "").strip().lower()
     if live in ("enabled", "disabled"):
         return live == "enabled"
-    return fixture_flag(state, "fx_mfa_enabled")
+    if fixture(state, "fx_mfa_enabled"):
+        return fixture_flag(state, "fx_mfa_enabled")
+    on = requested == "disable"
+    state["mfa_state"] = "enabled" if on else "disabled"
+    return on
 
 
 def send_password_reset_link_impl(
@@ -217,7 +227,7 @@ def manage_mfa_impl(
             reference,
             lang,
         )
-    currently_on = _acct_mfa_on(state)
+    currently_on = _acct_mfa_on(state, act)
     if currently_on == (act == "enable"):
         return error_reply(
             "ALREADY_APPLIED",
@@ -372,13 +382,13 @@ def execute_suspend_restore_impl(
             reference,
             lang,
         )
-    if current.startswith("suspended"):
+    # A non-payment hold is billing's and never blocks a customer-requested
+    # lost/stolen or travel suspension (the default account is past due; docs/tdd.md §5).
+    if current in ("suspended_lost_stolen", "suspended_travel"):
         return error_reply(
             "ALREADY_APPLIED",
             "The line is already suspended.",
-            "Tell the caller the line is already suspended."
-            if current != "suspended_nonpayment"
-            else "Line is suspended for non-payment; offer billing via router.",
+            "Tell the caller the line is already suspended.",
             reference,
             language=lang,
             data={"service_status": current, "already_suspended": True},

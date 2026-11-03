@@ -839,6 +839,10 @@ _TECH_STATUS_NOTES: dict[str, dict[str, str]] = {
         "en-US": "The technician is running late. The visit can be moved to another day.",
         "fr-CA": "Le technicien est en retard. La visite peut être déplacée à un autre jour.",
     },
+    "en_route_delayed": {
+        "en-US": "The technician is on the way but delayed and running late. The visit can be moved to another day.",
+        "fr-CA": "Le technicien est en route, mais il est retardé. La visite peut être déplacée à un autre jour.",
+    },
     "cancelled": {"en-US": "The visit is cancelled.", "fr-CA": "La visite est annulée."},
 }
 _TECH_SERVICE_NAMES: dict[str, dict[str, str]] = {
@@ -901,7 +905,7 @@ def _tech_appointments(state: dict[str, Any], lang: str) -> list[dict[str, Any]]
     """The caller's appointments: backend record + fixture status + changes made on this call."""
     today = relative_date(0)
     base_status = fixture(state, "fx_technician_status")
-    if base_status not in ("scheduled", "en_route", "delayed"):
+    if base_status not in ("scheduled", "en_route", "delayed", "en_route_delayed"):
         base_status = "scheduled"
     appt_state = str(state.get("appt_state") or "")
     start, end = APPOINTMENT["window"]
@@ -917,7 +921,7 @@ def _tech_appointments(state: dict[str, Any], lang: str) -> list[dict[str, Any]]
         str(APPOINTMENT["appointment_id"]), service, str(APPOINTMENT["visit_type"]),
         iso, start, end, status, lang, today,
     )
-    if status == "delayed":
+    if status in ("delayed", "en_route_delayed"):
         delay = int(APPOINTMENT["delay_minutes"])
         main["delay_minutes"] = delay
         main["delay_display"] = _tech_minutes(delay, lang)
@@ -951,6 +955,9 @@ def _tech_appt_record(
     status: str, lang: str, today: str,
 ) -> dict[str, Any]:
     active = status in ("scheduled", "delayed")
+    # Running late while on the way: the delay allows moving the visit to another
+    # day, but a technician already en route cannot be cancelled (prd.md §13).
+    movable = active or status == "en_route_delayed"
     return {
         "appointment_id": appt_id,
         "service_type": service,
@@ -964,7 +971,7 @@ def _tech_appt_record(
         "status_note": _tech_text(_TECH_STATUS_NOTES[status], lang),
         "technician_eta_display": "",
         "delay_minutes": 0,
-        "can_reschedule": active,
+        "can_reschedule": movable,
         "can_cancel": active,
         "can_add_note": status != "cancelled",
     }
@@ -1097,15 +1104,18 @@ def manage_appointment_impl(
         )
     if act == "add_note":
         return _tech_add_note(state, appt, note, reference, lang)
-    if appt["status"] == "en_route":
+    if appt["status"] == "en_route" or (appt["status"] == "en_route_delayed" and act == "cancel"):
+        late = appt["status"] == "en_route_delayed"
         return error_reply(
             "TECHNICIAN_EN_ROUTE",
-            "The technician is already on the way, so the visit can't be changed.",
-            "Explain the technician is on the way and offer to add a note for them.",
+            "The technician is already on the way, so the visit can't be "
+            + ("cancelled; it can be moved to another day." if late else "changed."),
+            "Explain the technician is on the way; offer to move the visit to another day or add a note."
+            if late else "Explain the technician is on the way and offer to add a note for them.",
             reference,
             language=lang,
             data={"appointment_id": appt["appointment_id"], "technician_eta_display": appt["technician_eta_display"],
-                  "can_add_note": True},
+                  "can_add_note": True, "can_reschedule": late},
         )
     if appt["status"] == "cancelled" and act == "cancel":
         return ok_reply({"appointment_id": appt["appointment_id"], "cancelled": True, "already_cancelled": True},

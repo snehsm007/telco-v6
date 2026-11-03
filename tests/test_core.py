@@ -36,9 +36,10 @@ def test_session_language_asymmetric_lock() -> None:
 
 def test_fixture_reads_override_else_default() -> None:
     assert core.fixture({}, "fx_card_on_file_status") == FIXTURE_DEFAULTS["fx_card_on_file_status"]
-    assert core.fixture(None, "fx_service_status") == "active"
+    assert core.fixture(None, "fx_service_status") == "suspended_nonpayment"
     assert core.fixture({"fx_service_status": " Suspended_NonPayment "}, "fx_service_status") == "suspended_nonpayment"
-    assert core.fixture({"fx_service_status": ""}, "fx_service_status") == "active"
+    assert core.fixture({"fx_service_status": ""}, "fx_service_status") == "suspended_nonpayment"
+    assert core.fixture({"fx_service_status": "active"}, "fx_service_status") == "active"
     # Credentials and free-text fixtures keep their case.
     assert core.fixture({"fx_extra_bill_line": "Internet Overcharge|15.00|internet"}, "fx_extra_bill_line") == (
         "Internet Overcharge|15.00|internet"
@@ -134,7 +135,7 @@ def test_account_record_ensure_account_and_service_status() -> None:
     assert core.ensure_account(state) == ACCOUNTS[0]["account_id"]
     assert state["phone_last4"] == ACCOUNTS[0]["phone"][-4:] and state["identification_status"] == "Pass"
     assert core.ensure_account({"account_id": "A2"}) == "A2"
-    assert core.service_status({}) == "active"
+    assert core.service_status({}) == "suspended_nonpayment"
     assert core.service_status({"fx_service_status": "suspended_nonpayment"}) == "suspended_nonpayment"
     assert core.service_status({"service_status": "active", "fx_service_status": "suspended_nonpayment"}) == "active"
 

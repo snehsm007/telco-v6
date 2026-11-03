@@ -604,7 +604,7 @@
     },
     {
       "name": "fx_service_status",
-      "description": "Backend fixture: active or a suspension reason.",
+      "description": "Backend fixture: active or a suspension reason (empty = suspended_nonpayment, reported by billing tools only).",
       "schema": {
         "type": "STRING",
         "default": "",
@@ -613,7 +613,7 @@
     },
     {
       "name": "fx_recent_payment",
-      "description": "Backend fixture: none or posted_yesterday.",
+      "description": "Backend fixture: none or posted_yesterday (empty = posted_yesterday, found only by verify_payment_and_restore).",
       "schema": {
         "type": "STRING",
         "default": "",
@@ -640,7 +640,7 @@
     },
     {
       "name": "fx_technician_status",
-      "description": "Backend fixture: scheduled, en_route or delayed.",
+      "description": "Backend fixture: scheduled, en_route, delayed or en_route_delayed (empty = en_route_delayed).",
       "schema": {
         "type": "STRING",
         "default": "",
@@ -649,7 +649,7 @@
     },
     {
       "name": "fx_duplicate_payment",
-      "description": "Backend fixture: true when the ledger shows a duplicate payment.",
+      "description": "Backend fixture: true when the ledger shows a duplicate payment (empty = true).",
       "schema": {
         "type": "STRING",
         "default": "",
@@ -676,7 +676,7 @@
     },
     {
       "name": "fx_mfa_enabled",
-      "description": "Backend fixture: true when MFA is on.",
+      "description": "Backend fixture: true or false (empty = opposite of the request).",
       "schema": {
         "type": "STRING",
         "default": "",

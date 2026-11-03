@@ -110,9 +110,19 @@ def test_summary_has_balance_lines_and_payments():
     assert all("keywords" not in i for i in items)
     assert data["recent_payments"]
     assert data["arrangement_offer"]["instalment_count"] == 2
-    assert data["service_status"] == "active"
-    assert "restore_options" not in data
+    # Default world: past due and suspended for non-payment, said only to a caller who asks.
+    assert data["service_status"] == "suspended_nonpayment"
+    assert data["restore_options"] == ["pay_past_due", "verify_recent_payment", "payment_arrangement"]
+    assert "suspen" not in data["spoken_summary"]
+    assert "only if the caller asks" in reply["agent_action"]
     assert data["balance_due_display"] in data["spoken_summary"]
+
+
+def test_summary_on_an_active_account_has_no_restore_facts():
+    reply = get_billing_summary_impl(state=logged_in(fx_service_status="active"))
+    assert reply["data"]["service_status"] == "active"
+    assert "restore_options" not in reply["data"]
+    assert "agent_action" not in reply
 
 
 def test_summary_in_french():
@@ -127,7 +137,7 @@ def test_summary_suspended_nonpayment_offers_restore_paths():
     assert data["suspension_reason"] == "non_payment"
     assert data["amount_to_restore_display"] == PAST_DUE_AMOUNT
     assert data["restore_options"] == ["pay_past_due", "verify_recent_payment", "payment_arrangement"]
-    assert "suspended" in data["spoken_summary"]
+    assert "suspen" not in data["spoken_summary"]
 
 
 def test_summary_lost_stolen_points_to_account():
@@ -147,11 +157,15 @@ def test_summary_ignores_malformed_extra_line():
     assert data["balance_due_display"] == str(expected_balance())
 
 
-def test_summary_shows_duplicate_and_posted_payments():
+def test_summary_shows_duplicate_but_not_an_unapplied_payment_until_verified():
     state = logged_in(fx_duplicate_payment="true", fx_recent_payment="posted_yesterday")
     payments = get_billing_summary_impl(state=state)["data"]["recent_payments"]
     assert sum(1 for p in payments if p.get("duplicate")) == 1
-    assert any(p["status"] == "posted_not_applied" for p in payments)
+    assert not any(p["method"] == "online_banking" for p in payments)
+    assert state.get("recent_payment_applied") is None  # the summary never applies it
+    assert verify_payment_and_restore_impl(state=state)["data"]["payment_verified"] is True
+    after = get_billing_summary_impl(state=state)["data"]["recent_payments"]
+    assert any(p["method"] == "online_banking" and p["status"] == "posted" for p in after)
 
 
 def test_summary_account_without_extra_lob_lines():
@@ -187,7 +201,7 @@ def test_full_payment_with_card_on_file():
 
 
 def test_partial_payment_never_zeroes_or_restores():
-    state = logged_in(fx_service_status="suspended_nonpayment")
+    state = logged_in(fx_service_status="suspended_nonpayment", fx_recent_payment="none")
     reply = process_bill_payment_impl("50", "card_on_file", state=state)
     data = reply["data"]
     assert reply["status"] == "ok"
@@ -210,7 +224,8 @@ def test_past_due_payment_restores_in_the_same_call():
     assert data["restore_sms_sent"] is True
     assert state["service_status"] == "active"
     assert data["remaining_balance_display"] == str(expected_balance() - Decimal(PAST_DUE_AMOUNT))
-    assert "restored" in data["spoken_summary"]
+    assert "fully active" in data["spoken_summary"] and "suspen" not in data["spoken_summary"]
+    assert data["suspension_risk_cleared"] is True
 
 
 def test_payment_in_french_with_bank_on_file():
@@ -455,18 +470,35 @@ def test_fixture_extra_line_is_matched_by_amount():
     assert reply["data"]["amount_display"] == "15.00"
 
 
-def test_partial_overcharge_on_a_service_opens_a_dispute():
+def test_overcharge_on_a_named_service_gets_a_provisional_credit_and_a_review_case():
+    """Fix 16 (sim__dispute_charge_auth_retry without its fx_extra_bill_line override): a stated
+    overcharge within the limit on a service the caller names is credited now and reviewed."""
     state = logged_in()
-    reply = apply_bill_adjustment_impl("incorrect_charge", "15", "internet overcharge", state=state)
+    reply = apply_bill_adjustment_impl("incorrect_charge", "15", "overcharged on my internet bill", state=state)
     data = reply["data"]
-    assert data["approved"] is False
-    assert data["dispute_opened"] is True
-    assert data["dispute_ticket_id"].startswith("DSP-")
-    assert data["eta_business_days"] > 0
+    assert data["approved"] is True and data["provisional"] is True
+    assert data["charge_id"] == "CH-SVC-INTERNET"
     assert data["amount_display"] == "15.00"
+    assert data["dispute_ticket_id"].startswith("DSP-") and data["review_eta_business_days"] > 0
+    assert "15.00" in data["refund_confirmation_line"]
+    assert data["balance_due_display"] == str(expected_balance() - 15)
+    assert "dispute_opened" in state["sms_sent"]
     again = apply_bill_adjustment_impl("incorrect_charge", "15", "internet overcharge", state=state)
     assert again["error"] == "ALREADY_APPLIED"
-    assert again["data"]["dispute_ticket_id"] == data["dispute_ticket_id"]
+
+
+def test_overcharge_without_a_clear_service_or_above_the_line_still_opens_a_dispute():
+    vague = apply_bill_adjustment_impl("incorrect_charge", "15", "overcharge", state=logged_in())
+    assert vague["data"]["approved"] is False and vague["data"]["dispute_opened"] is True
+    assert vague["data"]["eta_business_days"] > 0 and vague["data"]["amount_display"] == "15.00"
+    again = apply_bill_adjustment_impl("incorrect_charge", "15", "overcharge", state=logged_in(applied_adjustments=""))
+    assert again["data"]["dispute_ticket_id"] == vague["data"]["dispute_ticket_id"]
+    # A service that is not on the account is not a named service line.
+    two = logged_in(account_id=ACCOUNTS[1]["account_id"])
+    assert apply_bill_adjustment_impl("incorrect_charge", "24", "tv overcharge", state=two)["data"]["dispute_opened"] is True
+    # A duplicate-payment claim never takes this path (ledger proof only).
+    dup = apply_bill_adjustment_impl("duplicate_payment", "15", "internet paid twice", state=logged_in(fx_duplicate_payment="false"))
+    assert dup["data"]["dispute_opened"] is True
 
 
 def test_unmatched_description_opens_dispute_in_french():
@@ -557,10 +589,26 @@ def test_duplicate_found_from_description_when_type_differs():
 
 
 def test_duplicate_claim_without_ledger_proof_is_not_refunded():
-    reply = apply_bill_adjustment_impl("duplicate_payment", DUPLICATE_PAYMENT["amount"], "paid twice", state=logged_in())
+    no_dup = {"fx_duplicate_payment": "false"}
+    reply = apply_bill_adjustment_impl("duplicate_payment", DUPLICATE_PAYMENT["amount"], "paid twice", state=logged_in(**no_dup))
     assert reply["error"] == "REFUND_THRESHOLD_EXCEEDED"
-    small = apply_bill_adjustment_impl("duplicate_payment", "", "paid twice", state=logged_in())
+    small = apply_bill_adjustment_impl("duplicate_payment", "", "paid twice", state=logged_in(**no_dup))
     assert small["data"]["dispute_opened"] is True
+
+
+def test_default_ledger_holds_a_duplicate_refunded_only_on_a_claim():
+    # Default world (no fx_* overrides): the duplicate is in the ledger, so a caller who
+    # says they paid twice gets it back; nobody else is refunded anything.
+    state = logged_in()
+    payments = get_billing_summary_impl(state=state)["data"]["recent_payments"]
+    assert sum(1 for p in payments if p.get("duplicate")) == 1
+    assert state.get("applied_adjustments", "") == ""
+    reply = apply_bill_adjustment_impl("duplicate_payment", "", "j'ai payé deux fois", state=state, language="fr-CA")
+    assert reply["data"]["amount_display"] == DUPLICATE_PAYMENT["amount"]
+    assert reply["data"]["applied_to"] == "original_payment_method"
+    # A different amount than the ledger's duplicate is not a verified duplicate.
+    other = apply_bill_adjustment_impl("duplicate_payment", "60.00", "paid twice", state=logged_in())
+    assert other["error"] == "REFUND_THRESHOLD_EXCEEDED"
 
 
 def test_adjustment_amount_validation():
@@ -608,7 +656,7 @@ def test_arrangement_restores_and_is_once_only():
 
 
 def test_arrangement_on_active_account_with_chosen_first_amount_in_french():
-    reply = setup_payment_arrangement_impl("100", state=logged_in(), language="fr-CA")
+    reply = setup_payment_arrangement_impl("100", state=logged_in(fx_service_status="active"), language="fr-CA")
     data = reply["data"]
     assert data["instalments"][0]["amount_display"] == "100.00"
     assert data["service_restored"] is False
@@ -642,7 +690,7 @@ def test_verified_posted_payment_restores():
 
 
 def test_no_posted_payment_never_restores_on_the_callers_word():
-    state = logged_in(fx_service_status="suspended_nonpayment")
+    state = logged_in(fx_service_status="suspended_nonpayment", fx_recent_payment="none")
     reply = verify_payment_and_restore_impl(state=state)
     assert reply["error"] == "NO_PAYMENT_FOUND"
     assert reply["data"]["past_due_amount_display"] == PAST_DUE_AMOUNT
@@ -651,7 +699,7 @@ def test_no_posted_payment_never_restores_on_the_callers_word():
 
 
 def test_verify_on_active_and_other_suspensions():
-    assert verify_payment_and_restore_impl(state=logged_in())["error"] == "NOT_SUSPENDED"
+    assert verify_payment_and_restore_impl(state=logged_in(fx_service_status="active"))["error"] == "NOT_SUSPENDED"
     travel = verify_payment_and_restore_impl(state=logged_in(fx_service_status="suspended_travel"))
     assert travel["error"] == "NOT_ELIGIBLE"
     assert "router" in travel["agent_action"]
@@ -661,7 +709,7 @@ def test_agent_actions_stay_short():
     replies = [
         apply_bill_adjustment_impl("incorrect_charge", "150", "x", state=logged_in()),
         process_bill_payment_impl("", "card_on_file", state=logged_in(fx_card_on_file_status="declined")),
-        verify_payment_and_restore_impl(state=logged_in(fx_service_status="suspended_nonpayment")),
+        verify_payment_and_restore_impl(state=logged_in(fx_service_status="suspended_nonpayment", fx_recent_payment="none")),
     ]
     assert all(len(r["agent_action"]) <= 120 for r in replies)
 
@@ -734,3 +782,57 @@ def test_bad_bank_digits_ask_the_caller_and_never_switch_method():
     assert len(bad["agent_action"]) <= 120
     assert bad["data"]["payment_method"] == "bank_account"
     assert not state.get("autopay_enrolled")
+
+
+# --- default world (fix 16: no fx_* overrides) ----------------------------------
+
+
+def test_default_restore_by_paying_the_balance():
+    state = logged_in()
+    summary = get_billing_summary_impl(state=state)["data"]
+    assert summary["service_status"] == "suspended_nonpayment"
+    assert summary["amount_to_restore_display"] == PAST_DUE_AMOUNT
+    paid = process_bill_payment_impl("full", "card_on_file", state=state)["data"]
+    assert paid["service_restored"] is True and state["service_status"] == "active"
+    after = get_billing_summary_impl(state=state)
+    assert after["data"]["service_status"] == "active" and "agent_action" not in after
+
+
+def test_default_restore_with_an_arrangement():
+    state = logged_in()
+    data = setup_payment_arrangement_impl(state=state)["data"]
+    assert data["service_restored"] is True and state["service_status"] == "active"
+
+
+def test_default_already_paid_is_found_only_by_verify():
+    state = logged_in()
+    before = get_billing_summary_impl(state=state)["data"]
+    assert before["past_due_amount_display"] == PAST_DUE_AMOUNT  # not auto-applied
+    assert state.get("recent_payment_applied") is None
+    data = verify_payment_and_restore_impl(state=state)["data"]
+    assert data["payment_verified"] is True
+    assert data["verified_payment_amount_display"] == PAST_DUE_AMOUNT
+    assert data["service_restored"] is True
+    assert get_billing_summary_impl(state=state)["data"]["past_due_amount_display"] == "0.00"
+
+
+def test_default_past_due_payment_reads_as_service_secured():
+    """sim__pay_past_due_bill_prevent_suspension: payment received, service secure, no 'suspended'."""
+    state = logged_in()
+    data = process_bill_payment_impl("past due", "new_card", "4000056655665556", state=state)["data"]
+    assert data["amount_paid_display"] == PAST_DUE_AMOUNT
+    assert data["suspension_risk_cleared"] is True
+    assert "went through" in data["spoken_summary"]
+    assert "no longer past due" in data["spoken_summary"] and "fully active" in data["spoken_summary"]
+    assert "suspen" not in data["spoken_summary"]
+    fr = process_bill_payment_impl("past due", "card_on_file", state=logged_in(), language="fr-CA")["data"]
+    assert "entièrement actif" in fr["spoken_summary"] and "suspen" not in fr["spoken_summary"]
+
+
+def test_default_world_unrelated_billing_lines_never_mention_the_suspension():
+    state = logged_in()
+    assert "suspen" not in get_billing_summary_impl(state=state)["data"]["spoken_summary"]
+    autopay = setup_autopay_impl("card_on_file", state=logged_in())
+    assert autopay["status"] == "ok" and "suspen" not in str(autopay["data"].get("spoken_summary", ""))
+    credit = apply_bill_adjustment_impl("unrecognized_charge", STREAMING["amount"], "streaming", state=logged_in())
+    assert credit["data"]["approved"] is True and "suspen" not in str(credit)

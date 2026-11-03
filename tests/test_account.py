@@ -154,7 +154,7 @@ def test_mfa_enable_when_fixture_says_on() -> None:
 
 
 def test_mfa_disable_when_already_off() -> None:
-    state = _logged_in()
+    state = _logged_in(fx_mfa_enabled="false")
     reply = manage_mfa_impl("disable", state=state)
     assert reply["error"] == "ALREADY_APPLIED"
     assert reply["data"]["mfa_enabled"] is False
@@ -183,6 +183,30 @@ def test_mfa_disable_needs_email_step_up_then_applies_once() -> None:
     # Turning it back on needs no step-up; turning it off again needs a new one.
     assert manage_mfa_impl("enable", state=state)["status"] == "ok"
     assert manage_mfa_impl("disable", state=state)["error"] == "STEP_UP_REQUIRED"
+
+
+def test_mfa_default_is_opposite_of_the_request_then_fixed_for_the_call() -> None:
+    """No fixture, no live state: disable finds MFA on, enable finds it off (fix 16)."""
+    off = _logged_in()
+    first = manage_mfa_impl("disable", state=off)
+    assert first["error"] == "STEP_UP_REQUIRED" and first["data"]["mfa_enabled"] is True
+    assert off["mfa_state"] == "enabled"
+    # The resolved state holds for the rest of the call: enabling now is already done.
+    assert manage_mfa_impl("enable", state=off)["error"] == "ALREADY_APPLIED"
+    off["step_up_verified"] = True
+    assert manage_mfa_impl("disable", state=off)["data"]["mfa_enabled"] is False
+
+    on = _logged_in()
+    reply = manage_mfa_impl("enable", state=on)
+    assert reply["status"] == "ok" and reply["data"]["mfa_enabled"] is True
+
+
+def test_mfa_fixture_and_live_state_beat_the_default() -> None:
+    assert manage_mfa_impl("enable", state=_logged_in(fx_mfa_enabled="true"))["error"] == "ALREADY_APPLIED"
+    assert manage_mfa_impl("disable", state=_logged_in(fx_mfa_enabled="false"))["error"] == "ALREADY_APPLIED"
+    assert manage_mfa_impl("enable", state=_logged_in(mfa_state="enabled"))["error"] == "ALREADY_APPLIED"
+    live_off = _logged_in(fx_mfa_enabled="true", mfa_state="disabled")
+    assert manage_mfa_impl("disable", state=live_off)["error"] == "ALREADY_APPLIED"
 
 
 def test_mfa_login_alone_is_not_a_step_up() -> None:
@@ -259,17 +283,20 @@ def test_restore_non_payment_goes_to_billing() -> None:
     assert state["service_status"] == ""
 
 
-def test_suspend_over_non_payment_never_masks_it() -> None:
+def test_non_payment_hold_never_blocks_a_lost_stolen_suspension() -> None:
+    """The default account is suspended for non-payment (fix 16); a lost phone is still suspended at once."""
     state = _logged_in()
-    state["service_status"] = "suspended_nonpayment"
     reply = execute_suspend_restore_impl("suspend", "lost_stolen", state=state)
-    assert reply["error"] == "ALREADY_APPLIED"
-    assert "billing" in reply["agent_action"]
-    assert state["service_status"] == "suspended_nonpayment"
+    assert reply["status"] == "ok" and reply["data"]["immediate"] is True
+    assert state["service_status"] == "suspended_lost_stolen"
+    travel = execute_suspend_restore_impl("suspend", "travel", state=_logged_in(service_status="suspended_nonpayment"))
+    assert travel["status"] == "ok"
+    again = execute_suspend_restore_impl("suspend", "travel", state=state)
+    assert again["error"] == "ALREADY_APPLIED"
 
 
 def test_restore_active_line() -> None:
-    assert execute_suspend_restore_impl("restore", state=_logged_in())["error"] == "NOT_SUSPENDED"
+    assert execute_suspend_restore_impl("restore", state=_logged_in(fx_service_status="active"))["error"] == "NOT_SUSPENDED"
 
 
 @pytest.mark.parametrize("action,reason", [("freeze", "travel"), ("suspend", "")])

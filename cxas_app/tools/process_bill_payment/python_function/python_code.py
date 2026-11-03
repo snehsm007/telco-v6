@@ -237,15 +237,25 @@ FIXTURE_DEFAULTS: dict[str, str] = {  # pragma: no cover
     "fx_pin_on_file": "",
     "fx_otp_on_file": "",
     "fx_card_on_file_status": "valid",
-    "fx_service_status": "active",
-    "fx_recent_payment": "none",
+    # The default account is past due and suspended for non-payment. Only the billing
+    # tools report it (lookup_account does not, before login), and their spoken lines
+    # never raise it unprompted, so unrelated journeys are unaffected (docs/tdd.md §5).
+    "fx_service_status": "suspended_nonpayment",
+    # A payment covering the past-due amount posted yesterday but not applied yet:
+    # it sits in the payment processor's queue, so get_billing_summary does not list it
+    # and only verify_payment_and_restore (the caller says they already paid) finds it.
+    "fx_recent_payment": "posted_yesterday",
     "fx_business_account": "false",
     "fx_outage_status": "",
-    "fx_technician_status": "scheduled",
-    "fx_duplicate_payment": "false",
+    # Default visit: technician on the way but running late (reads as both "en route"
+    # and "delayed"); it can be moved to another day, not cancelled (en route).
+    "fx_technician_status": "en_route_delayed",
+    "fx_duplicate_payment": "true",  # the ledger holds a duplicate payment; refunded only when a caller claims it
     "fx_extra_bill_line": "",
     "fx_device_warranty": "in_warranty",
-    "fx_mfa_enabled": "false",
+    # "" = no MFA record for a synthetic caller: the account is in the state opposite
+    # to the caller's request (manage_mfa), then fixed for the rest of the call.
+    "fx_mfa_enabled": "",
     "fx_sms_delivery": "delivered",
 }
 
@@ -1286,16 +1296,24 @@ def process_bill_payment_impl(  # pragma: no cover
         f"Votre paiement de {_bill_amount_text(lang, pay)} avec la {_bill_method_text(lang, method)} est accepté. "
         f"Votre solde restant est de {_bill_amount_text(lang, new_balance)}.",
     ).replace("avec la compte", "avec le compte")
+    # Wording fits both a caller restoring a suspended line and one paying to avoid a
+    # cut-off (the default account is suspended; docs/tdd.md §5): no unprompted
+    # "suspended", and "fully active" confirms a restore.
     if status_before == "suspended_nonpayment" and new_past_due == _BILL_ZERO:
         data.update(_bill_restore(st))
         data["service_status"] = "active"
-        summary += _bill_text(lang, " Your service is restored.", " Votre service est rétabli.")
+        data["suspension_risk_cleared"] = True
+        summary += _bill_text(
+            lang,
+            " Your account is no longer past due, and your service is fully active.",
+            " Votre compte n'est plus en souffrance et votre service est entièrement actif.",
+        )
     elif status_before == "suspended_nonpayment":
         data["restore_requires_display"] = display_amount(new_past_due)
         summary += _bill_text(
             lang,
-            f" Your service stays suspended until the remaining past-due amount of {_bill_amount_text(lang, new_past_due)} is paid.",
-            f" Votre service reste suspendu jusqu'au paiement du montant en souffrance restant de {_bill_amount_text(lang, new_past_due)}.",
+            f" The remaining past-due amount of {_bill_amount_text(lang, new_past_due)} still needs to be paid to make your service fully active.",
+            f" Le montant en souffrance restant de {_bill_amount_text(lang, new_past_due)} doit encore être payé pour que votre service soit entièrement actif.",
         )
     elif live["past_due"] > _BILL_ZERO and new_past_due == _BILL_ZERO:
         data["suspension_risk_cleared"] = True

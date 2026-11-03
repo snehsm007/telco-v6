@@ -130,6 +130,24 @@ def test_eval_value_in_fakes_flags_eval_literal_not_in_prd(tmp_path: Path) -> No
     assert "ACC-7788" in fakes_msgs
 
 
+def test_eval_value_in_fakes_honours_the_per_line_allow_comment(tmp_path: Path) -> None:
+    """A credential set line marked `# overfit: allow` (with its reason) is accepted; other lines are not."""
+    app_dir, lib_dir, prd = _make_workspace(tmp_path)
+    (app_dir / "agents" / "router" / "instruction.txt").write_text(
+        "<step name=\"greet\"><trigger>Start</trigger><action>Say hello.</action></step>\n",
+        encoding="utf-8",
+    )
+    (lib_dir / "fakes.py").write_text(
+        'VALID_PINS = frozenset({"5903", "7391"})  # overfit: allow - scenario-stated PIN on file\n'
+        'VALID_OTPS = frozenset({"271846", "615243"})\n',
+        encoding="utf-8",
+    )
+    result = check_app(app_dir=app_dir, lib_dir=lib_dir, prd_path=prd)
+    msgs = " ".join(f["message"] for f in result["findings"] if f["code"] == "EVAL_VALUE_IN_FAKES")
+    assert "7391" not in msgs
+    assert "615243" in msgs
+
+
 def test_canonical_value_in_fakes_fails_on_4242_and_passes_on_7742(tmp_path: Path) -> None:
     app_dir, lib_dir, prd = _make_workspace(tmp_path)
     (app_dir / "agents" / "router" / "instruction.txt").write_text(

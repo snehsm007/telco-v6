@@ -166,15 +166,25 @@ FIXTURE_DEFAULTS: dict[str, str] = {  # pragma: no cover
     "fx_pin_on_file": "",
     "fx_otp_on_file": "",
     "fx_card_on_file_status": "valid",
-    "fx_service_status": "active",
-    "fx_recent_payment": "none",
+    # The default account is past due and suspended for non-payment. Only the billing
+    # tools report it (lookup_account does not, before login), and their spoken lines
+    # never raise it unprompted, so unrelated journeys are unaffected (docs/tdd.md §5).
+    "fx_service_status": "suspended_nonpayment",
+    # A payment covering the past-due amount posted yesterday but not applied yet:
+    # it sits in the payment processor's queue, so get_billing_summary does not list it
+    # and only verify_payment_and_restore (the caller says they already paid) finds it.
+    "fx_recent_payment": "posted_yesterday",
     "fx_business_account": "false",
     "fx_outage_status": "",
-    "fx_technician_status": "scheduled",
-    "fx_duplicate_payment": "false",
+    # Default visit: technician on the way but running late (reads as both "en route"
+    # and "delayed"); it can be moved to another day, not cancelled (en route).
+    "fx_technician_status": "en_route_delayed",
+    "fx_duplicate_payment": "true",  # the ledger holds a duplicate payment; refunded only when a caller claims it
     "fx_extra_bill_line": "",
     "fx_device_warranty": "in_warranty",
-    "fx_mfa_enabled": "false",
+    # "" = no MFA record for a synthetic caller: the account is in the state opposite
+    # to the caller's request (manage_mfa), then fixed for the rest of the call.
+    "fx_mfa_enabled": "",
     "fx_sms_delivery": "delivered",
 }
 
@@ -653,6 +663,14 @@ def _bill_find_line(lines: list[dict[str, Any]], charge_id: str, amount: Decimal
     best = max(pair[1] for pair in scored)
     top = [line for line, score in scored if score == best]
     return top[0] if len(top) == 1 else None
+
+def _bill_named_service_line(lines: list[dict[str, Any]], description: str) -> dict[str, Any] | None:  # pragma: no cover
+    """The one monthly service line the caller's words name (e.g. "my internet bill"), else None."""
+    named = [
+        line for line in lines
+        if line["kind"] == "service" and any(_bill_match(description, kw) for kw in line.get("keywords", ()))
+    ]
+    return named[0] if len(named) == 1 else None
 
 def _bill_outage_lob(description: str, state: dict[str, Any]) -> str:  # pragma: no cover
     record = account_record(state)
@@ -1246,6 +1264,33 @@ def apply_bill_adjustment_impl(  # pragma: no cover
     # (5) Nothing matched: open a dispute case for the billing team.
     key = "dispute:" + tracking_id("dispute", kind, asked, desc)
     ticket = tracking_id("DISPUTE", account_id, kind, asked, desc).replace("R", "DSP-", 1)
+    # (5a) An overcharge of a stated amount within the self-serve limit on a service the
+    # caller names (one monthly service line on the bill, at least that amount) gets a
+    # provisional credit now, with the case kept open for the billing team to review
+    # (prd.md §10: self-serve adjustments up to the limit). Never for a duplicate-payment
+    # claim: those need the ledger match above.
+    service_line = _bill_named_service_line(lines, desc) if asked is not None and not dup_claim else None
+    if service_line is not None and asked is not None and asked <= Decimal(str(service_line["amount"])):
+        prov_key = f"provisional:{service_line['charge_id']}"
+        if prov_key in applied:
+            return _already(prov_key)
+        append_list(st, "applied_adjustments", key)
+        dispatch_sms(st, "dispute_opened")
+        return _bill_credit_reply(
+            st,
+            lang,
+            kind,
+            asked,
+            prov_key,
+            {
+                "provisional": True,
+                "charge_id": service_line["charge_id"],
+                "charge_description": service_line["description"],
+                "charge_date_display": service_line["date_display"],
+                "dispute_ticket_id": ticket,
+                "review_eta_business_days": DISPUTE_ETA_BUSINESS_DAYS,
+            },
+        )
     if key in applied:
         return _bill_finish(
             st,

@@ -22,7 +22,7 @@ from lib.services import (
 KNOWN_PHONE = "202 555 0186"
 OTHER_PHONE = "303 555 0188"
 OTP = sorted(VALID_OTPS)[0]
-PIN = sorted(VALID_PINS)[0]
+PIN = max(VALID_PINS)  # not the 4321 that the exact-PIN tests put on file
 
 
 def identified(**extra) -> dict:
@@ -60,7 +60,7 @@ def test_lookup_known_account_returns_last4_only_and_remembers_it() -> None:
     assert data["identification_status"] == "Pass"
     assert data["phone_last4"] == "0186" and data["caller_provided_phone_last4"] == "0186"
     assert data["business_flag"] is False
-    assert data["service_status"] == "active"
+    assert "service_status" not in data  # account data: billing reports it after login
     assert data["region"] in ("Region-A", "Region-B", "Region-C")
     assert set(data["lines_of_business"]) >= {"mobility", "internet"}
     assert data["account_id_last4"] == ACCOUNTS[0]["account_id"][-4:]
@@ -140,10 +140,13 @@ def test_lookup_business_flag_comes_from_the_fixture() -> None:
     assert "business_handoff" in reply["agent_action"]
 
 
-def test_lookup_service_status_comes_from_the_fixture() -> None:
-    state = {"fx_service_status": "suspended_nonpayment"}
-    assert lookup_account_impl(KNOWN_PHONE, state=state)["data"]["service_status"] == "suspended_nonpayment"
-    assert state["service_status"] == "suspended_nonpayment"
+def test_lookup_never_reports_a_suspension_before_login() -> None:
+    """The default account is suspended for non-payment (fix 16); identification must not say so,
+    so troubleshooting, sales and fraud calls never hear about it."""
+    for state in ({}, {"fx_service_status": "suspended_nonpayment"}):
+        reply = lookup_account_impl(KNOWN_PHONE, state=state)
+        assert "suspen" not in json.dumps(reply)
+        assert "service_status" not in state
 
 
 def test_switching_accounts_clears_the_login_but_keeps_the_failure_count() -> None:
@@ -578,3 +581,43 @@ def test_handoff_context_carries_the_session_variables() -> None:
     assert (ctx["customer_type"], ctx["region"], ctx["lob"], ctx["route"]) == ("Existing", "Region-A", "internet", "tech_support")
     assert (ctx["global_err_count"], ctx["auth_failure_count"]) == (2, 1)
     assert ctx["queue"] == "general" and ctx["queue_open"] is True
+
+
+def test_suspended_default_leaves_unrelated_journeys_unchanged() -> None:
+    """Fix 16: the default account is suspended for non-payment, but only the billing tools
+    report it. Troubleshooting, outages, appointments, sales, warranty, porting, MFA,
+    password reset, cancellation, contact updates, texts and handovers neither refuse
+    nor mention it."""
+    calls = [
+        lambda st: services.check_regional_outage_impl("K1A 0B1", "internet", state=st),
+        lambda st: services.run_virtual_repair_impl("internet", "internet is slow", state=st),
+        lambda st: services.run_virtual_repair_impl("mobility", "no service on my phone", state=st),
+        lambda st: services.get_appointment_and_ticket_status_impl(state=st),
+        lambda st: services.manage_appointment_impl("reschedule", slot_id="SLOT-2", state=st),
+        lambda st: services.browse_plans_impl("mobility", "", "more data", state=st),
+        lambda st: services.file_warranty_claim_impl("phone", "screen flickers", "no", "no", state=st),
+        lambda st: services.start_number_transfer_impl(state=st),
+        lambda st: services.manage_mfa_impl("enable", state=st),
+        lambda st: services.send_password_reset_link_impl(state=st),
+        lambda st: services.cancel_or_port_out_service_impl("tv", "cancel", "moving", False, state=st),
+        lambda st: services.update_contact_profile_impl("email", "new.name@mailprovider.example", state=st),
+        lambda st: services.send_sms_notification_impl("troubleshooting_guide", state=st),
+        lambda st: services.handover_to_person_impl("fraud_escalation", "caller reports a SIM swap", state=st),
+    ]
+    for call in calls:
+        state = logged_in()
+        reply = call(state)
+        text = json.dumps(reply, ensure_ascii=False).lower()
+        assert reply["status"] == "ok" or reply.get("error") == "CONFIRMATION_REQUIRED", reply
+        assert not any(w in text for w in ("suspended", "nonpayment", "non_payment", "past due", "past_due")), reply
+
+
+def test_default_ladder_wrong_then_scenario_pin_on_the_second_try() -> None:
+    """Fix 16: without fx_pin_on_file, a wrong first PIN then the scenario-stated PIN logs in."""
+    state = identified()
+    assert check_secret_pin_impl("9999", state=state)["error"] == "WRONG_PIN"
+    assert check_secret_pin_impl("4321", state=state)["status"] == "ok"
+    assert state["auth_status"] == "pass"
+    other = identified()
+    check_secret_pin_impl("9999", state=other)
+    assert check_secret_pin_impl("4322", state=other)["error"] == "WRONG_PIN"  # any other PIN still fails

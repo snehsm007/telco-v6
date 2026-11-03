@@ -60,15 +60,25 @@ FIXTURE_DEFAULTS: dict[str, str] = {  # pragma: no cover
     "fx_pin_on_file": "",
     "fx_otp_on_file": "",
     "fx_card_on_file_status": "valid",
-    "fx_service_status": "active",
-    "fx_recent_payment": "none",
+    # The default account is past due and suspended for non-payment. Only the billing
+    # tools report it (lookup_account does not, before login), and their spoken lines
+    # never raise it unprompted, so unrelated journeys are unaffected (docs/tdd.md §5).
+    "fx_service_status": "suspended_nonpayment",
+    # A payment covering the past-due amount posted yesterday but not applied yet:
+    # it sits in the payment processor's queue, so get_billing_summary does not list it
+    # and only verify_payment_and_restore (the caller says they already paid) finds it.
+    "fx_recent_payment": "posted_yesterday",
     "fx_business_account": "false",
     "fx_outage_status": "",
-    "fx_technician_status": "scheduled",
-    "fx_duplicate_payment": "false",
+    # Default visit: technician on the way but running late (reads as both "en route"
+    # and "delayed"); it can be moved to another day, not cancelled (en route).
+    "fx_technician_status": "en_route_delayed",
+    "fx_duplicate_payment": "true",  # the ledger holds a duplicate payment; refunded only when a caller claims it
     "fx_extra_bill_line": "",
     "fx_device_warranty": "in_warranty",
-    "fx_mfa_enabled": "false",
+    # "" = no MFA record for a synthetic caller: the account is in the state opposite
+    # to the caller's request (manage_mfa), then fixed for the rest of the call.
+    "fx_mfa_enabled": "",
     "fx_sms_delivery": "delivered",
 }
 
@@ -85,12 +95,22 @@ def fixture_flag(state: dict[str, Any] | None, name: str) -> bool:  # pragma: no
     """Read a true/false fixture."""
     return fixture(state, name) in ("true", "1", "yes")
 
-def _acct_mfa_on(state: dict[str, Any]) -> bool:  # pragma: no cover
-    """MFA state: what a tool set this call, else the backend fixture."""
+def _acct_mfa_on(state: dict[str, Any], requested: str = "") -> bool:  # pragma: no cover
+    """MFA state: what a tool set this call, else the backend fixture.
+
+    With no fixture value (FIXTURE_DEFAULTS "": a synthetic caller has no MFA record),
+    the account is in the state opposite to the caller's first request (enable ->
+    currently off, disable -> currently on). The resolved state is stored in
+    `mfa_state` so it stays the same for the rest of the call.
+    """
     live = str(state.get("mfa_state") or "").strip().lower()
     if live in ("enabled", "disabled"):
         return live == "enabled"
-    return fixture_flag(state, "fx_mfa_enabled")
+    if fixture(state, "fx_mfa_enabled"):
+        return fixture_flag(state, "fx_mfa_enabled")
+    on = requested == "disable"
+    state["mfa_state"] = "enabled" if on else "disabled"
+    return on
 
 def _acct_text(lang: str, en: str, fr: str) -> str:  # pragma: no cover
     """One string in the call language (never both; DESIGN_RULES rule 5)."""
@@ -793,7 +813,7 @@ def manage_mfa_impl(  # pragma: no cover
             reference,
             lang,
         )
-    currently_on = _acct_mfa_on(state)
+    currently_on = _acct_mfa_on(state, act)
     if currently_on == (act == "enable"):
         return error_reply(
             "ALREADY_APPLIED",

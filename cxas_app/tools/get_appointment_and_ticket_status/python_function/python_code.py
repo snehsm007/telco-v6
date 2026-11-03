@@ -66,6 +66,10 @@ _TECH_STATUS_NOTES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "The technician is running late. The visit can be moved to another day.",
         "fr-CA": "Le technicien est en retard. La visite peut être déplacée à un autre jour.",
     },
+    "en_route_delayed": {
+        "en-US": "The technician is on the way but delayed and running late. The visit can be moved to another day.",
+        "fr-CA": "Le technicien est en route, mais il est retardé. La visite peut être déplacée à un autre jour.",
+    },
     "cancelled": {"en-US": "The visit is cancelled.", "fr-CA": "La visite est annulée."},
 }
 
@@ -132,6 +136,9 @@ def _tech_appt_record(  # pragma: no cover
     status: str, lang: str, today: str,
 ) -> dict[str, Any]:
     active = status in ("scheduled", "delayed")
+    # Running late while on the way: the delay allows moving the visit to another
+    # day, but a technician already en route cannot be cancelled (prd.md §13).
+    movable = active or status == "en_route_delayed"
     return {
         "appointment_id": appt_id,
         "service_type": service,
@@ -145,7 +152,7 @@ def _tech_appt_record(  # pragma: no cover
         "status_note": _tech_text(_TECH_STATUS_NOTES[status], lang),
         "technician_eta_display": "",
         "delay_minutes": 0,
-        "can_reschedule": active,
+        "can_reschedule": movable,
         "can_cancel": active,
         "can_add_note": status != "cancelled",
     }
@@ -211,15 +218,25 @@ FIXTURE_DEFAULTS: dict[str, str] = {  # pragma: no cover
     "fx_pin_on_file": "",
     "fx_otp_on_file": "",
     "fx_card_on_file_status": "valid",
-    "fx_service_status": "active",
-    "fx_recent_payment": "none",
+    # The default account is past due and suspended for non-payment. Only the billing
+    # tools report it (lookup_account does not, before login), and their spoken lines
+    # never raise it unprompted, so unrelated journeys are unaffected (docs/tdd.md §5).
+    "fx_service_status": "suspended_nonpayment",
+    # A payment covering the past-due amount posted yesterday but not applied yet:
+    # it sits in the payment processor's queue, so get_billing_summary does not list it
+    # and only verify_payment_and_restore (the caller says they already paid) finds it.
+    "fx_recent_payment": "posted_yesterday",
     "fx_business_account": "false",
     "fx_outage_status": "",
-    "fx_technician_status": "scheduled",
-    "fx_duplicate_payment": "false",
+    # Default visit: technician on the way but running late (reads as both "en route"
+    # and "delayed"); it can be moved to another day, not cancelled (en route).
+    "fx_technician_status": "en_route_delayed",
+    "fx_duplicate_payment": "true",  # the ledger holds a duplicate payment; refunded only when a caller claims it
     "fx_extra_bill_line": "",
     "fx_device_warranty": "in_warranty",
-    "fx_mfa_enabled": "false",
+    # "" = no MFA record for a synthetic caller: the account is in the state opposite
+    # to the caller's request (manage_mfa), then fixed for the rest of the call.
+    "fx_mfa_enabled": "",
     "fx_sms_delivery": "delivered",
 }
 
@@ -236,7 +253,7 @@ def _tech_appointments(state: dict[str, Any], lang: str) -> list[dict[str, Any]]
     """The caller's appointments: backend record + fixture status + changes made on this call."""
     today = relative_date(0)
     base_status = fixture(state, "fx_technician_status")
-    if base_status not in ("scheduled", "en_route", "delayed"):
+    if base_status not in ("scheduled", "en_route", "delayed", "en_route_delayed"):
         base_status = "scheduled"
     appt_state = str(state.get("appt_state") or "")
     start, end = APPOINTMENT["window"]
@@ -252,7 +269,7 @@ def _tech_appointments(state: dict[str, Any], lang: str) -> list[dict[str, Any]]
         str(APPOINTMENT["appointment_id"]), service, str(APPOINTMENT["visit_type"]),
         iso, start, end, status, lang, today,
     )
-    if status == "delayed":
+    if status in ("delayed", "en_route_delayed"):
         delay = int(APPOINTMENT["delay_minutes"])
         main["delay_minutes"] = delay
         main["delay_display"] = _tech_minutes(delay, lang)

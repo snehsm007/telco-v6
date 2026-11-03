@@ -14,7 +14,6 @@ tests:
     identification_status: Pass
     phone_last4: 0186
     business_flag: false
-    service_status: active
   expected_state:
     account_id: A1001
     identification_status: Pass
@@ -67,9 +66,10 @@ tests:
   expected_state:
     business_flag: true
   priority: P0
-- id: tt_lookup_suspended_from_fixture
+- id: tt_lookup_no_service_status_before_login
   tool: lookup_account
   requirements:
+  - REQ-8
   - REQ-27
   args:
     phone_or_account: 202 555 0186
@@ -77,7 +77,9 @@ tests:
     fx_service_status: suspended_nonpayment
   expected_status: ok
   expected_fields:
-    service_status: suspended_nonpayment
+    identification_status: Pass
+  forbidden_substrings:
+  - suspended
   priority: P0
 - id: tt_lookup_third_validation_error_is_too_many_errors
   tool: lookup_account

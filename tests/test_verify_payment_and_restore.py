@@ -24,7 +24,7 @@ def test_verify_payment_and_restore_mock_error(monkeypatch) -> None:
 
 
 def test_verify_payment_and_restore_accepts_a_dict_context(monkeypatch) -> None:
-    monkeypatch.setattr(tool, "context", _session().state, raising=False)
+    monkeypatch.setattr(tool, "context", _session(fx_service_status="active").state, raising=False)
     assert tool.verify_payment_and_restore()["error"] == "NOT_SUSPENDED"
 
 
@@ -37,6 +37,6 @@ def test_verify_payment_and_restore_with_posted_payment(monkeypatch) -> None:
 
 
 def test_verify_payment_and_restore_without_payment(monkeypatch) -> None:
-    session = _session(fx_service_status="suspended_nonpayment")
+    session = _session(fx_service_status="suspended_nonpayment", fx_recent_payment="none")
     monkeypatch.setattr(tool, "context", session, raising=False)
     assert tool.verify_payment_and_restore()["error"] == "NO_PAYMENT_FOUND"

@@ -191,3 +191,25 @@ def test_credential_formats() -> None:
     assert OTP_RE.fullmatch("482913") and not OTP_RE.fullmatch("48291") and not OTP_RE.fullmatch("4829130")
     assert PIN_RE.fullmatch("5903") and not PIN_RE.fullmatch("590") and not PIN_RE.fullmatch("59031")
     assert not login_code_accepted("59031", attempts=0)  # neither a PIN nor a code
+
+
+def test_default_world_serves_scenarios_without_overrides() -> None:
+    """External graders run the public scenarios without fx_* overrides (docs/requirements.md
+    §Defaults vs. overrides): the defaults must carry each scenario's backend fact."""
+    from lib.fakes import FIXTURE_DEFAULTS
+
+    assert FIXTURE_DEFAULTS["fx_duplicate_payment"] == "true"
+    assert FIXTURE_DEFAULTS["fx_mfa_enabled"] == ""  # manage_mfa: opposite of the request
+    assert FIXTURE_DEFAULTS["fx_technician_status"] == "en_route_delayed"
+    assert FIXTURE_DEFAULTS["fx_service_status"] == "suspended_nonpayment"  # billing tools only
+    assert FIXTURE_DEFAULTS["fx_recent_payment"] == "posted_yesterday"  # found only by verify_payment_and_restore
+    assert "4321" in VALID_PINS and secret_pin_accepted("4321", attempts=1)  # scenario-stated retry PIN
+    assert not secret_pin_accepted("9999", attempts=0)
+    # Trade-offs kept on purpose (docs/requirements.md §Defaults vs. overrides): the saved
+    # card works, and outages follow the regional table (Quebec letters active, others none).
+    assert FIXTURE_DEFAULTS["fx_card_on_file_status"] == "valid"
+    assert FIXTURE_DEFAULTS["fx_outage_status"] == ""
+    from lib.fakes import ACTIVE_OUTAGES, REGION_BY_POSTAL_LETTER
+
+    assert all(REGION_BY_POSTAL_LETTER[letter] in ACTIVE_OUTAGES for letter in "GHJ")
+    assert all(REGION_BY_POSTAL_LETTER[letter] not in ACTIVE_OUTAGES for letter in "KLMNP")

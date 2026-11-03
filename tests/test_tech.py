@@ -378,12 +378,31 @@ def test_en_route_cannot_be_cancelled_or_moved_but_note_works() -> None:
     assert get_appointment_and_ticket_status_impl(state=state)["data"]["appointments"][0]["note_on_file"] is True
 
 
+def test_default_visit_is_en_route_and_delayed_and_can_be_moved_not_cancelled() -> None:
+    """No fixture (fix 16): one status that reads as both "on the way" and "delayed"."""
+    state = _logged_in()
+    appt = get_appointment_and_ticket_status_impl(state=state)["data"]["appointments"][0]
+    assert appt["status"] == "en_route_delayed"
+    assert "on the way" in appt["status_note"] and "delayed" in appt["status_note"]
+    assert appt["delay_minutes"] == APPOINTMENT["delay_minutes"]
+    assert appt["technician_eta_display"] == appt["revised_window_display"] != ""
+    assert appt["can_reschedule"] is True and appt["can_cancel"] is False
+    cancel = manage_appointment_impl("cancel", confirmed=True, state=state)
+    assert cancel["error"] == "TECHNICIAN_EN_ROUTE" and cancel["data"]["can_reschedule"] is True
+    moved = manage_appointment_impl("reschedule", slot_id="SLOT-2", state=state)
+    assert moved["data"]["rescheduled"] is True
+    after = get_appointment_and_ticket_status_impl(state=state)["data"]["appointments"][0]
+    assert after["status"] == "scheduled" and after["date"] == relative_date(SLOT_OFFSETS_DAYS[1])
+    fr = get_appointment_and_ticket_status_impl(state=_logged_in(language="fr-CA"))["data"]["appointments"][0]
+    assert "en route" in fr["status_note"] and "retardé" in fr["status_note"]
+
+
 def test_add_note_needs_text() -> None:
     assert manage_appointment_impl("add_note", state=_logged_in())["error"] == "INVALID_INPUT"
 
 
 def test_same_day_cancel_needs_two_calls() -> None:
-    state = _logged_in()
+    state = _logged_in(fx_technician_status="scheduled")
     first = manage_appointment_impl("cancel", confirmed=True, state=state)  # confirmed too early
     assert first["error"] == "CONFIRMATION_REQUIRED"
     assert first["data"]["same_day"] is True
@@ -400,7 +419,7 @@ def test_same_day_cancel_needs_two_calls() -> None:
 
 
 def test_same_day_cancel_not_confirmed_stays_pending() -> None:
-    state = _logged_in()
+    state = _logged_in(fx_technician_status="scheduled")
     manage_appointment_impl("cancel", state=state)
     assert manage_appointment_impl("cancel", confirmed=False, state=state)["error"] == "CONFIRMATION_REQUIRED"
     assert state.get("appt_state") is None

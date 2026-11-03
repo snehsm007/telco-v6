@@ -254,15 +254,25 @@ FIXTURE_DEFAULTS: dict[str, str] = {  # pragma: no cover
     "fx_pin_on_file": "",
     "fx_otp_on_file": "",
     "fx_card_on_file_status": "valid",
-    "fx_service_status": "active",
-    "fx_recent_payment": "none",
+    # The default account is past due and suspended for non-payment. Only the billing
+    # tools report it (lookup_account does not, before login), and their spoken lines
+    # never raise it unprompted, so unrelated journeys are unaffected (docs/tdd.md §5).
+    "fx_service_status": "suspended_nonpayment",
+    # A payment covering the past-due amount posted yesterday but not applied yet:
+    # it sits in the payment processor's queue, so get_billing_summary does not list it
+    # and only verify_payment_and_restore (the caller says they already paid) finds it.
+    "fx_recent_payment": "posted_yesterday",
     "fx_business_account": "false",
     "fx_outage_status": "",
-    "fx_technician_status": "scheduled",
-    "fx_duplicate_payment": "false",
+    # Default visit: technician on the way but running late (reads as both "en route"
+    # and "delayed"); it can be moved to another day, not cancelled (en route).
+    "fx_technician_status": "en_route_delayed",
+    "fx_duplicate_payment": "true",  # the ledger holds a duplicate payment; refunded only when a caller claims it
     "fx_extra_bill_line": "",
     "fx_device_warranty": "in_warranty",
-    "fx_mfa_enabled": "false",
+    # "" = no MFA record for a synthetic caller: the account is in the state opposite
+    # to the caller's request (manage_mfa), then fixed for the rest of the call.
+    "fx_mfa_enabled": "",
     "fx_sms_delivery": "delivered",
 }
 
@@ -431,9 +441,11 @@ def _bill_payments(state: dict[str, Any], lang: str, past_due: Decimal) -> list[
     if paid_now is not None and paid_now > _BILL_ZERO:
         today = _bill_date(0, lang)
         payments.append({"date": today["iso"], "date_display": today["display"], "status": "posted", "method": str(state.get("last_payment_method") or ""), **money(paid_now)})
-    if fixture(state, "fx_recent_payment") == "posted_yesterday" and not _bill_flag(state, "recent_payment_applied"):
+    # A posted payment not applied yet is in the payment processor's queue, not the
+    # ledger: it shows only once verify_payment_and_restore found and applied it.
+    if fixture(state, "fx_recent_payment") == "posted_yesterday" and _bill_flag(state, "recent_payment_applied"):
         when = _bill_date(-RECENT_PAYMENT_DAYS_AGO, lang)
-        payments.append({"date": when["iso"], "date_display": when["display"], "status": "posted_not_applied", "method": "online_banking", **money(PAST_DUE_AMOUNT)})
+        payments.append({"date": when["iso"], "date_display": when["display"], "status": "posted", "method": "online_banking", **money(PAST_DUE_AMOUNT)})
     if fixture_flag(state, "fx_duplicate_payment"):
         when = _bill_date(-int(DUPLICATE_PAYMENT["days_ago"]), lang)
         refunded = "duplicate_payment" in str(state.get("applied_adjustments") or "").split(",")
@@ -1081,8 +1093,10 @@ def get_billing_summary_impl(  # pragma: no cover
             f" Of that, {_bill_amount_text(lang, live['past_due'])} is past due.",
             f" De ce montant, {_bill_amount_text(lang, live['past_due'])} est en souffrance.",
         )
-    if status == "suspended_nonpayment":
-        summary += _bill_text(lang, " Your service is suspended for non-payment.", " Votre service est suspendu pour non-paiement.")
     data["spoken_summary"] = summary
-    return _bill_finish(st, ok_reply(data, reference, language=lang))
+    reply = ok_reply(data, reference, language=lang)
+    if status == "suspended_nonpayment":
+        # The suspension is in the data; it is raised only with a caller who asks about it.
+        reply["agent_action"] = "Mention the non-payment suspension only if the caller asks about restoring service."
+    return _bill_finish(st, reply)
 # --- END GENERATED SHARED BUNDLE ---
