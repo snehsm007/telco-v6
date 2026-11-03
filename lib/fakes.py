@@ -266,6 +266,10 @@ SALES_WARRANTY_REPLACEMENT_COST = "0.00"  # in-warranty replacement: no fee, no 
 SALES_PORT_DAYS: dict[str, int] = {"mobile": 0, "landline": 3}
 # Longest a transfer usually takes, in business days (SALES_PORT_DAYS is the usual completion).
 SALES_PORT_MAX_DAYS: dict[str, int] = {"mobile": 2, "landline": 5}
+# Mobility data after the plan's high-speed allowance is used (no overage fees).
+SALES_REDUCED_SPEED_KBPS = 512
+# An IMEI (the phone's serial number) can stand in for the old provider's account number on a port-in.
+SALES_IMEI_DIGITS = 15
 
 # French wording of the plan features in PLANS (English is the catalogue text).
 SALES_FEATURES_FR: dict[str, str] = {
@@ -326,6 +330,8 @@ SALES_GENERIC_DEVICE_WORDS: frozenset[str] = frozenset({
     "mobile", "device", "handset", "mon", "ma", "le", "la", "un", "une", "ce", "téléphone", "telephone",
     "cellulaire", "appareil", "portable", "intelligent",
 })
+# Model variant words: a caller's "iPhone 15 Pro" is not the "Apple iPhone 15" on file.
+SALES_DEVICE_VARIANT_WORDS: frozenset[str] = frozenset({"pro", "max", "plus", "ultra", "mini", "fe", "lite"})
 # Words in target_line / current_provider meaning the number is a home phone (landline).
 SALES_LANDLINE_WORDS: tuple[str, ...] = ("landline", "home phone", "house phone", "fixe", "résidentiel", "maison")
 # Words in target_line meaning the number goes on a new line on the account.
@@ -353,6 +359,10 @@ SALES_COPY: dict[str, dict[str, str]] = {
     "after_data_cap": {
         "en-US": "After the high-speed data is used, data continues at a reduced speed with no overage fees.",
         "fr-CA": "Une fois les données haute vitesse utilisées, les données continuent à vitesse réduite, sans frais d'excédent.",
+    },
+    "hotspot_included": {
+        "en-US": "Mobile hotspot is included at no extra cost and uses the plan's high-speed data; there is no separate hotspot limit.",
+        "fr-CA": "Le partage de connexion est inclus sans frais supplémentaires et utilise les données haute vitesse du forfait; il n'y a pas de limite distincte pour le partage de connexion.",
     },
     "proration": {
         "en-US": "This month's bill is prorated for the days on each plan.",
@@ -411,8 +421,24 @@ SALES_COPY: dict[str, dict[str, str]] = {
         "fr-CA": "Le nom du fournisseur actuel",
     },
     "port_check_account": {
-        "en-US": "The account number with that provider, from a recent bill",
-        "fr-CA": "Le numéro de compte chez ce fournisseur, indiqué sur une facture récente",
+        "en-US": "The account number with that provider, from a recent bill, or the phone's 15-digit IMEI (dial *#06# to see it)",
+        "fr-CA": "Le numéro de compte chez ce fournisseur, indiqué sur une facture récente, ou le code IMEI à 15 chiffres du téléphone (composez *#06# pour l'afficher)",
+    },
+    "port_account_alt_bill": {
+        "en-US": "The account number with the current provider, from a recent bill or their app",
+        "fr-CA": "Le numéro de compte chez le fournisseur actuel, sur une facture récente ou dans son application",
+    },
+    "port_account_alt_imei": {
+        "en-US": "The phone's 15-digit IMEI instead: dial *#06# on that phone to see it",
+        "fr-CA": "Le code IMEI à 15 chiffres du téléphone à la place : composez *#06# sur ce téléphone pour l'afficher",
+    },
+    "port_fees": {
+        "en-US": "There is no fee to transfer a number in and no activation fee.",
+        "fr-CA": "Il n'y a aucuns frais pour transférer un numéro et aucuns frais d'activation.",
+    },
+    "port_authorization": {
+        "en-US": "No code or extra authorization is needed on this call. The current provider may text that phone to confirm the transfer; just follow that message.",
+        "fr-CA": "Aucun code ni autorisation supplémentaire n'est nécessaire pendant cet appel. Le fournisseur actuel peut envoyer un texto à ce téléphone pour confirmer le transfert; suivez simplement ce message.",
     },
     "port_check_pin": {
         "en-US": "A transfer PIN, if that provider uses one",

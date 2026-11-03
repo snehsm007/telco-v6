@@ -108,6 +108,8 @@ DEVICES_ON_FILE: tuple[dict[str, Any], ...] = (  # pragma: no cover
     {"device_id": "DEV-03", "model": "Google Pixel 8", "keywords": ["pixel", "google"], "purchased_days_ago": 120},
 )
 
+SALES_DEVICE_VARIANT_WORDS: frozenset[str] = frozenset({"pro", "max", "plus", "ultra", "mini", "fe", "lite"})  # pragma: no cover
+
 SALES_GENERIC_DEVICE_WORDS: frozenset[str] = frozenset({  # pragma: no cover
     "my", "the", "a", "an", "this", "it", "old", "new", "current", "phone", "cell", "cellphone", "smartphone",
     "mobile", "device", "handset", "mon", "ma", "le", "la", "un", "une", "ce", "téléphone", "telephone",
@@ -168,11 +170,15 @@ def _sales_device(device: Any, issue: Any) -> tuple[dict[str, Any], bool]:  # pr
     """
     text = f"{device or ''} {issue or ''}".lower()
     named_tokens = _sales_model_tokens(device)
+    named_variants = set(re.findall(r"[^\W_]+", str(device or "").lower())) & SALES_DEVICE_VARIANT_WORDS
     for dev in DEVICES_ON_FILE:
         if not (any(k in text for k in dev.get("keywords", [])) or str(dev["model"]).lower() in text):
             continue
         # Same brand, different model ("Galaxy S22" vs the S24 on file): not this device.
         if named_tokens - _sales_model_tokens(dev["model"]):
+            continue
+        # Same model number, other variant ("iPhone 15 Pro" vs the iPhone 15 on file): not this device.
+        if named_variants - set(re.findall(r"[^\W_]+", str(dev["model"]).lower())):
             continue
         return dev, True
     newest = min(DEVICES_ON_FILE, key=lambda d: int(d["purchased_days_ago"]))
@@ -203,6 +209,10 @@ SALES_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
     "after_data_cap": {
         "en-US": "After the high-speed data is used, data continues at a reduced speed with no overage fees.",
         "fr-CA": "Une fois les données haute vitesse utilisées, les données continuent à vitesse réduite, sans frais d'excédent.",
+    },
+    "hotspot_included": {
+        "en-US": "Mobile hotspot is included at no extra cost and uses the plan's high-speed data; there is no separate hotspot limit.",
+        "fr-CA": "Le partage de connexion est inclus sans frais supplémentaires et utilise les données haute vitesse du forfait; il n'y a pas de limite distincte pour le partage de connexion.",
     },
     "proration": {
         "en-US": "This month's bill is prorated for the days on each plan.",
@@ -261,8 +271,24 @@ SALES_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
         "fr-CA": "Le nom du fournisseur actuel",
     },
     "port_check_account": {
-        "en-US": "The account number with that provider, from a recent bill",
-        "fr-CA": "Le numéro de compte chez ce fournisseur, indiqué sur une facture récente",
+        "en-US": "The account number with that provider, from a recent bill, or the phone's 15-digit IMEI (dial *#06# to see it)",
+        "fr-CA": "Le numéro de compte chez ce fournisseur, indiqué sur une facture récente, ou le code IMEI à 15 chiffres du téléphone (composez *#06# pour l'afficher)",
+    },
+    "port_account_alt_bill": {
+        "en-US": "The account number with the current provider, from a recent bill or their app",
+        "fr-CA": "Le numéro de compte chez le fournisseur actuel, sur une facture récente ou dans son application",
+    },
+    "port_account_alt_imei": {
+        "en-US": "The phone's 15-digit IMEI instead: dial *#06# on that phone to see it",
+        "fr-CA": "Le code IMEI à 15 chiffres du téléphone à la place : composez *#06# sur ce téléphone pour l'afficher",
+    },
+    "port_fees": {
+        "en-US": "There is no fee to transfer a number in and no activation fee.",
+        "fr-CA": "Il n'y a aucuns frais pour transférer un numéro et aucuns frais d'activation.",
+    },
+    "port_authorization": {
+        "en-US": "No code or extra authorization is needed on this call. The current provider may text that phone to confirm the transfer; just follow that message.",
+        "fr-CA": "Aucun code ni autorisation supplémentaire n'est nécessaire pendant cet appel. Le fournisseur actuel peut envoyer un texto à ce téléphone pour confirmer le transfert; suivez simplement ce message.",
     },
     "port_check_pin": {
         "en-US": "A transfer PIN, if that provider uses one",

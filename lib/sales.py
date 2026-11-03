@@ -46,9 +46,11 @@ from lib.fakes import (
     SALES_CAPACITY_WORDS,
     SALES_COPY,
     SALES_COVERAGE_MAX_MBPS,
+    SALES_DEVICE_VARIANT_WORDS,
     SALES_EQUIPMENT_DELIVERY_DAYS,
     SALES_FEATURES_FR,
     SALES_GENERIC_DEVICE_WORDS,
+    SALES_IMEI_DIGITS,
     SALES_LANDLINE_WORDS,
     SALES_NEW_LINE_WORDS,
     SALES_OWN_BRAND_WORDS,
@@ -57,6 +59,7 @@ from lib.fakes import (
     SALES_PORT_DAYS,
     SALES_PORT_MAX_DAYS,
     SALES_PRICE_WORDS,
+    SALES_REDUCED_SPEED_KBPS,
     SALES_REPAIR_FEE,
     SALES_RETURN_WINDOW_DAYS,
     SALES_SAFETY_WORDS,
@@ -133,6 +136,10 @@ def _sales_speed_display(mbps: int, lang: str) -> str:
     if mbps >= 1000 and mbps % 1000 == 0:
         return f"{mbps // 1000} Gbit/s" if fr else f"{mbps // 1000} Gbps"
     return f"{mbps} Mbit/s" if fr else f"{mbps} Mbps"
+
+
+def _sales_kbps_display(kbps: int, lang: str) -> str:
+    return f"{kbps} kbit/s" if resolve_copy_locale(lang) == "fr-CA" else f"{kbps} kbps"
 
 
 def _sales_feature(text: str, lang: str) -> str:
@@ -238,6 +245,9 @@ def _sales_plan_view(state: dict[str, Any], plan: dict[str, Any], current: dict[
         view["data_display"] = _sales_data_display(int(plan["data_gb"]), lang)
     if plan.get("speed_mbps"):
         view["speed_display"] = _sales_speed_display(int(plan["speed_mbps"]), lang)
+    if plan["lob"] == "mobility":  # follow-up facts: speed after the allowance, hotspot (rule 33)
+        view["reduced_speed_display"] = _sales_kbps_display(SALES_REDUCED_SPEED_KBPS, lang)
+        view["hotspot_note"] = _sales_text("hotspot_included", lang)
     if plan.get("upload_mbps"):  # follow-up facts: upload, symmetry, latency (DESIGN_RULES rule 33)
         view["upload_speed_display"] = _sales_speed_display(int(plan["upload_mbps"]), lang)
         view["symmetric"] = bool(plan.get("symmetric"))
@@ -304,11 +314,15 @@ def _sales_device(device: Any, issue: Any) -> tuple[dict[str, Any], bool]:
     """
     text = f"{device or ''} {issue or ''}".lower()
     named_tokens = _sales_model_tokens(device)
+    named_variants = set(re.findall(r"[^\W_]+", str(device or "").lower())) & SALES_DEVICE_VARIANT_WORDS
     for dev in DEVICES_ON_FILE:
         if not (any(k in text for k in dev.get("keywords", [])) or str(dev["model"]).lower() in text):
             continue
         # Same brand, different model ("Galaxy S22" vs the S24 on file): not this device.
         if named_tokens - _sales_model_tokens(dev["model"]):
+            continue
+        # Same model number, other variant ("iPhone 15 Pro" vs the iPhone 15 on file): not this device.
+        if named_variants - set(re.findall(r"[^\W_]+", str(dev["model"]).lower())):
             continue
         return dev, True
     newest = min(DEVICES_ON_FILE, key=lambda d: int(d["purchased_days_ago"]))
@@ -674,6 +688,15 @@ def _sales_port_checklist(lang: str) -> list[str]:
     return [_sales_text(k, lang) for k in keys]
 
 
+def _sales_port_facts(lang: str) -> dict[str, Any]:
+    """Follow-up facts callers ask before giving details: cost, authorization, no account number (rule 33)."""
+    return {
+        "fees_note": _sales_text("port_fees", lang),
+        "authorization_note": _sales_text("port_authorization", lang),
+        "account_number_alternatives": [_sales_text(k, lang) for k in ("port_account_alt_bill", "port_account_alt_imei")],
+    }
+
+
 def _sales_port_eta(kind: str, lang: str) -> dict[str, str]:
     iso = _sales_business_date(SALES_PORT_DAYS.get(kind, 0))
     return {"date": iso, "display": display_date(iso, lang)}
@@ -731,6 +754,7 @@ def start_number_transfer_impl(
                 "mobile_typical_timeframe_display": _sales_port_timeframe("mobile", lang),
                 "landline_typical_timeframe_display": _sales_port_timeframe("landline", lang),
                 "keep_old_service_note": _sales_text("port_keep_active", lang),
+                **_sales_port_facts(lang),
                 "login_required_to_start": True,
             },
             reference,
@@ -764,7 +788,7 @@ def start_number_transfer_impl(
         return validation_error(
             state,
             "The account number with the current provider looks incomplete.",
-            "Ask for the account number from the current provider's bill again.",
+            "Ask again for the provider's account number or the phone's IMEI.",
             reference,
             lang,
         )
@@ -781,6 +805,8 @@ def start_number_transfer_impl(
     if provider_found_by_lookup:
         provider = _sales_text("port_provider_lookup", lang)
 
+    account_identifier = "imei" if re.fullmatch(rf"\d{{{SALES_IMEI_DIGITS}}}", account_number) else "account_number"
+    target_given = not _sales_placeholder(target_line)
     target_digits = normalize_code(target_line)
     target_last4 = ""
     if len(target_digits) >= 10:
@@ -809,10 +835,13 @@ def start_number_transfer_impl(
         "provider_found_by_lookup": provider_found_by_lookup and not internal_move,
         "internal_move": internal_move,
         "current_account_number_last4": account_number[-4:] if account_number else "",
+        "account_identifier_type": account_identifier if account_number else "",
         "transfer_pin_received": bool(pin_digits),
         "target": target,
         "typical_timeframe_display": _sales_port_timeframe(number_type, lang),
         "keep_old_service_note": _sales_text("port_keep_active", lang),
+        "fees_note": _sales_text("port_fees", lang),
+        "authorization_note": _sales_text("port_authorization", lang),
     }
     if internal_move:
         data["internal_move_note"] = _sales_text("port_internal_move", lang)
@@ -827,6 +856,9 @@ def start_number_transfer_impl(
                 "transfer_started": False,
                 "missing_details": missing,
                 "required_port_checklist": _sales_port_checklist(lang),
+                "account_number_alternatives": _sales_port_facts(lang)["account_number_alternatives"],
+                # Not asked yet: never present a default the caller didn't choose.
+                "target": target if target_given else "not_given",
             }
         )
         reply = ok_reply(data, reference, language=lang)

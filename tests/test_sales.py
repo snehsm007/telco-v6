@@ -432,7 +432,7 @@ def test_warranty_same_brand_other_model_is_not_the_device_on_file() -> None:
     assert data["device_model"] == "Samsung Galaxy S22" and data["device_matched"] is False
     assert "S24" not in str(check)
     # The on-file model, with or without its model number or a storage size, still matches.
-    for named in ("Samsung Galaxy S24", "Galaxy S24 256GB", "my samsung", "iPhone 15 Pro"):
+    for named in ("Samsung Galaxy S24", "Galaxy S24 256GB", "my samsung", "iPhone 15 128GB"):
         assert file_warranty_claim_impl(named, "won't charge", state=_logged_in())["data"]["device_matched"] is True, named
     assert sales._sales_model_tokens("iPhone 13 Pro 128GB 2023") == {"13"}
     assert sales._sales_model_tokens("Pixel 8a on 5G") == {"8a"}
@@ -521,3 +521,70 @@ def test_transfer_gives_a_typical_timeframe_before_the_details_are_in(lang: str)
     assert str(sales.SALES_PORT_MAX_DAYS["landline"]) in landline["data"]["typical_timeframe_display"]
     started = start_number_transfer_impl("(416) 555-0123", "Bell", "778812", "", "new line", state=state)["data"]
     assert started["transfer_started"] is True and started["typical_timeframe_display"] == mobile
+
+
+# ----------------------------------------------------------------------------- fix/22 (port-in, plan, device, ship-to facts)
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_transfer_replies_carry_fee_and_authorization_facts(lang: str) -> None:
+    """VE-39 r2 / VE-66 r3: "any fees?" got an invented "free" or "can't confirm"; VE-66 r2:
+    the caller's port authorization code got an invented answer."""
+    checklist = start_number_transfer_impl("", state={}, language=lang)["data"]
+    state = _logged_in(language=lang)
+    pending = start_number_transfer_impl("(416) 555-0123", "Bell", "", "", "new line", state=state)["data"]
+    submitted = start_number_transfer_impl("(416) 555-0123", "Bell", "778812", "", "new line", state=state)["data"]
+    assert pending["status"] == "pending_details" and submitted["status"] == "submitted"
+    for data in (checklist, pending, submitted):
+        assert data["fees_note"] == SALES_COPY["port_fees"][lang]
+        assert data["authorization_note"] == SALES_COPY["port_authorization"][lang]
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_transfer_accepts_the_phones_imei_instead_of_the_account_number(lang: str) -> None:
+    """VE-66 r1: the caller had no account number and offered the IMEI; the agent couldn't say."""
+    checklist = start_number_transfer_impl("", state={}, language=lang)["data"]
+    assert "IMEI" in checklist["required_port_checklist"][2] and "*#06#" in checklist["required_port_checklist"][2]
+    assert len(checklist["account_number_alternatives"]) == 2
+    state = _logged_in(language=lang)
+    pending = start_number_transfer_impl("5145558291", "Rogers", "", "", "new_line", state=state)["data"]
+    assert pending["missing_details"] == ["current_account_number"], "one identifier is still required"
+    assert pending["account_number_alternatives"] == checklist["account_number_alternatives"]
+    started = start_number_transfer_impl("5145558291", "Rogers", "35 209900 176148 1", "", "new_line", state=state)["data"]
+    assert started["transfer_started"] is True and started["account_identifier_type"] == "imei"
+    assert started["current_account_number_last4"] == "1481"
+    by_account = start_number_transfer_impl("4165550123", "Bell", "AC-55120", "", "new_line", state=_logged_in())["data"]
+    assert by_account["account_identifier_type"] == "account_number"
+
+
+def test_transfer_pending_target_is_not_given_until_the_caller_says() -> None:
+    """VE-39 r1: pending showed target=existing_line, so asking "new or existing line?" was judged ungrounded."""
+    pending = start_number_transfer_impl("4165550123", state=_logged_in())["data"]
+    assert pending["status"] == "pending_details" and pending["target"] == "not_given"
+    named = start_number_transfer_impl("4165550123", "", "", "", "new line", state=_logged_in())["data"]
+    assert named["target"] == "new_line"
+    existing = start_number_transfer_impl("4165550123", "", "", "", "existing_line", state=_logged_in())["data"]
+    assert existing["target"] == "existing_line"
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_mobility_plans_carry_reduced_speed_and_hotspot_facts(lang: str) -> None:
+    """VE-46: "I cannot confirm exact throttled speed numbers or hotspot limits"."""
+    plans = browse_plans_impl("mobility", budget="60", state=_identified(), language=lang)["data"]["plans"]
+    assert plans
+    for plan in plans:
+        assert str(sales.SALES_REDUCED_SPEED_KBPS) in plan["reduced_speed_display"]
+        assert plan["hotspot_note"] == SALES_COPY["hotspot_included"][lang]
+    quote = place_order_impl("MOB-50", False, state=_logged_in(), language=lang)["data"]
+    assert quote["reduced_speed_display"] and quote["hotspot_note"]
+    internet = browse_plans_impl("internet", state=_identified(), language=lang)["data"]["plans"]
+    assert all("reduced_speed_display" not in p and "hotspot_note" not in p for p in internet)
+
+
+def test_warranty_named_variant_is_not_the_base_model_on_file() -> None:
+    """VE-48 r1: "iPhone 15 Pro" was matched to the Apple iPhone 15 on file and that model shipped."""
+    for named in ("iPhone 15 Pro", "iphone 15 pro max", "Galaxy S24 Ultra", "Pixel 8 Pro", "Galaxy S24 FE"):
+        data = file_warranty_claim_impl(named, "screen flickers", state=_logged_in())["data"]
+        assert data["device_matched"] is False and data["device_model"] == named, named
+    for named in ("Apple iPhone 15", "my pixel", "Galaxy S24"):
+        assert file_warranty_claim_impl(named, "screen flickers", state=_logged_in())["data"]["device_matched"] is True
