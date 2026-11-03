@@ -504,3 +504,20 @@ def test_urgent_battery_claim_still_confirms_once() -> None:
     assert terms["data"]["fees_note"] == SALES_COPY["warranty_fees_urgent"]["en-US"]
     filed = file_warranty_claim_impl("", "battery is swollen", confirmed="yes", state=state)
     assert filed["data"]["claim_filed"] is True and filed["data"]["urgent"] is True
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_transfer_gives_a_typical_timeframe_before_the_details_are_in(lang: str) -> None:
+    """VE-66 r1: pending on the provider account number, the agent said it couldn't give a timeframe."""
+    checklist = start_number_transfer_impl("", state={}, language=lang)["data"]
+    assert checklist["typical_timeframe_display"] == checklist["mobile_typical_timeframe_display"]
+    assert checklist["landline_typical_timeframe_display"] != checklist["mobile_typical_timeframe_display"]
+    state = _logged_in(language=lang)
+    pending = start_number_transfer_impl("(416) 555-0123", "Bell", "", "", "new line", state=state)["data"]
+    assert pending["status"] == "pending_details" and "transfer_id" not in pending
+    mobile = pending["typical_timeframe_display"]
+    assert str(sales.SALES_PORT_MAX_DAYS["mobile"]) in mobile and ("same day" in mobile or "jour même" in mobile)
+    landline = start_number_transfer_impl("(416) 555-0123", "Bell", "", "", "landline", state=_logged_in(language=lang))
+    assert str(sales.SALES_PORT_MAX_DAYS["landline"]) in landline["data"]["typical_timeframe_display"]
+    started = start_number_transfer_impl("(416) 555-0123", "Bell", "778812", "", "new line", state=state)["data"]
+    assert started["transfer_started"] is True and started["typical_timeframe_display"] == mobile

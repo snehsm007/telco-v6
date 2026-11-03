@@ -41,3 +41,11 @@ def test_start_number_transfer_needs_login(monkeypatch) -> None:
 def test_start_number_transfer_rejects_malformed_number(monkeypatch) -> None:
     monkeypatch.setattr(tool, "context", _logged_in(), raising=False)
     assert tool.start_number_transfer(number_to_transfer="12345")["error"] == "INVALID_INPUT"
+
+
+def test_start_number_transfer_pending_still_gives_timeframe(monkeypatch) -> None:
+    session = _logged_in()
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.start_number_transfer(number_to_transfer="416 555 0123", current_provider="Other Mobile", target_line="new_line")
+    assert reply["data"]["status"] == "pending_details"
+    assert reply["data"]["typical_timeframe_display"]

@@ -249,6 +249,8 @@ SALES_OUT_OF_WARRANTY_AGE_DAYS = 430     # device age reported when fx_device_wa
 SALES_REPAIR_FEE = "139.00"
 SALES_WARRANTY_REPLACEMENT_COST = "0.00"  # in-warranty replacement: no fee, no deductible, free shipping
 SALES_PORT_DAYS: dict[str, int] = {"mobile": 0, "landline": 3}
+# Longest a transfer usually takes, in business days (SALES_PORT_DAYS is the usual completion).
+SALES_PORT_MAX_DAYS: dict[str, int] = {"mobile": 2, "landline": 5}
 
 # French wording of the plan features in PLANS (English is the catalogue text).
 SALES_FEATURES_FR: dict[str, str] = {

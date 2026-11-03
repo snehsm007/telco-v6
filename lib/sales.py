@@ -55,6 +55,7 @@ from lib.fakes import (
     SALES_OUT_OF_WARRANTY_AGE_DAYS,
     SALES_PLACEHOLDERS,
     SALES_PORT_DAYS,
+    SALES_PORT_MAX_DAYS,
     SALES_PRICE_WORDS,
     SALES_REPAIR_FEE,
     SALES_RETURN_WINDOW_DAYS,
@@ -678,6 +679,15 @@ def _sales_port_eta(kind: str, lang: str) -> dict[str, str]:
     return {"date": iso, "display": display_date(iso, lang)}
 
 
+def _sales_port_timeframe(kind: str, lang: str) -> str:
+    """Typical completion window for a transfer, so "how long does it take?" never waits for the details."""
+    low, high = SALES_PORT_DAYS.get(kind, 0), SALES_PORT_MAX_DAYS.get(kind, 0)
+    fr = resolve_copy_locale(lang) == "fr-CA"
+    if low == 0:
+        return f"le jour même, jusqu'à {high} jours ouvrables" if fr else f"the same day, up to {high} business days"
+    return f"{low} à {high} jours ouvrables" if fr else f"{low} to {high} business days"
+
+
 def _sales_own_number(state: dict[str, Any], number: str) -> bool:
     """True when the number to transfer is the logged-in account's own phone number."""
     own = {str(state.get(k) or "") for k in ("phone_last4", "caller_provided_phone_last4")} - {""}
@@ -717,6 +727,9 @@ def start_number_transfer_impl(
                 "required_port_checklist": _sales_port_checklist(lang),
                 "mobile_completion_display": mobile_eta["display"],
                 "landline_completion_display": landline_eta["display"],
+                "typical_timeframe_display": _sales_port_timeframe(number_type, lang),
+                "mobile_typical_timeframe_display": _sales_port_timeframe("mobile", lang),
+                "landline_typical_timeframe_display": _sales_port_timeframe("landline", lang),
                 "keep_old_service_note": _sales_text("port_keep_active", lang),
                 "login_required_to_start": True,
             },
@@ -798,6 +811,7 @@ def start_number_transfer_impl(
         "current_account_number_last4": account_number[-4:] if account_number else "",
         "transfer_pin_received": bool(pin_digits),
         "target": target,
+        "typical_timeframe_display": _sales_port_timeframe(number_type, lang),
         "keep_old_service_note": _sales_text("port_keep_active", lang),
     }
     if internal_move:
