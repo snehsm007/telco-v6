@@ -19,6 +19,7 @@ from lib.fakes import (
     CURRENCY,
     FIXTURE_DEFAULTS,
     QUEUE_HOURS,
+    BUSINESS_HOURS_QUEUES,
     read_count,
     relative_date,
     resolve_copy_locale,
@@ -284,8 +285,8 @@ def dispatch_sms(state: dict[str, Any], purpose: str) -> dict[str, Any]:
 
 
 def queue_open(queue: str, now: datetime | None = None) -> bool:
-    """BR-TV-014: outage/fraud/general queues are 24/7; specialist queues follow QUEUE_HOURS (ET)."""
-    if queue in ALWAYS_OPEN_QUEUES:
+    """BR-TV-014: only sales and appointment queues follow QUEUE_HOURS (ET); all others are 24/7."""
+    if queue in ALWAYS_OPEN_QUEUES or queue not in BUSINESS_HOURS_QUEUES:
         return True
     current = now or (datetime.now(timezone.utc) - timedelta(hours=5))
     day = "saturday" if current.weekday() == 5 else "sunday" if current.weekday() == 6 else "weekday"

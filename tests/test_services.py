@@ -352,7 +352,10 @@ EXPECTED_LINES = {
 
 @pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
 @pytest.mark.parametrize("reason", HANDOVER_REASONS)
-def test_handover_speaks_the_verbatim_line_for_each_reason(reason: str, lang: str) -> None:
+def test_handover_speaks_the_verbatim_line_for_each_reason(reason: str, lang: str, monkeypatch) -> None:
+    import lib.services as svc
+
+    monkeypatch.setattr(svc, "queue_open", lambda queue, now=None: True)  # time-of-day independent
     state: dict = {}
     reply = handover_to_person_impl(reason=reason, summary="s", state=state, language=lang)
     keys = EXPECTED_LINES.get(reason, ("live_agent_handoff",))
@@ -621,3 +624,12 @@ def test_default_ladder_wrong_then_scenario_pin_on_the_second_try() -> None:
     other = identified()
     check_secret_pin_impl("9999", state=other)
     assert check_secret_pin_impl("4322", state=other)["error"] == "WRONG_PIN"  # any other PIN still fails
+
+
+def test_closed_queue_handover_says_the_callback_not_please_hold(monkeypatch) -> None:
+    import lib.services as svc
+
+    monkeypatch.setattr(svc, "queue_open", lambda queue, now=None: False)
+    reply = svc.handover_to_person_impl(reason="sales_specialist", state={})
+    assert reply["data"]["handoff_status"] == "callback_next_business_day"
+    assert reply["data"]["handoff_message"] == SPOKEN_LINES["callback_next_business_day"]["en-US"]

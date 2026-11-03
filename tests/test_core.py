@@ -162,7 +162,7 @@ def test_queue_open_follows_queue_hours() -> None:
     saturday_18 = datetime(2026, 3, 7, 18, 0)
     sunday_12 = datetime(2026, 3, 8, 12, 0)
     assert core.queue_open("billing_specialist", monday_10) is True
-    assert core.queue_open("billing_specialist", monday_21) is False
+    assert core.queue_open("billing_specialist", monday_21) is True  # BR-TV-014: 24/7
     assert core.queue_open("sales", saturday_10) is True
     assert core.queue_open("sales", saturday_18) is False
     assert core.queue_open("appointments", sunday_12) is False
@@ -192,3 +192,16 @@ def test_mock_error_off_values_mean_no_fault() -> None:
         assert core.check_mock_error({"mock_error": off}, "en-US", "x") is None
     for on in ("SYSTEM_DOWN", "true", "INTERNAL_ERROR"):
         assert core.check_mock_error({"mock_error": on}, "en-US", "x")["error"] == "SYSTEM_UNAVAILABLE"
+
+
+def test_only_sales_and_appointment_queues_follow_business_hours() -> None:
+    """prd.md BR-TV-014: sales/plan changes and appointment booking only; everything else is 24/7."""
+    from datetime import datetime
+
+    from lib.core import queue_open
+
+    night = datetime(2026, 11, 3, 21, 9)  # a Tuesday, after 20:00 ET
+    for always in ("business", "billing_specialist", "french_support", "fraud", "general"):
+        assert queue_open(always, night) is True, always
+    assert queue_open("sales", night) is False and queue_open("appointments", night) is False
+    assert queue_open("sales", datetime(2026, 11, 3, 10, 0)) is True

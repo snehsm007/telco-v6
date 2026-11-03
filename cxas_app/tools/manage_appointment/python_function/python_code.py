@@ -1030,6 +1030,10 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "For your security, I just sent a 6-digit code to your email on file — please read it back to me.",
         "fr-CA": "Pour votre sécurité, je viens d'envoyer un code à 6 chiffres à votre adresse courriel au dossier — veuillez me le lire.",
     },
+    "callback_next_business_day": {
+        "en-US": "That team is closed right now, so I've arranged for them to call you back on the next business day.",
+        "fr-CA": "Cette équipe est fermée en ce moment, alors j'ai demandé qu'elle vous rappelle le prochain jour ouvrable.",
+    },
     "restricted_caller": {
         "en-US": "We're unable to help with this call on this line. Please visit one of our stores for assistance. Goodbye.",
         "fr-CA": "Nous ne pouvons pas traiter cet appel sur cette ligne. Veuillez vous rendre dans l'une de nos boutiques pour obtenir de l'aide. Au revoir.",

@@ -493,6 +493,9 @@ def handover_to_person_impl(
     message = " ".join(spoken_line(k, lang, limit=limit) for k in keys)
     queue = HANDOVER_QUEUES.get(code, "general")
     open_now = queue_open(queue)
+    if not open_now:
+        # The queue is closed (BR-TV-014): say the callback, never "please hold".
+        message = spoken_line("callback_next_business_day", lang)
     context = {
         "reason": code,
         "summary": redact_pii(" ".join(str(summary or "").split()))[:300],
