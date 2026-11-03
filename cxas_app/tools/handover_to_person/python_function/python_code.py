@@ -46,10 +46,10 @@ import json
 import re
 import unicodedata
 
-DEFAULT_HANDOVER_LINES: tuple[str, ...] = ("live_agent_handoff", "handoff_context_note")  # pragma: no cover
+DEFAULT_HANDOVER_LINES: tuple[str, ...] = ("live_agent_handoff",)  # pragma: no cover
 
 HANDOVER_LINES: dict[str, tuple[str, ...]] = {  # pragma: no cover
-    "business_handoff": ("business_handoff", "handoff_context_note"),
+    "business_handoff": ("business_handoff",),
     "fraud_escalation": ("empathy_protocol", "fraud_team_transfer"),
     "refund_threshold_exceeded": ("refund_over_limit", "transfer_to_specialist"),
 }
@@ -62,6 +62,8 @@ HANDOVER_QUEUES: dict[str, str] = {  # pragma: no cover
     "sales_specialist": "sales",
     "appointment_booking": "appointments",
 }
+
+NO_CONTEXT_LINE_REASONS: frozenset[str] = frozenset({"fraud_escalation", "refund_threshold_exceeded"})  # pragma: no cover
 
 SELF_SERVE_ADJUSTMENT_LIMIT = "25.00"  # pragma: no cover
 
@@ -853,14 +855,14 @@ def handover_to_person_impl(  # pragma: no cover
     open_now = queue_open(queue)
     if not open_now:
         # The queue is closed (BR-TV-014): say the callback, never "please hold".
-        keys = ("callback_next_business_day", "handoff_context_note")
+        keys = ("callback_next_business_day",)
     distressed = code != "fraud_escalation" and bool(
         _DISTRESS_RE.search(" ".join(str(t or "") for t in (reason, summary, state.get("utterance"))))
     )
-    if distressed:
-        keys = ("distress_acknowledgement", *keys)
     limit = display_amount(SELF_SERVE_ADJUSTMENT_LIMIT)
     message = " ".join(spoken_line(k, lang, limit=limit) for k in keys)
+    acknowledgement = spoken_line("distress_acknowledgement", lang) if distressed else ""
+    context_line = "" if code in NO_CONTEXT_LINE_REASONS and open_now else spoken_line("handoff_context_note", lang)
     context = {
         "reason": code,
         "summary": redact_pii(" ".join(str(summary or "").split()))[:300],
@@ -899,6 +901,8 @@ def handover_to_person_impl(  # pragma: no cover
             "language": lang,
             "handover_id": reference,
             "handoff_message": message,
+            "acknowledgement_line": acknowledgement,
+            "transfer_context_line": context_line,
             "session_context_attached": True,
             "distress_acknowledged": distressed,
             "action_fulfilled": True,

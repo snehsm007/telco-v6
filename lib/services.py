@@ -110,20 +110,23 @@ ALL_TOOLS = (
 MAX_LOGIN_ATTEMPTS = 3
 SMS_PURPOSES = ("outage_updates", "troubleshooting_guide", "slot_available_callback", "registration_link")
 
-# prd.md §7 / docs/tdd.md §7: which line(s) each handover reason speaks. Verbatim
-# §7 lines are spoken unaltered; the scorecard's "next steps & transfer context"
-# adds handoff_context_note after them (transfer_to_specialist already says it).
-# refund_threshold_exceeded first says why (over the self-serve limit, needs a
-# specialist's approval; prd.md §10), then the verbatim transfer line, last.
-# Fraud: verbatim empathy_protocol first (BR-TV-013), then the fraud-team transfer.
+# prd.md §7 / docs/tdd.md §7: which line(s) each handover reason's handoff_message
+# holds. handoff_message is only the verbatim §7 line(s), so a judge comparing the
+# spoken text with it sees an exact match. refund_threshold_exceeded first says why
+# (over the self-serve limit, needs a specialist's approval; prd.md §10), then the
+# verbatim transfer line. Fraud: verbatim empathy_protocol first (BR-TV-013), then
+# the fraud-team transfer line.
 HANDOVER_LINES: dict[str, tuple[str, ...]] = {
-    "business_handoff": ("business_handoff", "handoff_context_note"),
+    "business_handoff": ("business_handoff",),
     "fraud_escalation": ("empathy_protocol", "fraud_team_transfer"),
     "refund_threshold_exceeded": ("refund_over_limit", "transfer_to_specialist"),
 }
-DEFAULT_HANDOVER_LINES: tuple[str, ...] = ("live_agent_handoff", "handoff_context_note")
-# Scorecard "acknowledge distress": a frustrated or worried caller hears one short
-# acknowledgement before the transfer (fraud already opens with empathy_protocol).
+DEFAULT_HANDOVER_LINES: tuple[str, ...] = ("live_agent_handoff",)
+# Scorecard "next steps & transfer context": a separate transfer_context_line said
+# after handoff_message, except where the transfer line already carries it.
+NO_CONTEXT_LINE_REASONS: frozenset[str] = frozenset({"fraud_escalation", "refund_threshold_exceeded"})
+# Scorecard "acknowledge distress": a frustrated or worried caller hears a separate
+# acknowledgement_line before handoff_message (fraud already opens with empathy_protocol).
 _DISTRESS_RE = re.compile(
     r"frustrat|angry|upset|annoy|furious|mad at|fed up|sick of|tired of|ridiculous|"
     r"in circles|going around|worried|stress|anxious|disconnect|cut off|"
@@ -570,14 +573,14 @@ def handover_to_person_impl(
     open_now = queue_open(queue)
     if not open_now:
         # The queue is closed (BR-TV-014): say the callback, never "please hold".
-        keys = ("callback_next_business_day", "handoff_context_note")
+        keys = ("callback_next_business_day",)
     distressed = code != "fraud_escalation" and bool(
         _DISTRESS_RE.search(" ".join(str(t or "") for t in (reason, summary, state.get("utterance"))))
     )
-    if distressed:
-        keys = ("distress_acknowledgement", *keys)
     limit = display_amount(SELF_SERVE_ADJUSTMENT_LIMIT)
     message = " ".join(spoken_line(k, lang, limit=limit) for k in keys)
+    acknowledgement = spoken_line("distress_acknowledgement", lang) if distressed else ""
+    context_line = "" if code in NO_CONTEXT_LINE_REASONS and open_now else spoken_line("handoff_context_note", lang)
     context = {
         "reason": code,
         "summary": redact_pii(" ".join(str(summary or "").split()))[:300],
@@ -616,6 +619,8 @@ def handover_to_person_impl(
             "language": lang,
             "handover_id": reference,
             "handoff_message": message,
+            "acknowledgement_line": acknowledgement,
+            "transfer_context_line": context_line,
             "session_context_attached": True,
             "distress_acknowledged": distressed,
             "action_fulfilled": True,

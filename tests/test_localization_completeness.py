@@ -68,9 +68,8 @@ def test_shared_tools_reply_in_the_call_language(locale: str) -> None:
         assert reply["active_language"] == locale, fn.__name__
         assert not _sibling_keys(reply), f"{fn.__name__} has localized sibling keys"
         assert state["language"] == locale
-    assert state["handoff_message"] == (
-        SPOKEN_LINES["live_agent_handoff"][locale] + " " + SPOKEN_LINES["handoff_context_note"][locale]
-    )
+    assert state["handoff_message"] == SPOKEN_LINES["live_agent_handoff"][locale]
+    assert reply["data"]["transfer_context_line"] == SPOKEN_LINES["handoff_context_note"][locale]
 
 
 @pytest.mark.parametrize("locale", SUPPORTED_LOCALES)

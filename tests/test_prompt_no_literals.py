@@ -145,3 +145,13 @@ def test_tech_support_keeps_the_outage_text_promise_without_an_account() -> None
     sent = re.search(r'<step name="Text Sent">(.*?)</step>', tech_txt, re.S)
     assert send and "mobile_number" in send.group(1) and "need no account" in send.group(1)
     assert sent and "spoken_message" in sent.group(1) and "word for word" in sent.group(1)
+
+
+def test_global_hand_over_says_acknowledgement_handoff_then_context_lines() -> None:
+    """handoff_message is the verbatim PRD line alone; the extra lines are separate fields."""
+    global_txt = (APP_DIR / "global_instruction.txt").read_text(encoding="utf-8")
+    step = re.search(r'<step name="Hand Over">(.*?)</step>', global_txt, re.S)
+    assert step, "global has no Hand Over step"
+    body = " ".join(step.group(1).split())
+    ack, msg, ctx = (body.index(k) for k in ("acknowledgement_line", "handoff_message word for word", "transfer_context_line"))
+    assert ack < msg < ctx and "{@TOOL: end_session}" in body

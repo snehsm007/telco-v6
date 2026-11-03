@@ -14,9 +14,8 @@ def test_handover_to_person_sets_state_and_returns_message(monkeypatch) -> None:
     assert reply["data"]["handoff_status"] == "completed_via_specialist_queue"
     assert reply["data"]["language"] == "fr-CA"
     assert session.state["handover_complete"] is True
-    assert session.state["handoff_message"] == (
-        SPOKEN_LINES["live_agent_handoff"]["fr-CA"] + " " + SPOKEN_LINES["handoff_context_note"]["fr-CA"]
-    )
+    assert session.state["handoff_message"] == SPOKEN_LINES["live_agent_handoff"]["fr-CA"]
+    assert reply["data"]["transfer_context_line"] == SPOKEN_LINES["handoff_context_note"]["fr-CA"]
     assert json.loads(session.state["handoff_context"])["reason"] == "user_requested_agent"
 
 
@@ -27,11 +26,11 @@ def test_handover_fraud_business_and_refund_lines(monkeypatch) -> None:
         SPOKEN_LINES["empathy_protocol"]["en-US"] + " " + SPOKEN_LINES["fraud_team_transfer"]["en-US"]
     )
     assert "fraud prevention team" in fraud["handoff_message"]
+    assert fraud["data"]["transfer_context_line"] == "" and fraud["data"]["acknowledgement_line"] == ""
     monkeypatch.setattr(tool, "context", {}, raising=False)
     business = tool.handover_to_person(reason="business_handoff", language="fr-CA")
-    assert business["handoff_message"] == (
-        SPOKEN_LINES["business_handoff"]["fr-CA"] + " " + SPOKEN_LINES["handoff_context_note"]["fr-CA"]
-    )
+    assert business["handoff_message"] == SPOKEN_LINES["business_handoff"]["fr-CA"]
+    assert business["data"]["transfer_context_line"] == SPOKEN_LINES["handoff_context_note"]["fr-CA"]
     monkeypatch.setattr(tool, "context", {}, raising=False)
     refund = tool.handover_to_person(reason="refund_threshold_exceeded", language="fr-CA")
     assert refund["handoff_message"] == (

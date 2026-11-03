@@ -400,9 +400,11 @@ def test_handover_reason_normalization(raw: str, code: str) -> None:
 
 EXPECTED_LINES = {
     "fraud_escalation": ("empathy_protocol", "fraud_team_transfer"),
-    "business_handoff": ("business_handoff", "handoff_context_note"),
+    "business_handoff": ("business_handoff",),
     "refund_threshold_exceeded": ("refund_over_limit", "transfer_to_specialist"),
 }
+# The transfer already carries the context for these reasons; every other one adds the note.
+NO_CONTEXT_LINE = ("fraud_escalation", "refund_threshold_exceeded")
 
 
 @pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
@@ -413,12 +415,15 @@ def test_handover_speaks_the_verbatim_line_for_each_reason(reason: str, lang: st
     monkeypatch.setattr(svc, "queue_open", lambda queue, now=None: True)  # time-of-day independent
     state: dict = {}
     reply = handover_to_person_impl(reason=reason, summary="s", state=state, language=lang)
-    keys = EXPECTED_LINES.get(reason, ("live_agent_handoff", "handoff_context_note"))
+    keys = EXPECTED_LINES.get(reason, ("live_agent_handoff",))
     limit = display_amount(SELF_SERVE_ADJUSTMENT_LIMIT)
     expected = " ".join(SPOKEN_LINES[k][lang].replace("[limit]", limit) for k in keys)
     assert reply["status"] == "ok"
     assert reply["data"]["handoff_message"] == expected == reply["handoff_message"]
     assert state["handoff_message"] == expected
+    context = "" if reason in NO_CONTEXT_LINE else SPOKEN_LINES["handoff_context_note"][lang]
+    assert reply["data"]["transfer_context_line"] == context
+    assert reply["data"]["acknowledgement_line"] == ""
     assert state["handover_complete"] is True and state["handoff_reason"] == reason
     assert reply["data"]["language"] == lang and state["language"] == lang
 
@@ -456,16 +461,18 @@ def test_frustrated_person_request_acknowledges_distress_first(summary: str, lan
     monkeypatch.setattr(services, "queue_open", lambda queue, now=None: True)
     reply = handover_to_person_impl(reason="user_requested_agent", summary=summary, state={}, language=lang)
     assert reply["data"]["distress_acknowledged"] is True
-    assert reply["data"]["handoff_message"] == " ".join(
-        SPOKEN_LINES[k][lang] for k in ("distress_acknowledgement", "live_agent_handoff", "handoff_context_note")
-    )
+    # handoff_message stays the verbatim line alone; the acknowledgement is its own field.
+    assert reply["data"]["handoff_message"] == SPOKEN_LINES["live_agent_handoff"][lang]
+    assert reply["data"]["acknowledgement_line"] == SPOKEN_LINES["distress_acknowledgement"][lang]
+    assert reply["data"]["transfer_context_line"] == SPOKEN_LINES["handoff_context_note"][lang]
 
 
 def test_calm_person_request_has_no_distress_line(monkeypatch) -> None:
     monkeypatch.setattr(services, "queue_open", lambda queue, now=None: True)
     reply = handover_to_person_impl(reason="user_requested_agent", summary="wants a representative", state={})
     assert reply["data"]["distress_acknowledged"] is False
-    assert reply["data"]["handoff_message"].startswith(SPOKEN_LINES["live_agent_handoff"]["en-US"])
+    assert reply["data"]["handoff_message"] == SPOKEN_LINES["live_agent_handoff"]["en-US"]
+    assert reply["data"]["acknowledgement_line"] == ""
 
 
 def test_handover_writes_handoff_context_json() -> None:
@@ -719,9 +726,8 @@ def test_closed_queue_handover_says_the_callback_not_please_hold(monkeypatch) ->
     monkeypatch.setattr(svc, "queue_open", lambda queue, now=None: False)
     reply = svc.handover_to_person_impl(reason="sales_specialist", state={})
     assert reply["data"]["handoff_status"] == "callback_next_business_day"
-    assert reply["data"]["handoff_message"] == (
-        SPOKEN_LINES["callback_next_business_day"]["en-US"] + " " + SPOKEN_LINES["handoff_context_note"]["en-US"]
-    )
+    assert reply["data"]["handoff_message"] == SPOKEN_LINES["callback_next_business_day"]["en-US"]
+    assert reply["data"]["transfer_context_line"] == SPOKEN_LINES["handoff_context_note"]["en-US"]
     assert "hold" not in reply["data"]["handoff_message"].lower()
 
 

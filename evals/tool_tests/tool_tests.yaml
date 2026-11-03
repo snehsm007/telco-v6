@@ -451,7 +451,8 @@ tests:
   expected_status: ok
   expected_fields:
     queue: business
-    handoff_message: To get you the best support for your business account, I'll transfer you to an agent. You'll need to use your phone keypad instead of talking to the virtual assistant. Just a moment while I connect you. I've passed along what we've discussed so you won't need to repeat it.
+    handoff_message: To get you the best support for your business account, I'll transfer you to an agent. You'll need to use your phone keypad instead of talking to the virtual assistant. Just a moment while I connect you.
+    transfer_context_line: I've passed along what we've discussed so you won't need to repeat it.
   priority: P0
 - id: tt_handover_business_french
   tool: handover_to_person
@@ -463,7 +464,8 @@ tests:
     language: fr-CA
   expected_status: ok
   expected_fields:
-    handoff_message: Pour vous offrir le meilleur soutien pour votre compte d'affaires, je vais vous transférer à un agent. Vous devrez utiliser le clavier de votre téléphone au lieu de parler à l'assistant virtuel. Un instant pendant que je vous mets en relation. J'ai transmis ce dont nous avons discuté, vous n'aurez donc pas à le répéter.
+    handoff_message: Pour vous offrir le meilleur soutien pour votre compte d'affaires, je vais vous transférer à un agent. Vous devrez utiliser le clavier de votre téléphone au lieu de parler à l'assistant virtuel. Un instant pendant que je vous mets en relation.
+    transfer_context_line: J'ai transmis ce dont nous avons discuté, vous n'aurez donc pas à le répéter.
   priority: P0
 - id: tt_handover_reason_text_is_normalized
   tool: handover_to_person
@@ -486,7 +488,8 @@ tests:
   expected_status: ok
   expected_fields:
     reason: auth_failure_handoff
-    handoff_message: I'll connect you to a representative who can help. Please hold. I've passed along what we've discussed so you won't need to repeat it.
+    handoff_message: I'll connect you to a representative who can help. Please hold.
+    transfer_context_line: I've passed along what we've discussed so you won't need to repeat it.
   priority: P0
 - id: tt_handover_turn_one_french_detected
   tool: handover_to_person
@@ -499,7 +502,8 @@ tests:
   expected_status: ok
   expected_fields:
     language: fr-CA
-    handoff_message: Je vais vous mettre en relation avec un représentant qui pourra vous aider. Veuillez patienter. J'ai transmis ce dont nous avons discuté, vous n'aurez donc pas à le répéter.
+    handoff_message: Je vais vous mettre en relation avec un représentant qui pourra vous aider. Veuillez patienter.
+    transfer_context_line: J'ai transmis ce dont nous avons discuté, vous n'aurez donc pas à le répéter.
   expected_state:
     language: fr-CA
   priority: P0
@@ -515,7 +519,8 @@ tests:
   expected_status: ok
   expected_fields:
     language: fr-CA
-    handoff_message: Je vais vous mettre en relation avec un représentant qui pourra vous aider. Veuillez patienter. J'ai transmis ce dont nous avons discuté, vous n'aurez donc pas à le répéter.
+    handoff_message: Je vais vous mettre en relation avec un représentant qui pourra vous aider. Veuillez patienter.
+    transfer_context_line: J'ai transmis ce dont nous avons discuté, vous n'aurez donc pas à le répéter.
   priority: P0
 - id: tt_send_sms_notification_ok
   tool: send_sms_notification
