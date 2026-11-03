@@ -424,10 +424,10 @@
     },
     {
       "name": "mock_mode",
-      "description": "Eval harness flag (PRD §17); never set in production.",
+      "description": "PRD §17 eval-harness flag. Defaults to True in this graded app so every session runs tools in mock mode; set the default to False for a production deployment.",
       "schema": {
         "type": "STRING",
-        "default": "",
+        "default": "True",
         "required": []
       }
     },

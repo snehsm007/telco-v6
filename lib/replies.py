@@ -11,6 +11,7 @@ an agent given only 85.5 read it aloud as "85.5 dollars".
 
 from __future__ import annotations
 
+import contextvars
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 import hashlib
 from typing import Any
@@ -308,6 +309,25 @@ def display_amount(value: Any) -> str:
     return str(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
+# PRD §17 mock_mode: set per tool call from the session (lib/core.get_state);
+# every reply built during that call is marked as a synthetic mock payload.
+_MOCK_MODE_ACTIVE: contextvars.ContextVar[bool] = contextvars.ContextVar("mock_mode_active", default=False)
+
+
+def set_mock_mode_active(active: bool) -> None:
+    """Mark replies built from now on in this call as mock_mode payloads (PRD §17)."""
+    _MOCK_MODE_ACTIVE.set(bool(active))
+
+
+def _stamp_mock(reply: dict[str, Any]) -> dict[str, Any]:
+    """Add the mock_mode marker to a reply and its data when the call runs in mock mode."""
+    if _MOCK_MODE_ACTIVE.get():
+        reply["mock_mode"] = True
+        if isinstance(reply.get("data"), dict):
+            reply["data"]["mock_mode"] = True
+    return reply
+
+
 def ok_reply(
     data: dict[str, Any] | None = None,
     reference: str | None = None,
@@ -340,7 +360,7 @@ def ok_reply(
     ):
         if key in payload:
             reply[key] = payload[key]
-    return reply
+    return _stamp_mock(reply)
 
 
 def error_reply(
@@ -371,6 +391,7 @@ def error_reply(
         "error": code,
         "data": payload,
         "error_message": msg,
+        "message": msg,
         "agent_action": action,
         "tracking_id": reference,
     }
@@ -390,4 +411,4 @@ def error_reply(
     ):
         if key in payload:
             reply[key] = payload[key]
-    return reply
+    return _stamp_mock(reply)

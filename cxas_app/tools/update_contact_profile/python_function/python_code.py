@@ -38,6 +38,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
+import contextvars
 import hashlib
 import re
 
@@ -378,6 +379,16 @@ class _StatusStr(str):  # pragma: no cover
 
 ERROR_STATUS = _StatusStr("error")  # pragma: no cover
 
+_MOCK_MODE_ACTIVE: contextvars.ContextVar[bool] = contextvars.ContextVar("mock_mode_active", default=False)  # pragma: no cover
+
+def _stamp_mock(reply: dict[str, Any]) -> dict[str, Any]:  # pragma: no cover
+    """Add the mock_mode marker to a reply and its data when the call runs in mock mode."""
+    if _MOCK_MODE_ACTIVE.get():
+        reply["mock_mode"] = True
+        if isinstance(reply.get("data"), dict):
+            reply["data"]["mock_mode"] = True
+    return reply
+
 def tracking_id(tool: str, *inputs: object) -> str:  # pragma: no cover
     """Return a reference number built from the tool name and its inputs.
 
@@ -416,6 +427,7 @@ def error_reply(  # pragma: no cover
         "error": code,
         "data": payload,
         "error_message": msg,
+        "message": msg,
         "agent_action": action,
         "tracking_id": reference,
     }
@@ -435,7 +447,7 @@ def error_reply(  # pragma: no cover
     ):
         if key in payload:
             reply[key] = payload[key]
-    return reply
+    return _stamp_mock(reply)
 
 def check_mock_error(state: dict[str, Any], lang: str = "en-US", tool_name: str = "tool") -> dict[str, Any] | None:  # pragma: no cover
     """Fault injection: `mock_error` set in session state makes every tool return a system error.
@@ -463,16 +475,29 @@ def dispatch_sms(state: dict[str, Any], purpose: str) -> dict[str, Any]:  # prag
     state["sms_sent"] = ",".join(sent[-10:])
     return {"sms_sent": True, "destination_last4": dest, "sms_purpose": purpose}
 
+def mock_mode_on(state: dict[str, Any] | None) -> bool:  # pragma: no cover
+    """PRD §17 eval-harness flag (scenario variableOverrides mock_mode="True").
+
+    Every tool here already runs on the fake backend in lib/fakes.py, so mock mode
+    changes no tool outcome; fixtures (fx_*) still apply and login is never mocked.
+    """
+    return isinstance(state, dict) and str(state.get("mock_mode") or "").strip().lower() == "true"
+
+def set_mock_mode_active(active: bool) -> None:  # pragma: no cover
+    """Mark replies built from now on in this call as mock_mode payloads (PRD §17)."""
+    _MOCK_MODE_ACTIVE.set(bool(active))
+
 def get_state(  # pragma: no cover
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Return the session state dict. A missing state gets a fresh dict, never a shared one."""
-    if state is not None:
-        return state
-    if session_state is not None:
-        return session_state
-    return {}
+    """Return the session state dict. A missing state gets a fresh dict, never a shared one.
+
+    Also switches the PRD §17 mock_mode marker on or off for the replies of this call.
+    """
+    resolved = state if state is not None else (session_state if session_state is not None else {})
+    set_mock_mode_active(mock_mode_on(resolved))
+    return resolved
 
 DUMMY_NUMBERS: frozenset[str] = frozenset({"1234567890", "0123456789", "9876543210"})  # pragma: no cover
 
@@ -520,7 +545,7 @@ def ok_reply(  # pragma: no cover
     ):
         if key in payload:
             reply[key] = payload[key]
-    return reply
+    return _stamp_mock(reply)
 
 def normalize_code(value: Any) -> str:  # pragma: no cover
     """Coerce ints, floats (e.g. 5903.0), and formatted strings into a clean digit string."""
