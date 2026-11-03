@@ -932,7 +932,7 @@ def _bill_credit_reply(
 
 
 # The agent must speak the over-limit spoken_message (limit + verbatim transfer line), never a
-# generic handoff line (VE-24 r1, full-3cd4d6b). Kept <= 120 chars (rule 5).
+# generic handoff line of its own. Kept <= 120 chars (rule 5).
 OVER_LIMIT_ACTION = "Say spoken_message word for word, then hand over with reason refund_threshold_exceeded."
 
 
