@@ -117,3 +117,31 @@ def test_login_recovery_steps_never_dead_end() -> None:
     assert "check_secret_pin" in need_account.group(1) and "spoken_message" in need_account.group(1)
     no_number = re.search(r'<step name="No Number">(.*?)</step>', router_txt, re.S)
     assert no_number and "email" in no_number.group(1) and "silently" in no_number.group(1)
+
+
+def test_router_uses_caller_id_when_the_caller_gives_a_non_number() -> None:
+    """Live call: a date of birth instead of a number must not get the same question again."""
+    router_txt = (APP_DIR / "agents" / "router" / "instruction.txt").read_text(encoding="utf-8")
+    step = re.search(r'<step name="Not A Number">(.*?)</step>', router_txt, re.S)
+    assert step, "router has no Not A Number step"
+    body = step.group(1)
+    assert "date of birth" in body and "Never ask the same question again" in body
+    assert '{@TOOL: lookup_account} with phone_or_account set to ""' in body and "once per call" in body.lower()
+    assert "- en-US:" in body and "- fr-CA:" in body
+    assert "not_a_number line said together with {@TOOL: lookup_account}" in router_txt
+
+
+def test_router_reads_stt_mangled_french_cancellation_as_account() -> None:
+    """Phone STT renders "annuler mon forfait" as "un autre mois forfait"; that is a cancellation, not sales."""
+    router_txt = (APP_DIR / "agents" / "router" / "instruction.txt").read_text(encoding="utf-8")
+    easy = router_txt.split("Easy to mix up:", 1)[1].split("</taxonomy>", 1)[0]
+    hint = next(line for line in easy.splitlines() if "un autre mois" in line)
+    assert "annuler mon" in hint and "annulé mon" in hint and "(account)" in hint and "cancelling" in hint
+
+
+def test_tech_support_keeps_the_outage_text_promise_without_an_account() -> None:
+    tech_txt = (APP_DIR / "agents" / "tech_support" / "instruction.txt").read_text(encoding="utf-8")
+    send = re.search(r'<step name="Send Text">(.*?)</step>', tech_txt, re.S)
+    sent = re.search(r'<step name="Text Sent">(.*?)</step>', tech_txt, re.S)
+    assert send and "mobile_number" in send.group(1) and "need no account" in send.group(1)
+    assert sent and "spoken_message" in sent.group(1) and "word for word" in sent.group(1)

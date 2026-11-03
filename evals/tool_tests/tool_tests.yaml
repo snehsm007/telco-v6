@@ -535,8 +535,20 @@ tests:
   requirements:
   - REQ-8
   args:
-    purpose: outage_updates
+    purpose: registration_link
   expected_status: error
   expected_error: NOT_IDENTIFIED
+  priority: P0
+- id: tt_send_sms_notification_outage_updates_need_no_account
+  tool: send_sms_notification
+  requirements:
+  - REQ-22
+  args:
+    purpose: outage_updates
+  expected_status: ok
+  expected_fields:
+    purpose: outage_updates
+    sms_sent: true
+    destination_source: default_line
   priority: P0
 

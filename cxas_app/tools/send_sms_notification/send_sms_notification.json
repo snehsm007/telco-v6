@@ -4,7 +4,7 @@
   "executionType": "SYNCHRONOUS",
   "pythonFunction": {
     "name": "send_sms_notification",
-    "description": "Texts the mobile number on file: outage restoration updates, a troubleshooting guide, a callback when an appointment slot opens, or a self-serve registration link. Needs the caller's account to be found first.",
+    "description": "Texts the caller: outage restoration updates, a troubleshooting guide, a callback when an appointment slot opens, or a self-serve registration link. Outage updates and the troubleshooting guide need no account (they go to the caller's line); the others need the account found first.",
     "pythonCode": "tools/send_sms_notification/python_function/python_code.py"
   }
 }

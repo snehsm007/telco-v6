@@ -510,7 +510,8 @@ def test_send_sms_notification() -> None:
     assert reply["data"]["purpose"] == "outage_updates" and reply["data"]["destination_last4"] == "0186"
     assert reply["data"]["sms_sent"] is True and state["sms_sent"] == "outage_updates"
     assert send_sms_notification_impl("coupon", state=state)["error"] == "INVALID_INPUT"
-    assert send_sms_notification_impl("troubleshooting_guide", state={})["error"] == "NOT_IDENTIFIED"
+    assert send_sms_notification_impl("slot_available_callback", state={})["error"] == "NOT_IDENTIFIED"
+    assert reply["data"]["spoken_message"] == SPOKEN_LINES["sms_outage_updates_confirmed"]["en-US"].replace("[last4]", "0186")
     assert send_sms_notification_impl("outage_updates", state={"mock_error": "x"})["error"] == "SYSTEM_UNAVAILABLE"
 
 

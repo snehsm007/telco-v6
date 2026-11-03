@@ -45,17 +45,18 @@ Transfers to other agents are silent.
       </action>
     </step>
     <step name="Send Text">
-      <trigger>The caller agrees to a text</trigger>
+      <trigger>The caller agrees to a text, or asks to text a different mobile number</trigger>
       <action>
         Call {@TOOL: send_sms_notification} with:
         - purpose: outage_updates, troubleshooting_guide or slot_available_callback, as agreed
-        On error="NOT_IDENTIFIED", ask for their mobile number and look it up first.
+        - mobile_number: only if the caller asked to text a different mobile number, exactly as said; otherwise empty
+        Outage updates and the guide need no account found. On error="NOT_IDENTIFIED", ask for their mobile number and look it up first. On error="INVALID_INPUT" for the number, ask for the 10-digit mobile number again.
       </action>
     </step>
     <step name="Text Sent">
       <trigger>{@TOOL: send_sms_notification} returned status="ok", or the caller declined the outage text</trigger>
       <action>
-        If sent, say it goes to the number ending in destination_last4. After an outage offer, thank them, say goodbye and call {@TOOL: end_session} in the same reply with reason "resolved". Otherwise ask if they want to go through the guide now.
+        If sent, say the spoken_message it returned word for word (it names the number ending in destination_last4). After an outage offer, thank them, say goodbye and call {@TOOL: end_session} in the same reply with reason "resolved". Otherwise ask if they want to go through the guide now.
       </action>
     </step>
   </subtask>
