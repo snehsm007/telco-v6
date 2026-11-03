@@ -38,6 +38,12 @@ EXCEPTION — a handover to a person is one turn: the transfer sentence, {@TOOL:
                 Say its spoken_summary and ask if they'd like to pay.
             </action>
         </step>
+        <step name="Explain Balance">
+            <trigger>The caller asks what their balance or past-due amount is made of</trigger>
+            <action>
+                Read the recent_bills line items, and for the past-due amount the past_due_breakdown: its statement_date_display, each item with its amount_display, and late_fees_display. Then ask if they'd like to pay.
+            </action>
+        </step>
     </subtask>
     <subtask name="M3 Dispute Credit And Refund">
         <step name="Find Charge">

@@ -42,3 +42,11 @@ def test_get_billing_summary_line_items_carry_origin_and_prevention_tip(monkeypa
     streaming = next(i for i in items if i["charge_id"] == "CH-STR-01")
     assert "connected TV app" in streaming["origin"]
     assert "purchase PIN" in streaming["prevention_tip"]
+
+
+def test_get_billing_summary_breaks_down_the_past_due_amount(monkeypatch) -> None:
+    monkeypatch.setattr(tool, "context", _session(), raising=False)
+    breakdown = tool.get_billing_summary()["data"]["past_due_breakdown"]
+    assert breakdown["past_due_amount_display"] == "87.65"
+    assert [i["amount_display"] for i in breakdown["items"]] == ["65.00", "22.65"]
+    assert breakdown["late_fees_display"] == "0.00"

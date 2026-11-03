@@ -206,6 +206,14 @@ BILL_EXTRA_LINES: tuple[dict[str, Any], ...] = (
 BILL_CYCLE_DAYS_AGO = 3      # latest bill issued 3 days ago
 BILL_DUE_IN_DAYS = 18        # due 18 days from today
 PAST_DUE_AMOUNT = "87.65"    # unpaid from the previous cycle
+# What the past-due amount is made of: the unpaid charges of the previous statement
+# (one cycle before the latest bill). Sums to PAST_DUE_AMOUNT; no late fee is charged.
+PAST_DUE_ITEMS: tuple[dict[str, Any], ...] = (
+    {"lob": "mobility", "label": ("Mobility monthly service", "Service mobilité mensuel"), "amount": "65.00"},
+    {"lob": "mobility", "label": ("Long distance calls", "Appels interurbains"), "amount": "22.65"},
+)
+PAST_DUE_FALLBACK_LABEL = ("Unpaid charges from the previous statement", "Frais impayés du relevé précédent")
+PAST_DUE_LATE_FEE = "0.00"
 LAST_PAYMENT = {"amount": "140.00", "days_ago": 32, "method": "card_on_file"}
 DUPLICATE_PAYMENT = {"amount": "140.00", "days_ago": 5, "method": "card_on_file"}
 

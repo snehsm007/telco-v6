@@ -448,6 +448,40 @@ def _bill_live(state: dict[str, Any], lang: str) -> dict[str, Decimal]:  # pragm
         balance = past_due + _bill_charges_total(_bill_lines(state, lang))
     return {"balance": _bill_q(max(balance, _BILL_ZERO)), "past_due": _bill_q(max(min(past_due, balance), _BILL_ZERO))}
 
+NEXT_BILL_CYCLE_DAYS = 30  # pragma: no cover
+
+PAST_DUE_FALLBACK_LABEL = ("Unpaid charges from the previous statement", "Frais impayés du relevé précédent")  # pragma: no cover
+
+PAST_DUE_ITEMS: tuple[dict[str, Any], ...] = (  # pragma: no cover
+    {"lob": "mobility", "label": ("Mobility monthly service", "Service mobilité mensuel"), "amount": "65.00"},
+    {"lob": "mobility", "label": ("Long distance calls", "Appels interurbains"), "amount": "22.65"},
+)
+
+PAST_DUE_LATE_FEE = "0.00"  # pragma: no cover
+
+def _bill_past_due_breakdown(state: dict[str, Any], lang: str, past_due: Decimal) -> dict[str, Any]:  # pragma: no cover
+    """What the past-due amount is made of: the previous statement's unpaid items (Turn N+1, rule 33)."""
+    record = account_record(state)
+    lobs = set(record.get("lines_of_business", []))
+    statement = _bill_date(-(BILL_CYCLE_DAYS_AGO + NEXT_BILL_CYCLE_DAYS), lang)
+    items_total = sum((Decimal(item["amount"]) for item in PAST_DUE_ITEMS), _BILL_ZERO)
+    if all(item["lob"] in lobs for item in PAST_DUE_ITEMS) and past_due <= items_total:
+        items = [{"description": _bill_text(lang, *item["label"]), **money(item["amount"])} for item in PAST_DUE_ITEMS]
+        paid_since = _bill_q(items_total - past_due)
+    else:
+        items = [{"description": _bill_text(lang, *PAST_DUE_FALLBACK_LABEL), **money(past_due)}]
+        paid_since = _BILL_ZERO
+    breakdown: dict[str, Any] = {
+        "statement_date": statement["iso"],
+        "statement_date_display": statement["display"],
+        "items": items,
+        **money(PAST_DUE_LATE_FEE, "late_fees"),
+        **money(past_due, "past_due_amount"),
+    }
+    if paid_since > _BILL_ZERO:
+        breakdown.update(money(paid_since, "paid_since"))
+    return breakdown
+
 DUPLICATE_PAYMENT = {"amount": "140.00", "days_ago": 5, "method": "card_on_file"}  # pragma: no cover
 
 LAST_PAYMENT = {"amount": "140.00", "days_ago": 32, "method": "card_on_file"}  # pragma: no cover
@@ -1110,6 +1144,8 @@ def get_billing_summary_impl(  # pragma: no cover
         "recent_payments": _bill_payments(st, lang, live["past_due"]),
         "self_serve_adjustment_limit_display": display_amount(SELF_SERVE_ADJUSTMENT_LIMIT),
     }
+    if live["past_due"] > _BILL_ZERO:
+        data["past_due_breakdown"] = _bill_past_due_breakdown(st, lang, live["past_due"])
     if status == "suspended_nonpayment":
         data["amount_to_restore_display"] = display_amount(live["past_due"])
         data["restore_options"] = ["pay_past_due", "verify_recent_payment", "payment_arrangement"]

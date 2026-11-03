@@ -25,12 +25,16 @@ from lib.fakes import (
     BILL_EXTRA_LINES,
     BILL_EXTRA_LINE_NOTES,
     DUPLICATE_PAYMENT,
+    NEXT_BILL_CYCLE_DAYS,
     PAST_DUE_AMOUNT,
+    PAST_DUE_FALLBACK_LABEL,
+    PAST_DUE_ITEMS,
     RECONNECT_MINUTES,
     RECONNECT_NOTE,
     REFUND_WINDOW_BUSINESS_DAYS,
     SELF_SERVE_ADJUSTMENT_LIMIT,
     SERVICE_PRICES,
+    relative_date,
     spoken_line,
 )
 
@@ -900,3 +904,40 @@ def test_no_reconnect_note_without_a_restore():
     assert "reconnect_note" not in process_bill_payment_impl("50", "card_on_file", state=state)["data"]
     partial = process_bill_payment_impl("10", "card_on_file", state=logged_in(fx_recent_payment="none"))["data"]
     assert partial["service_restored"] is False and "reconnect_note" not in partial
+
+
+def test_past_due_items_add_up_to_the_past_due_amount():
+    assert sum(Decimal(item["amount"]) for item in PAST_DUE_ITEMS) == Decimal(PAST_DUE_AMOUNT)
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA"])
+def test_summary_breaks_down_the_past_due_amount(lang):
+    # "What is the past-due amount for?" is answered from the summary, not by a handoff.
+    data = get_billing_summary_impl(state=logged_in(), language=lang)["data"]
+    breakdown = data["past_due_breakdown"]
+    assert breakdown["past_due_amount_display"] == data["past_due_amount_display"] == PAST_DUE_AMOUNT
+    assert [i["description"] for i in breakdown["items"]] == [i["label"][1 if lang == "fr-CA" else 0] for i in PAST_DUE_ITEMS]
+    assert sum(Decimal(i["amount_display"]) for i in breakdown["items"]) == Decimal(PAST_DUE_AMOUNT)
+    assert breakdown["late_fees_display"] == "0.00"
+    statement_days_ago = BILL_CYCLE_DAYS_AGO + NEXT_BILL_CYCLE_DAYS
+    assert breakdown["statement_date"] == relative_date(-statement_days_ago)
+    assert breakdown["statement_date_display"]
+    assert "paid_since_display" not in breakdown
+
+
+def test_past_due_breakdown_after_a_partial_payment_and_once_cleared():
+    state = logged_in(fx_recent_payment="none")
+    process_bill_payment_impl("20", "card_on_file", state=state)
+    breakdown = get_billing_summary_impl(state=state)["data"]["past_due_breakdown"]
+    assert breakdown["past_due_amount_display"] == str(Decimal(PAST_DUE_AMOUNT) - 20)
+    assert breakdown["paid_since_display"] == "20.00"
+    process_bill_payment_impl("past due", "card_on_file", state=state)
+    assert "past_due_breakdown" not in get_billing_summary_impl(state=state)["data"]
+
+
+def test_past_due_breakdown_falls_back_to_one_line_when_items_do_not_fit():
+    # An account without the itemized service, or a past-due amount larger than the items.
+    data = get_billing_summary_impl(state=logged_in(past_due_amount="300.00", balance_due="400.00"))["data"]
+    items = data["past_due_breakdown"]["items"]
+    assert len(items) == 1 and items[0]["amount_display"] == "300.00"
+    assert items[0]["description"] == PAST_DUE_FALLBACK_LABEL[0]

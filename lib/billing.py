@@ -56,6 +56,9 @@ from lib.fakes import (
     LAST_PAYMENT,
     NEXT_BILL_CYCLE_DAYS,
     PAST_DUE_AMOUNT,
+    PAST_DUE_FALLBACK_LABEL,
+    PAST_DUE_ITEMS,
+    PAST_DUE_LATE_FEE,
     RECENT_PAYMENT_DAYS_AGO,
     RECONNECT_MINUTES,
     RECONNECT_NOTE,
@@ -516,6 +519,30 @@ def _bill_payments(state: dict[str, Any], lang: str, past_due: Decimal) -> list[
     return payments
 
 
+def _bill_past_due_breakdown(state: dict[str, Any], lang: str, past_due: Decimal) -> dict[str, Any]:
+    """What the past-due amount is made of: the previous statement's unpaid items (Turn N+1, rule 33)."""
+    record = account_record(state)
+    lobs = set(record.get("lines_of_business", []))
+    statement = _bill_date(-(BILL_CYCLE_DAYS_AGO + NEXT_BILL_CYCLE_DAYS), lang)
+    items_total = sum((Decimal(item["amount"]) for item in PAST_DUE_ITEMS), _BILL_ZERO)
+    if all(item["lob"] in lobs for item in PAST_DUE_ITEMS) and past_due <= items_total:
+        items = [{"description": _bill_text(lang, *item["label"]), **money(item["amount"])} for item in PAST_DUE_ITEMS]
+        paid_since = _bill_q(items_total - past_due)
+    else:
+        items = [{"description": _bill_text(lang, *PAST_DUE_FALLBACK_LABEL), **money(past_due)}]
+        paid_since = _BILL_ZERO
+    breakdown: dict[str, Any] = {
+        "statement_date": statement["iso"],
+        "statement_date_display": statement["display"],
+        "items": items,
+        **money(PAST_DUE_LATE_FEE, "late_fees"),
+        **money(past_due, "past_due_amount"),
+    }
+    if paid_since > _BILL_ZERO:
+        breakdown.update(money(paid_since, "paid_since"))
+    return breakdown
+
+
 def get_billing_summary_impl(
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
@@ -558,6 +585,8 @@ def get_billing_summary_impl(
         "recent_payments": _bill_payments(st, lang, live["past_due"]),
         "self_serve_adjustment_limit_display": display_amount(SELF_SERVE_ADJUSTMENT_LIMIT),
     }
+    if live["past_due"] > _BILL_ZERO:
+        data["past_due_breakdown"] = _bill_past_due_breakdown(st, lang, live["past_due"])
     if status == "suspended_nonpayment":
         data["amount_to_restore_display"] = display_amount(live["past_due"])
         data["restore_options"] = ["pay_past_due", "verify_recent_payment", "payment_arrangement"]
