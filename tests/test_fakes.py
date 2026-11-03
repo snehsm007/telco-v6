@@ -209,10 +209,14 @@ def test_default_world_serves_scenarios_without_overrides() -> None:
     # card works, and outages follow the regional table (Quebec letters active, others none).
     assert FIXTURE_DEFAULTS["fx_card_on_file_status"] == "valid"
     assert FIXTURE_DEFAULTS["fx_outage_status"] == ""
-    from lib.fakes import ACTIVE_OUTAGES, REGION_BY_POSTAL_LETTER
+    from lib.fakes import ACTIVE_OUTAGES_BY_DISTRICT, OUTAGE_DISTRICT_LENGTH, REGION_BY_POSTAL_LETTER
 
-    assert all(REGION_BY_POSTAL_LETTER[letter] in ACTIVE_OUTAGES for letter in "GHJ")
-    assert all(REGION_BY_POSTAL_LETTER[letter] not in ACTIVE_OUTAGES for letter in "KLMNP")
+    # Outages are by postal district class (letter + digit), never full postal codes,
+    # and only some Quebec districts: the service regions stay province-wide.
+    assert all(len(d) == OUTAGE_DISTRICT_LENGTH and d[0].isalpha() and d[1].isdigit() for d in ACTIVE_OUTAGES_BY_DISTRICT)
+    assert {d[0] for d in ACTIVE_OUTAGES_BY_DISTRICT} <= {"G", "H"}
+    assert all(REGION_BY_POSTAL_LETTER[d[0]] == "Region-A" for d in ACTIVE_OUTAGES_BY_DISTRICT)
+    assert "H2" not in ACTIVE_OUTAGES_BY_DISTRICT and "J4" not in ACTIVE_OUTAGES_BY_DISTRICT
 
 
 @pytest.mark.parametrize(
