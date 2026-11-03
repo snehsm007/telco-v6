@@ -100,6 +100,28 @@ def test_lookup_validation_errors_end_in_too_many_errors() -> None:
     assert "too_many_errors" in third["agent_action"]
 
 
+@pytest.mark.parametrize("raw", ["John Smith", "Miller", "123 Main Street", "Jean-François Côté"])
+def test_lookup_by_name_or_address_is_not_a_strike(raw: str) -> None:
+    """A name or address is not a malformed number: no strike, the lookup-options line, PIN first."""
+    state: dict = {}
+    for _ in range(4):
+        reply = lookup_account_impl(raw, state=state)
+        assert reply["error"] == "NOT_FOUND" and reply["data"]["counted"] is False
+    assert read_count(state, "global_err_count") == 0 and "account_id" not in state
+    assert reply["data"]["spoken_message"] == SPOKEN_LINES["account_lookup_options"]["en-US"]
+    assert "check_secret_pin" in reply["agent_action"] and len(reply["agent_action"]) <= 120
+    fr = lookup_account_impl(raw, state={"language": "fr-CA"})
+    assert fr["data"]["spoken_message"] == SPOKEN_LINES["account_lookup_options"]["fr-CA"]
+
+
+@pytest.mark.parametrize("raw", ["123", "ACC-12", "not-an-email@", "555-01"])
+def test_lookup_malformed_numbers_still_count(raw: str) -> None:
+    state: dict = {}
+    reply = lookup_account_impl(raw, state=state)
+    assert reply["error"] == "NOT_FOUND" and reply["data"]["global_err_count"] == 1
+    assert reply["data"]["spoken_message"] == SPOKEN_LINES["account_lookup_options"]["en-US"]
+
+
 @pytest.mark.parametrize("raw", ["900-555-0199", "+1 900 555 0199", "19005550199"])
 def test_lookup_blocked_caller(raw: str) -> None:
     state: dict = {}

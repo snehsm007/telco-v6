@@ -87,6 +87,11 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {
         "en-US": "Or, if you prefer, you can use your 4-digit PIN instead.",
         "fr-CA": "Ou, si vous préférez, vous pouvez plutôt utiliser votre NIP à 4 chiffres.",
     },
+    # Operational line (no account number at hand); interim wording PENDING LEGAL APPROVAL.
+    "account_lookup_options": {
+        "en-US": "To find your account, I can use its phone number or account number, your email on file, or your 4-digit PIN.",
+        "fr-CA": "Pour trouver votre compte, je peux utiliser son numéro de téléphone ou son numéro de compte, votre courriel au dossier ou votre NIP à 4 chiffres.",
+    },
     "email_code_sent": {
         "en-US": "For your security, I just sent a 6-digit code to your email on file — please read it back to me.",
         "fr-CA": "Pour votre sécurité, je viens d'envoyer un code à 6 chiffres à votre adresse courriel au dossier — veuillez me le lire.",
@@ -500,6 +505,8 @@ OTP_RE = re.compile(r"^[0-9]{6}$")
 PIN_RE = re.compile(r"^[0-9]{4}$")
 # An email address the caller gives instead of a number (no phone or account number at hand).
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}$")
+# A name or street address given instead of a number: a word of letters only (no email).
+_LETTER_WORD_RE = re.compile(r"(?:^|[\s,.])[^\W\d_](?:[^\W\d_]|['\-](?=[^\W\d_]))+(?=$|[\s,.])")
 DUMMY_NUMBERS: frozenset[str] = frozenset({"1234567890", "0123456789", "9876543210"})
 
 
@@ -649,6 +656,17 @@ def classify_identifier(raw: Any) -> tuple[str, str]:
     if ACCOUNT_REFERENCE_RE.fullmatch(text):
         return "account_reference", digits
     return "", digits
+
+
+def is_name_or_address(raw: Any) -> bool:
+    """True when the caller gave words (a name or street address), not a number or email.
+
+    Malformed numbers ("ACC-12", "555-01") and emails stay validation errors.
+    """
+    text = str(raw or "").strip()
+    if not text or "@" in text or classify_identifier(text)[0]:
+        return False
+    return bool(_LETTER_WORD_RE.search(text))
 
 
 def find_account(identifier: Any) -> dict[str, Any] | None:

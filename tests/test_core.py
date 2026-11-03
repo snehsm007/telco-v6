@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from lib import core
-from lib.fakes import ACCOUNTS, FIXTURE_DEFAULTS
+from lib.fakes import ACCOUNTS, FIXTURE_DEFAULTS, SPOKEN_LINES
 
 
 def test_get_state_prefers_state_then_session_state_then_fresh_dict() -> None:
@@ -72,6 +72,17 @@ def test_require_login() -> None:
         err = core.require_login(state, "en-US", "get_billing_summary")
         assert err is not None and err["error"] == "NOT_LOGGED_IN"
         assert len(err["agent_action"]) <= 120
+
+
+def test_require_login_without_an_account_says_how_to_find_it() -> None:
+    """No number yet: a verbatim line (never an improvised method) and a PIN already given comes first."""
+    for lang in ("en-US", "fr-CA"):
+        err = core.require_login({}, lang, "start_number_transfer")
+        assert err["data"]["spoken_message"] == SPOKEN_LINES["account_lookup_options"][lang]
+        assert err["data"]["pin_length"] == 4 and "pin_prompt_message" not in err["data"]
+        assert err["agent_action"].startswith("If the caller already gave a 4-digit PIN, call check_secret_pin")
+    found = core.require_login({"account_id": ACCOUNTS[0]["account_id"], "phone_last4": "0186"}, "en-US", "t")
+    assert "0186" in found["data"]["spoken_message"] and "pin_prompt_message" in found["data"]
 
 
 def test_validation_error_third_one_is_too_many_errors() -> None:
