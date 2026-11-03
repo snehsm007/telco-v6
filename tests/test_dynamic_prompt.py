@@ -342,10 +342,6 @@ def test_first_turn_keypad_two_adds_french_choice_note():
     req = N(contents=[N(role="user", parts=[part])], config=N(system_instruction="base"))
     dp.apply_language_prompt_filter(N(state={}), req, agent_name="router")
     assert dp.KEYPAD_FRENCH_NOTE in req.config.system_instruction
-    req2 = N(contents=[N(role="user", parts=[part]), N(role="user", parts=[N(text="847291044", function_response=None, function_call=None)])],
-             config=N(system_instruction="base"))
-    dp.apply_language_prompt_filter(N(state={}), req2, agent_name="router")
-    assert dp.KEYPAD_FRENCH_NOTE not in req2.config.system_instruction
 
 
 def test_first_turn_keypad_two_locks_french():
@@ -356,3 +352,26 @@ def test_first_turn_keypad_two_locks_french():
             config=N(system_instruction="base"))
     dp.apply_language_prompt_filter(N(state=st), req, agent_name="router")
     assert st.get("language") == "fr-CA"
+
+
+def test_keypad_two_after_a_variables_part_still_selects_french():
+    from types import SimpleNamespace as N
+    from lib import dynamic_prompt as dp
+    st = {}
+    parts = [N(text='{"vr_task_count": 0}', function_response=None, function_call=None),
+             N(text="2", function_response=None, function_call=None)]
+    req = N(contents=[N(role="user", parts=parts)], config=N(system_instruction="base"))
+    dp.apply_language_prompt_filter(N(state=st), req, agent_name="router")
+    assert st.get("language") == "fr-CA"
+    assert dp.KEYPAD_FRENCH_NOTE in req.config.system_instruction
+
+
+def test_keypad_note_only_before_the_agent_first_speaks():
+    from types import SimpleNamespace as N
+    from lib import dynamic_prompt as dp
+    req = N(contents=[N(role="user", parts=[N(text="2", function_response=None, function_call=None)]),
+                      N(role="model", parts=[N(text="Bienvenue", function_response=None, function_call=None)]),
+                      N(role="user", parts=[N(text="847291044", function_response=None, function_call=None)])],
+            config=N(system_instruction="base"))
+    dp.apply_language_prompt_filter(N(state={}), req, agent_name="router")
+    assert dp.KEYPAD_FRENCH_NOTE not in req.config.system_instruction

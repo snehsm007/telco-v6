@@ -32,6 +32,27 @@ KEYPAD_FRENCH_NOTE = (  # pragma: no cover
 
 LANGUAGE_SHEET_SENTINEL = "<!-- ACTIVE_LANGUAGE_SHEET -->"  # pragma: no cover
 
+def _dp_agent_has_spoken(llm_request: Any) -> bool:  # pragma: no cover
+    """True once any model turn with text exists (so this is not the caller's first input)."""
+    for item in getattr(llm_request, "contents", None) or []:
+        if getattr(item, "role", "") == "model":
+            for part in getattr(item, "parts", None) or []:
+                if str(getattr(part, "text", "") or "").strip():
+                    return True
+    return False
+
+def _dp_is_variables_blob(utterance: str) -> bool:  # pragma: no cover
+    """Platform session-variable parts (a JSON / proto dump) that are not caller words."""
+    u = str(utterance or "").lstrip()
+    return u.startswith("{") or u.startswith("default_variables") or u.startswith("fields {")
+
+def _dp_first_caller_input(user_utterances: list[str]) -> str:  # pragma: no cover
+    """The caller's first real input, skipping platform variable parts."""
+    for u in user_utterances:
+        if not _dp_is_variables_blob(u):
+            return u
+    return ""
+
 KEYPAD_FRENCH_CHOICES: frozenset[str] = frozenset({"2", "deux"})  # pragma: no cover
 
 def _dp_is_keypad_french_choice(utterance: str) -> bool:  # pragma: no cover
@@ -39,6 +60,10 @@ def _dp_is_keypad_french_choice(utterance: str) -> bool:  # pragma: no cover
     cleaned = re.sub(r"[\s.!,#*]+", "", str(utterance or "").strip().lower())
     cleaned = re.sub(r"^(?:pressed|keyed|appuie|touche)", "", cleaned)
     return cleaned in KEYPAD_FRENCH_CHOICES
+
+def _dp_keypad_french_now(llm_request: Any, user_utterances: list[str]) -> bool:  # pragma: no cover
+    """The caller's first input (ignoring platform variable parts) is the keypad French choice."""
+    return _dp_is_keypad_french_choice(_dp_first_caller_input(user_utterances))
 
 AGENT_VERBATIM_KEYS: dict[str, tuple[str, ...]] = {  # pragma: no cover
     "router": ("greeting_main", "restricted_caller", "live_agent_handoff", "business_handoff", "empathy_protocol", "recording_notice", "ai_disclosure", "malicious_closing"),
@@ -534,11 +559,12 @@ def detect_active_call_language(state_dict: Any, llm_request: Any) -> str:  # pr
         return current
 
     current = resolve_locale(locked) if locked else "en-US"
-    if not locked and user_utterances and _dp_is_keypad_french_choice(user_utterances[0]):
+    if not locked and _dp_keypad_french_now(llm_request, user_utterances):
         # "Press 2 for French": only the caller's very first input selects the
         # language this way; a "2" later in the call (a menu or slot choice) never does.
         current = "fr-CA"
-        user_utterances = user_utterances[1:]
+        first = _dp_first_caller_input(user_utterances)
+        user_utterances = user_utterances[user_utterances.index(first) + 1:]
     for utt in user_utterances:
         if current != "en-US":
             switch = _dp_match_explicit_switch(utt.lower())
@@ -561,7 +587,7 @@ def apply_language_prompt_filter(  # pragma: no cover
     locale = detect_active_call_language(state_dict, llm_request)
     sheet = build_language_sheet(locale, agent_name=agent_name)
     utterances = extract_user_utterances(llm_request)
-    if len(utterances) == 1 and _dp_is_keypad_french_choice(utterances[0]) and locale == "fr-CA":
+    if locale == "fr-CA" and not _dp_agent_has_spoken(llm_request) and _dp_keypad_french_now(llm_request, utterances):
         # The caller's only input so far is the keypad language choice ("2" = French):
         # it is not an account number, so greet in French instead of looking it up.
         sheet += "\n" + KEYPAD_FRENCH_NOTE
