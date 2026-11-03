@@ -298,3 +298,7 @@ def test_platform_session_event_is_not_a_caller_turn() -> None:
     assert extract_user_utterances(req) == ["Bonjour, je veux payer ma facture"]
     assert detect_active_call_language({}, req) == "fr-CA"
     assert detect_active_call_language({}, _req("<event>session start</event>", "2")) == "fr-CA"
+
+
+def test_mangled_french_fraud_report_still_reads_as_french() -> None:
+    assert detect_active_call_language({}, _req("Quelqu'un a peur de Montcalm mon compte")) == "fr-CA"

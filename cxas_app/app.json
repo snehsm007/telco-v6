@@ -835,6 +835,15 @@
         "default": false,
         "required": []
       }
+    },
+    {
+      "name": "phone_derived",
+      "description": "True when the phone on the identified record was derived from account digits; its ending is never spoken.",
+      "schema": {
+        "type": "BOOLEAN",
+        "default": false,
+        "required": []
+      }
     }
   ],
   "guardrails": [

@@ -557,7 +557,11 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
         return _synthetic_account(digits, digits) if is_plausible_phone(digits) else None
     if kind == "intl_phone":
         return _synthetic_account(digits, digits[-10:])
-    return _synthetic_account(digits, _phone_from_digits(digits))
+    record = _synthetic_account(digits, _phone_from_digits(digits))
+    # The phone was built from account digits: real, but its ending is not something
+    # the caller told us, so it is never spoken back as "ending in ...".
+    record["phone_derived"] = True
+    return record
 
 FIXTURE_DEFAULTS: dict[str, str] = {  # pragma: no cover
     "fx_pin_on_file": "",
@@ -784,6 +788,10 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "That amount is above our $[limit] self-serve limit, so it needs a specialist's approval.",
         "fr-CA": "Ce montant dépasse notre limite libre-service de [limit] $, il doit donc être approuvé par un spécialiste.",
     },
+    "otp_callback_on_file": {
+        "en-US": "I'll send a 6-digit code to the mobile number on file. Ready?",
+        "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro de mobile au dossier. Êtes-vous prêt?",
+    },
     "otp_callback_confirm": {
         "en-US": "I'll send a 6-digit code to the number ending in [last4]. Ready?",
         "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro se terminant par [last4]. Êtes-vous prêt?",
@@ -944,6 +952,8 @@ def lookup_account_impl(  # pragma: no cover
     business = bool(account.get("business_flag")) or fixture_flag(state, "fx_business_account")
     state["account_id"] = account["account_id"]
     state["phone_last4"] = account["phone"][-4:]
+    if caller_id_source != "session_account":
+        state["phone_derived"] = bool(account.get("phone_derived"))
     ident = normalize_identifier(raw)
     if caller_id_source != "session_account":
         state["caller_provided_phone_last4"] = (
@@ -959,7 +969,8 @@ def lookup_account_impl(  # pragma: no cover
     data = {
         "identification_status": "Pass",
         "account_id_last4": normalize_code(account["account_id"])[-4:] or account["account_id"][-4:],
-        "phone_last4": account["phone"][-4:],
+        "phone_last4": "" if state.get("phone_derived") else str(state.get("phone_last4") or ""),
+        "mobile_on_file": bool(account.get("phone")),
         "caller_provided_phone_last4": str(state.get("caller_provided_phone_last4") or ""),
         "business_flag": business,
         "customer_type": state["customer_type"],

@@ -79,6 +79,10 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {
         "en-US": "That amount is above our $[limit] self-serve limit, so it needs a specialist's approval.",
         "fr-CA": "Ce montant dépasse notre limite libre-service de [limit] $, il doit donc être approuvé par un spécialiste.",
     },
+    "otp_callback_on_file": {
+        "en-US": "I'll send a 6-digit code to the mobile number on file. Ready?",
+        "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro de mobile au dossier. Êtes-vous prêt?",
+    },
     "otp_callback_confirm": {
         "en-US": "I'll send a 6-digit code to the number ending in [last4]. Ready?",
         "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro se terminant par [last4]. Êtes-vous prêt?",
@@ -853,7 +857,11 @@ def find_account(identifier: Any) -> dict[str, Any] | None:
         return _synthetic_account(digits, digits) if is_plausible_phone(digits) else None
     if kind == "intl_phone":
         return _synthetic_account(digits, digits[-10:])
-    return _synthetic_account(digits, _phone_from_digits(digits))
+    record = _synthetic_account(digits, _phone_from_digits(digits))
+    # The phone was built from account digits: real, but its ending is not something
+    # the caller told us, so it is never spoken back as "ending in ...".
+    record["phone_derived"] = True
+    return record
 
 
 def login_code_accepted(code_digits: Any, attempts: int = 0, max_attempts: int = 3) -> bool:

@@ -589,6 +589,10 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "That amount is above our $[limit] self-serve limit, so it needs a specialist's approval.",
         "fr-CA": "Ce montant dépasse notre limite libre-service de [limit] $, il doit donc être approuvé par un spécialiste.",
     },
+    "otp_callback_on_file": {
+        "en-US": "I'll send a 6-digit code to the mobile number on file. Ready?",
+        "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro de mobile au dossier. Êtes-vous prêt?",
+    },
     "otp_callback_confirm": {
         "en-US": "I'll send a 6-digit code to the number ending in [last4]. Ready?",
         "fr-CA": "Je vais envoyer un code à 6 chiffres au numéro se terminant par [last4]. Êtes-vous prêt?",
@@ -679,7 +683,10 @@ def send_login_code_impl(  # pragma: no cover
         data["email_masked"] = (user[:1] + "***@" + domain) if domain else "on file"
         data["spoken_message"] = spoken_line("email_code_sent", lang)
     else:
-        data["destination_last4"] = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or record["phone"][-4:])
+        data["destination_last4"] = str(
+            state.get("caller_provided_phone_last4")
+            or ("" if state.get("phone_derived") else (state.get("phone_last4") or record["phone"][-4:]))
+        )
         data["spoken_message"] = spoken_line("id_verification_otp", lang)
     reply = ok_reply(data, reference, language=lang)
     if chan == "email" and purpose == "login":
