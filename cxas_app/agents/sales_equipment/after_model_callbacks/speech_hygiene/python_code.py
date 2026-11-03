@@ -61,16 +61,22 @@ _PAYMENT_OR_ACCOUNT_WORDS: tuple[str, ...] = (  # pragma: no cover
     "bank", "bancaire", "banque", "account", "compte", "chequing", "chèque", "cheque",
 )
 
+MIN_MASKED_DIGITS = 7  # pragma: no cover
+
 NUMBER_RUN_RE = re.compile(r"\(?\d+\)?(?:[-.]\(?\d+\)?|\s\(?\d{3,}\)?)*")  # pragma: no cover
+
+SHORT_NUMBER_KEEP_RE = re.compile(r"\d{4}-\d{2}-\d{2}|\d{4}/\d{2}/\d{2}|\d+\.\d{2}")  # pragma: no cover
 
 SPEAKABLE_NUMBERS: frozenset[str] = frozenset()  # pragma: no cover
 
-def mask_long_numbers(text: str, min_digits: int = 9) -> str:  # pragma: no cover
+def mask_long_numbers(text: str, min_digits: int = MIN_MASKED_DIGITS) -> str:  # pragma: no cover
     """Replace every number of `min_digits` or more digits by its last 4 digits."""
 
     def _mask(match: re.Match[str]) -> str:
         digits = re.sub(r"\D", "", match.group(0))
         if len(digits) < min_digits or digits in SPEAKABLE_NUMBERS:
+            return match.group(0)
+        if len(digits) < 9 and SHORT_NUMBER_KEEP_RE.fullmatch(match.group(0)):
             return match.group(0)
         return digits[-4:]
 

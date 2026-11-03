@@ -255,7 +255,8 @@ and callback.
 Register a single small `after_model_callback` (`speech_hygiene`, code in
 `lib/speech.py`) with these jobs:
 1. strip leaked internal snake_case/camelCase identifiers and markdown from
-   spoken text, and cut any number of 9 or more digits to its last 4;
+   spoken text, and cut any number of 7 or more digits to its last 4 (ISO
+   dates and plain money amounts under 9 digits are kept);
 2. if `state.get("handover_complete")` is true and the reply has **no text**
    (only `handover_to_person` + `end_session`), add `state["handoff_message"]`
    as the spoken text. It never replaces or rewrites text the model spoke.

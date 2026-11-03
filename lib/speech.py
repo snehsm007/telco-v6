@@ -7,8 +7,13 @@ import re
 from typing import Any
 
 # Numbers the PRD wants said in full, such as a support line. Every other
-# number with 9 or more digits is cut to its last 4 digits.
+# number with 7 or more digits (a local phone number, a 7- or 8-digit account
+# number, a card) is cut to its last 4 digits (BR-TV-009).
 SPEAKABLE_NUMBERS: frozenset[str] = frozenset()
+MIN_MASKED_DIGITS = 7
+# Under 9 digits, an ISO date (2026-10-08) or a plain money amount (12345.67)
+# is not personal data and stays as spoken.
+SHORT_NUMBER_KEEP_RE = re.compile(r"\d{4}-\d{2}-\d{2}|\d{4}/\d{2}/\d{2}|\d+\.\d{2}")
 
 # Digit groups joined by "-" or ".", or by a space when the next group has 3+
 # digits. Phone, card and account numbers match in full; a date and time such
@@ -17,12 +22,14 @@ NUMBER_RUN_RE = re.compile(r"\(?\d+\)?(?:[-.]\(?\d+\)?|\s\(?\d{3,}\)?)*")
 MARKDOWN_RE = re.compile(r"\*+|`+|^#+[ \t]*", re.MULTILINE)
 
 
-def mask_long_numbers(text: str, min_digits: int = 9) -> str:
+def mask_long_numbers(text: str, min_digits: int = MIN_MASKED_DIGITS) -> str:
     """Replace every number of `min_digits` or more digits by its last 4 digits."""
 
     def _mask(match: re.Match[str]) -> str:
         digits = re.sub(r"\D", "", match.group(0))
         if len(digits) < min_digits or digits in SPEAKABLE_NUMBERS:
+            return match.group(0)
+        if len(digits) < 9 and SHORT_NUMBER_KEEP_RE.fullmatch(match.group(0)):
             return match.group(0)
         return digits[-4:]
 
