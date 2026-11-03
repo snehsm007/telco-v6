@@ -110,14 +110,26 @@ ALL_TOOLS = (
 MAX_LOGIN_ATTEMPTS = 3
 SMS_PURPOSES = ("outage_updates", "troubleshooting_guide", "slot_available_callback", "registration_link")
 
-# prd.md §7 / docs/tdd.md §7: which verbatim line(s) each handover reason speaks.
+# prd.md §7 / docs/tdd.md §7: which line(s) each handover reason speaks. Verbatim
+# §7 lines are spoken unaltered; the scorecard's "next steps & transfer context"
+# adds handoff_context_note after them (transfer_to_specialist already says it).
 # refund_threshold_exceeded first says why (over the self-serve limit, needs a
 # specialist's approval; prd.md §10), then the verbatim transfer line, last.
+# Fraud: verbatim empathy_protocol first (BR-TV-013), then the fraud-team transfer.
 HANDOVER_LINES: dict[str, tuple[str, ...]] = {
-    "business_handoff": ("business_handoff",),
-    "fraud_escalation": ("empathy_protocol", "live_agent_handoff"),
+    "business_handoff": ("business_handoff", "handoff_context_note"),
+    "fraud_escalation": ("empathy_protocol", "fraud_team_transfer"),
     "refund_threshold_exceeded": ("refund_over_limit", "transfer_to_specialist"),
 }
+DEFAULT_HANDOVER_LINES: tuple[str, ...] = ("live_agent_handoff", "handoff_context_note")
+# Scorecard "acknowledge distress": a frustrated or worried caller hears one short
+# acknowledgement before the transfer (fraud already opens with empathy_protocol).
+_DISTRESS_RE = re.compile(
+    r"frustrat|angry|upset|annoy|furious|mad at|fed up|sick of|tired of|ridiculous|"
+    r"in circles|going around|worried|stress|anxious|disconnect|cut off|"
+    r"fâch|fach|en col[eè]re|tann[eé]|écœur|ecoeur|en rond|inqui[eè]t|énerv|enerv",
+    re.IGNORECASE,
+)
 HANDOVER_QUEUES: dict[str, str] = {
     "fraud_escalation": "fraud",
     "business_handoff": "business",
@@ -553,14 +565,19 @@ def handover_to_person_impl(
     err = check_mock_error(state, lang, "handover_to_person")
     if err and code != "system_unavailable":
         return err
-    keys = HANDOVER_LINES.get(code, ("live_agent_handoff",))
-    limit = display_amount(SELF_SERVE_ADJUSTMENT_LIMIT)
-    message = " ".join(spoken_line(k, lang, limit=limit) for k in keys)
+    keys = HANDOVER_LINES.get(code, DEFAULT_HANDOVER_LINES)
     queue = HANDOVER_QUEUES.get(code, "general")
     open_now = queue_open(queue)
     if not open_now:
         # The queue is closed (BR-TV-014): say the callback, never "please hold".
-        message = spoken_line("callback_next_business_day", lang)
+        keys = ("callback_next_business_day", "handoff_context_note")
+    distressed = code != "fraud_escalation" and bool(
+        _DISTRESS_RE.search(" ".join(str(t or "") for t in (reason, summary, state.get("utterance"))))
+    )
+    if distressed:
+        keys = ("distress_acknowledgement", *keys)
+    limit = display_amount(SELF_SERVE_ADJUSTMENT_LIMIT)
+    message = " ".join(spoken_line(k, lang, limit=limit) for k in keys)
     context = {
         "reason": code,
         "summary": redact_pii(" ".join(str(summary or "").split()))[:300],
@@ -600,6 +617,7 @@ def handover_to_person_impl(
             "handover_id": reference,
             "handoff_message": message,
             "session_context_attached": True,
+            "distress_acknowledged": distressed,
             "action_fulfilled": True,
             "task_completed": True,
             "user_goal_fulfilled": True,

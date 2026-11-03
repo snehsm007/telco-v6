@@ -60,14 +60,21 @@ def _walk(obj: Any) -> list[str]:
 # --- send_password_reset_link -------------------------------------------------
 
 
-def test_password_reset_needs_identification_not_login() -> None:
+def test_password_reset_needs_login() -> None:
+    """AUTH_GATING / PRD §19 CUJ-1: authenticate (PIN or code) before dispatching the link."""
     reply = send_password_reset_link_impl(state={})
-    assert reply["error"] == "NOT_IDENTIFIED"
-    assert "lookup_account" in reply["agent_action"]
-    assert len(reply["agent_action"]) <= 120
+    assert reply["error"] == "NOT_LOGGED_IN"
+    assert reply["data"]["spoken_message"] == SPOKEN_LINES["account_lookup_options"]["en-US"]
 
     state = _identified()
     assert state.get("auth_status") in (None, "", "none")
+    gated = send_password_reset_link_impl(state=state)
+    assert gated["error"] == "NOT_LOGGED_IN"
+    assert "pin_prompt_message" in gated["data"]
+    assert "password_reset" not in (state.get("sms_sent") or "")
+    assert not state.get("password_reset_count")
+
+    assert check_secret_pin_impl("5903", state=state)["status"] == "ok"
     ok = send_password_reset_link_impl(state=state)
     assert ok["status"] == "ok"
     assert ok["data"]["sent"] is True
@@ -78,20 +85,18 @@ def test_password_reset_needs_identification_not_login() -> None:
 
 
 def test_password_reset_goes_to_number_on_file_not_caller_typed() -> None:
-    state = {}
-    lookup_account_impl("202 555 0186", state=state)
-    state["caller_provided_phone_last4"] = "9999"
+    state = _logged_in(caller_provided_phone_last4="9999")
     reply = send_password_reset_link_impl(state=state)
-    assert reply["data"]["destination_last4"] == "0186"
+    assert reply["data"]["destination_last4"] == "0147"
 
 
-def test_password_reset_requires_pass_identification_status() -> None:
+def test_password_reset_failed_identification_is_not_logged_in() -> None:
     reply = send_password_reset_link_impl(state={"account_id": "A1001", "identification_status": "Fail"})
-    assert reply["error"] == "NOT_IDENTIFIED"
+    assert reply["error"] == "NOT_LOGGED_IN"
 
 
 def test_password_reset_resend_ok_when_delivered() -> None:
-    state = _identified()
+    state = _logged_in()
     send_password_reset_link_impl(state=state)
     again = send_password_reset_link_impl(state=state)
     assert again["status"] == "ok"
@@ -100,7 +105,7 @@ def test_password_reset_resend_ok_when_delivered() -> None:
 
 
 def test_password_reset_failed_delivery_on_resend() -> None:
-    state = _identified(fx_sms_delivery="failed")
+    state = _logged_in(fx_sms_delivery="failed")
     first = send_password_reset_link_impl(state=state)
     assert first["status"] == "ok"
     second = send_password_reset_link_impl(state=state)
@@ -110,12 +115,12 @@ def test_password_reset_failed_delivery_on_resend() -> None:
 
 
 def test_password_reset_counter_reads_platform_decimals() -> None:
-    state = _identified(password_reset_count=1.0, fx_sms_delivery="failed")
+    state = _logged_in(password_reset_count=1.0, fx_sms_delivery="failed")
     assert send_password_reset_link_impl(state=state)["error"] == "DELIVERY_FAILED"
 
 
 def test_password_reset_french_summary() -> None:
-    state = _identified(language="fr-CA")
+    state = _logged_in(language="fr-CA")
     reply = send_password_reset_link_impl(state=state, language="en-US")
     assert reply["active_language"] == "fr-CA"
     assert "lien de réinitialisation" in reply["data"]["spoken_summary"]
@@ -123,7 +128,7 @@ def test_password_reset_french_summary() -> None:
 
 
 def test_password_reset_mock_error() -> None:
-    state = _identified(mock_error="SYSTEM_DOWN")
+    state = _logged_in(mock_error="SYSTEM_DOWN")
     assert send_password_reset_link_impl(state=state)["error"] == "SYSTEM_UNAVAILABLE"
 
 
@@ -507,7 +512,7 @@ def test_no_shared_default_state_between_calls() -> None:
     first = manage_mfa_impl("enable")
     second = manage_mfa_impl("enable")
     assert first["error"] == second["error"] == "NOT_LOGGED_IN"
-    assert send_password_reset_link_impl()["error"] == "NOT_IDENTIFIED"
+    assert send_password_reset_link_impl()["error"] == "NOT_LOGGED_IN"
 
 
 @pytest.mark.parametrize("lang", ["en-US", "fr-CA"])

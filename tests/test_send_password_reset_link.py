@@ -6,6 +6,9 @@ import cxas_app.tools.send_password_reset_link.python_function.python_code as to
 def test_send_password_reset_link_reads_and_writes_session_state(monkeypatch) -> None:
     session = SimpleNamespace(state={"account_id": "A1001", "phone_last4": "0186", "identification_status": "Pass"})
     monkeypatch.setattr(tool, "context", session, raising=False)
+    assert tool.send_password_reset_link()["error"] == "NOT_LOGGED_IN"  # AUTH_GATING
+    assert "password_reset_count" not in session.state
+    session.state["auth_status"] = "pass"
     reply = tool.send_password_reset_link()
     assert reply["status"] == "ok"
     assert reply["data"]["destination_last4"] == "0186"
@@ -14,7 +17,7 @@ def test_send_password_reset_link_reads_and_writes_session_state(monkeypatch) ->
 
 
 def test_send_password_reset_link_without_a_session() -> None:
-    assert tool.send_password_reset_link()["error"] == "NOT_IDENTIFIED"
+    assert tool.send_password_reset_link()["error"] == "NOT_LOGGED_IN"
 
 
 def test_send_password_reset_link_mock_error(monkeypatch) -> None:
